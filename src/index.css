@@ -8,58 +8,77 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* O'Rocket Space Theme - Dark Mode Primary */
-    --background: 222 47% 5%;
+    /* Deep Space Background */
+    --space-deep: 5 7% 4%;
+    --space-purple: 245 45% 9%;
+    --space-blue: 230 55% 15%;
+    
+    --background: 5 7% 4%;
     --foreground: 210 40% 98%;
 
-    --card: 217 33% 10%;
+    --card: 245 45% 9%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 217 33% 10%;
+    --popover: 245 45% 9%;
     --popover-foreground: 210 40% 98%;
 
-    /* Rocket Blue Primary */
-    --primary: 199 89% 48%;
+    /* Neon Accents */
+    --neon-cyan: 184 100% 50%;
+    --neon-purple: 280 100% 50%;
+    --neon-pink: 300 100% 50%;
+    --neon-green: 158 100% 50%;
+
+    /* Primary - Neon Cyan */
+    --primary: 184 100% 50%;
     --primary-foreground: 210 40% 98%;
 
-    /* Cosmic Purple Secondary */
-    --secondary: 258 90% 66%;
+    /* Secondary - Neon Purple */
+    --secondary: 280 100% 50%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 217 33% 17%;
+    --muted: 245 30% 15%;
     --muted-foreground: 215 20% 65%;
 
-    --accent: 258 90% 66%;
+    --accent: 300 100% 50%;
     --accent-foreground: 210 40% 98%;
 
-    /* Success Green */
-    --success: 142 76% 36%;
-    --success-foreground: 210 40% 98%;
+    /* Success - Neon Green */
+    --success: 158 100% 50%;
+    --success-foreground: 245 45% 9%;
 
     /* Warning Orange */
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 5%;
+    --warning-foreground: 245 45% 9%;
 
     /* Error Red */
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 199 89% 48%;
+    --border: 245 30% 20%;
+    --input: 245 30% 15%;
+    --ring: 184 100% 50%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
+
+    /* Star Colors */
+    --star-white: 0 0% 100%;
+    --star-blue: 205 100% 85%;
+    --star-yellow: 50 100% 90%;
 
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(199 89% 48%) 0%, hsl(258 90% 66%) 100%);
-    --gradient-cosmic: linear-gradient(180deg, hsl(222 47% 5%) 0%, hsl(258 30% 8%) 100%);
-    --gradient-glow: radial-gradient(circle at center, hsl(199 89% 48% / 0.15) 0%, transparent 70%);
+    --gradient-space: linear-gradient(180deg, hsl(5 7% 4%) 0%, hsl(245 45% 9%) 50%, hsl(230 55% 15%) 100%);
+    --gradient-neon: linear-gradient(135deg, hsl(184 100% 50%) 0%, hsl(280 100% 50%) 100%);
+    --gradient-glow: radial-gradient(circle at center, hsl(184 100% 50% / 0.2) 0%, transparent 70%);
     
-    /* Effects */
-    --glass-bg: hsl(217 33% 10% / 0.4);
-    --glass-border: hsl(199 89% 48% / 0.2);
-    --shadow-glow: 0 0 40px hsl(199 89% 48% / 0.3);
-    --shadow-glow-purple: 0 0 40px hsl(258 90% 66% / 0.3);
+    /* Glass Effects */
+    --glass-bg: hsl(245 45% 9% / 0.3);
+    --glass-border: hsl(184 100% 50% / 0.3);
+    --glass-highlight: hsl(210 40% 98% / 0.05);
+    
+    /* Shadows & Glows */
+    --shadow-glow-cyan: 0 0 40px hsl(184 100% 50% / 0.4);
+    --shadow-glow-purple: 0 0 40px hsl(280 100% 50% / 0.4);
+    --shadow-glow-pink: 0 0 40px hsl(300 100% 50% / 0.4);
   }
 }
 
@@ -70,9 +89,10 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
-    background: linear-gradient(180deg, hsl(222 47% 5%) 0%, hsl(258 30% 8%) 100%);
+    background: hsl(var(--space-deep));
     min-height: 100vh;
     font-family: 'Inter', sans-serif;
+    overflow-x: hidden;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -82,30 +102,58 @@ All colors MUST be HSL.
 
 @layer components {
   .glass-card {
-    @apply bg-card/40 backdrop-blur-xl border border-primary/20 rounded-xl;
-    box-shadow: 0 8px 32px 0 rgba(14, 165, 233, 0.1);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    @apply rounded-xl relative;
+    box-shadow: var(--shadow-glow-cyan), inset 0 1px 0 var(--glass-highlight);
   }
 
   .glass-card-hover {
-    @apply glass-card transition-all duration-300 hover:border-primary/40 hover:shadow-[0_0_30px_rgba(14,165,233,0.2)];
+    @apply glass-card transition-all duration-500;
+  }
+  
+  .glass-card-hover:hover {
+    transform: translateY(-4px);
+    border-color: hsl(var(--neon-cyan));
+    box-shadow: var(--shadow-glow-cyan), 0 20px 40px hsl(184 100% 50% / 0.2);
   }
 
   .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-neon);
   }
 
   .glow-effect {
-    filter: drop-shadow(0 0 20px hsl(199 89% 48% / 0.5));
+    filter: drop-shadow(0 0 20px hsl(184 100% 50% / 0.6));
+  }
+
+  .neon-glow-cyan {
+    box-shadow: var(--shadow-glow-cyan);
+  }
+
+  .neon-glow-purple {
+    box-shadow: var(--shadow-glow-purple);
+  }
+
+  .neon-glow-pink {
+    box-shadow: var(--shadow-glow-pink);
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-primary to-accent text-primary-foreground font-semibold px-8 py-3 rounded-lg;
-    @apply transition-all duration-300 hover:shadow-[0_0_30px_rgba(14,165,233,0.4)] hover:scale-105;
+    @apply relative font-semibold px-8 py-3 rounded-lg overflow-hidden;
+    background: var(--gradient-neon);
+    @apply transition-all duration-300;
+  }
+  
+  .btn-primary:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-glow-cyan);
   }
 
   .btn-secondary {
-    @apply bg-card/60 backdrop-blur-lg border border-primary/30 text-foreground font-semibold px-8 py-3 rounded-lg;
-    @apply transition-all duration-300 hover:border-primary/60 hover:bg-card/80;
+    @apply glass-card font-semibold px-8 py-3 rounded-lg;
+    @apply transition-all duration-300 hover:border-primary;
   }
 
   .metric-card {
@@ -114,5 +162,24 @@ All colors MUST be HSL.
 
   .pool-card {
     @apply glass-card-hover p-6;
+  }
+
+  .neon-border {
+    position: relative;
+  }
+  
+  .neon-border::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: var(--gradient-neon);
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: -1;
+  }
+  
+  .neon-border:hover::before {
+    opacity: 1;
   }
 }
