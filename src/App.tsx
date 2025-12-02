@@ -9,7 +9,7 @@ import Swap from "./pages/Swap";
 import Pools from "./pages/Pools";
 import AddLiquidity from "./pages/AddLiquidity";
 import Positions from "./pages/Positions";
-import Analytics from "./pages/Analytics";
+import Info from "./pages/Info";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,7 +27,7 @@ const App = () => (
           <Route path="/pools" element={<Pools />} />
           <Route path="/add-liquidity" element={<AddLiquidity />} />
           <Route path="/positions" element={<Positions />} />
-          <Route path="/analytics" element={<Analytics />} />
+          <Route path="/info" element={<Info />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
