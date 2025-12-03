@@ -8,77 +8,80 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    /* Deep Space Background */
-    --space-deep: 5 7% 4%;
-    --space-purple: 245 45% 9%;
-    --space-blue: 230 55% 15%;
+    /* Deep Space Background - Blue focused */
+    --space-deep: 220 30% 3%;
+    --space-mid: 225 40% 8%;
+    --space-light: 220 50% 12%;
     
-    --background: 5 7% 4%;
+    --background: 220 30% 3%;
     --foreground: 210 40% 98%;
 
-    --card: 245 45% 9%;
+    --card: 225 40% 8%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 245 45% 9%;
+    --popover: 225 40% 8%;
     --popover-foreground: 210 40% 98%;
 
-    /* Neon Accents */
-    --neon-cyan: 184 100% 50%;
-    --neon-purple: 280 100% 50%;
-    --neon-pink: 300 100% 50%;
-    --neon-green: 158 100% 50%;
+    /* Blue-focused Neon Accents */
+    --neon-blue: 210 100% 55%;
+    --neon-cyan: 190 100% 50%;
+    --neon-purple: 260 100% 60%;
+    --neon-pink: 320 100% 55%;
 
-    /* Primary - Neon Cyan */
-    --primary: 184 100% 50%;
+    /* Primary - Electric Blue */
+    --primary: 210 100% 55%;
     --primary-foreground: 210 40% 98%;
 
-    /* Secondary - Neon Purple */
-    --secondary: 280 100% 50%;
+    /* Secondary - Deep Purple */
+    --secondary: 260 100% 60%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 245 30% 15%;
-    --muted-foreground: 215 20% 65%;
+    --muted: 220 30% 15%;
+    --muted-foreground: 215 20% 60%;
 
-    --accent: 300 100% 50%;
+    --accent: 190 100% 50%;
     --accent-foreground: 210 40% 98%;
 
-    /* Success - Neon Green */
-    --success: 158 100% 50%;
-    --success-foreground: 245 45% 9%;
+    /* Success - Bright Teal */
+    --success: 170 100% 45%;
+    --success-foreground: 220 30% 3%;
 
     /* Warning Orange */
-    --warning: 38 92% 50%;
-    --warning-foreground: 245 45% 9%;
+    --warning: 38 100% 55%;
+    --warning-foreground: 220 30% 3%;
 
     /* Error Red */
-    --destructive: 0 84% 60%;
+    --destructive: 0 85% 55%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 245 30% 20%;
-    --input: 245 30% 15%;
-    --ring: 184 100% 50%;
+    --border: 220 30% 18%;
+    --input: 220 30% 12%;
+    --ring: 210 100% 55%;
 
-    --radius: 1rem;
+    --radius: 0.75rem;
 
     /* Star Colors */
     --star-white: 0 0% 100%;
-    --star-blue: 205 100% 85%;
-    --star-yellow: 50 100% 90%;
+    --star-blue: 210 100% 85%;
+    --star-cyan: 190 100% 80%;
 
-    /* Gradients */
-    --gradient-space: linear-gradient(180deg, hsl(5 7% 4%) 0%, hsl(245 45% 9%) 50%, hsl(230 55% 15%) 100%);
-    --gradient-neon: linear-gradient(135deg, hsl(184 100% 50%) 0%, hsl(280 100% 50%) 100%);
-    --gradient-glow: radial-gradient(circle at center, hsl(184 100% 50% / 0.2) 0%, transparent 70%);
+    /* Modern Gradients - Blue focused */
+    --gradient-space: linear-gradient(180deg, hsl(220 30% 3%) 0%, hsl(225 40% 8%) 50%, hsl(220 50% 12%) 100%);
+    --gradient-neon: linear-gradient(135deg, hsl(210 100% 55%) 0%, hsl(260 100% 60%) 100%);
+    --gradient-neon-subtle: linear-gradient(135deg, hsl(210 100% 55% / 0.8) 0%, hsl(190 100% 50% / 0.8) 100%);
+    --gradient-glow: radial-gradient(circle at center, hsl(210 100% 55% / 0.15) 0%, transparent 70%);
+    --gradient-card: linear-gradient(145deg, hsl(225 40% 10%) 0%, hsl(225 40% 6%) 100%);
     
-    /* Glass Effects */
-    --glass-bg: hsl(245 45% 9% / 0.3);
-    --glass-border: hsl(184 100% 50% / 0.3);
-    --glass-highlight: hsl(210 40% 98% / 0.05);
+    /* Glass Effects - More refined */
+    --glass-bg: hsl(225 40% 8% / 0.6);
+    --glass-border: hsl(210 100% 55% / 0.2);
+    --glass-highlight: hsl(210 40% 98% / 0.03);
     
-    /* Shadows & Glows */
-    --shadow-glow-cyan: 0 0 40px hsl(184 100% 50% / 0.4);
-    --shadow-glow-purple: 0 0 40px hsl(280 100% 50% / 0.4);
-    --shadow-glow-pink: 0 0 40px hsl(300 100% 50% / 0.4);
+    /* Shadows & Glows - Blue focused */
+    --shadow-glow-primary: 0 0 30px hsl(210 100% 55% / 0.3);
+    --shadow-glow-secondary: 0 0 30px hsl(260 100% 60% / 0.3);
+    --shadow-glow-accent: 0 0 30px hsl(190 100% 50% / 0.3);
+    --shadow-card: 0 8px 32px hsl(220 30% 3% / 0.4);
   }
 }
 
@@ -91,32 +94,36 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
     background: hsl(var(--space-deep));
     min-height: 100vh;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
 }
 
 @layer components {
   .glass-card {
     background: var(--glass-bg);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid var(--glass-border);
     @apply rounded-xl relative;
-    box-shadow: var(--shadow-glow-cyan), inset 0 1px 0 var(--glass-highlight);
+    box-shadow: var(--shadow-card), inset 0 1px 0 var(--glass-highlight);
   }
 
   .glass-card-hover {
-    @apply glass-card transition-all duration-500;
+    @apply glass-card transition-all duration-300 ease-out;
   }
   
   .glass-card-hover:hover {
-    transform: translateY(-4px);
-    border-color: hsl(var(--neon-cyan));
-    box-shadow: var(--shadow-glow-cyan), 0 20px 40px hsl(184 100% 50% / 0.2);
+    transform: translateY(-2px);
+    border-color: hsl(var(--primary) / 0.4);
+    box-shadow: var(--shadow-glow-primary), var(--shadow-card);
   }
 
   .gradient-text {
@@ -125,35 +132,35 @@ All colors MUST be HSL.
   }
 
   .glow-effect {
-    filter: drop-shadow(0 0 20px hsl(184 100% 50% / 0.6));
+    filter: drop-shadow(0 0 15px hsl(var(--primary) / 0.5));
   }
 
   .neon-glow-cyan {
-    box-shadow: var(--shadow-glow-cyan);
+    box-shadow: var(--shadow-glow-accent);
   }
 
   .neon-glow-purple {
-    box-shadow: var(--shadow-glow-purple);
+    box-shadow: var(--shadow-glow-secondary);
   }
 
   .neon-glow-pink {
-    box-shadow: var(--shadow-glow-pink);
+    box-shadow: 0 0 30px hsl(var(--neon-pink) / 0.3);
   }
 
   .btn-primary {
-    @apply relative font-semibold px-8 py-3 rounded-lg overflow-hidden;
+    @apply relative font-semibold px-6 py-3 rounded-lg overflow-hidden;
     background: var(--gradient-neon);
-    @apply transition-all duration-300;
+    @apply transition-all duration-200;
   }
   
   .btn-primary:hover {
-    transform: scale(1.05);
-    box-shadow: var(--shadow-glow-cyan);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-glow-primary);
   }
 
   .btn-secondary {
-    @apply glass-card font-semibold px-8 py-3 rounded-lg;
-    @apply transition-all duration-300 hover:border-primary;
+    @apply glass-card font-semibold px-6 py-3 rounded-lg;
+    @apply transition-all duration-200 hover:border-primary/50;
   }
 
   .metric-card {
@@ -171,15 +178,31 @@ All colors MUST be HSL.
   .neon-border::before {
     content: '';
     position: absolute;
-    inset: -2px;
+    inset: -1px;
     background: var(--gradient-neon);
     border-radius: inherit;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity 0.2s;
     z-index: -1;
   }
   
   .neon-border:hover::before {
-    opacity: 1;
+    opacity: 0.5;
+  }
+
+  /* Modern input styling */
+  .input-modern {
+    @apply glass-card px-4 py-3 text-foreground placeholder:text-muted-foreground;
+    @apply focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30;
+    @apply transition-all duration-200;
+  }
+
+  /* Subtle animations for UI elements */
+  .hover-lift {
+    @apply transition-transform duration-200;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
   }
 }

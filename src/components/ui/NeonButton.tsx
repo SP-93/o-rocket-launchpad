@@ -1,9 +1,9 @@
-import { ReactNode } from "react";
+import { ReactNode, MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 
 interface NeonButtonProps {
   children: ReactNode;
-  onClick?: () => void;
+  onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
   variant?: "primary" | "secondary";
   className?: string;
   disabled?: boolean;
