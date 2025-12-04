@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import GlowCard from "@/components/ui/GlowCard";
 import NeonButton from "@/components/ui/NeonButton";
-import { ArrowRight, Droplet } from "lucide-react";
+import { TokenPairIcon } from "@/components/TokenIcon";
+import { ArrowRight } from "lucide-react";
 
 const FeaturedPools = () => {
   const navigate = useNavigate();
@@ -9,6 +10,8 @@ const FeaturedPools = () => {
   const pools = [
     {
       pair: "USDT / USDC",
+      token0: "USDT",
+      token1: "USDC",
       fee: "0.3%",
       type: "Stable",
       description: "Low volatility stable pair",
@@ -16,6 +19,8 @@ const FeaturedPools = () => {
     },
     {
       pair: "WOVER / USDC",
+      token0: "WOVER",
+      token1: "USDC",
       fee: "0.3%",
       type: "Main",
       description: "Primary OVER trading pair",
@@ -23,6 +28,8 @@ const FeaturedPools = () => {
     },
     {
       pair: "WOVER / USDT",
+      token0: "WOVER",
+      token1: "USDT",
       fee: "0.3%",
       type: "Alternative",
       description: "Alternative OVER pair",
@@ -53,12 +60,14 @@ const FeaturedPools = () => {
             >
               <div className="flex items-start justify-between mb-6">
                 <div>
-                  <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-primary transition-colors">{pool.pair}</h3>
+                  <div className="flex items-center gap-3 mb-2">
+                    <TokenPairIcon token0={pool.token0} token1={pool.token1} size="md" />
+                    <h3 className="text-xl md:text-2xl font-bold group-hover:text-primary transition-colors">{pool.pair}</h3>
+                  </div>
                   <span className="inline-block px-3 py-1 bg-primary/20 text-primary rounded-full text-xs font-medium border border-primary/30">
                     {pool.type}
                   </span>
                 </div>
-                <Droplet className="w-6 h-6 md:w-8 md:h-8 text-primary glow-effect" />
               </div>
 
               <div className="mb-6">

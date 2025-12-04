@@ -4,6 +4,7 @@ import { Search, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
+import { TokenPairIcon } from "@/components/TokenIcon";
 
 const Pools = () => {
   const navigate = useNavigate();
@@ -11,18 +12,24 @@ const Pools = () => {
   const pools = [
     {
       pair: "USDT / USDC",
+      token0: "USDT",
+      token1: "USDC",
       fee: "0.3%",
       type: "Stable",
       description: "Low volatility stable pair",
     },
     {
       pair: "WOVER / USDC",
+      token0: "WOVER",
+      token1: "USDC",
       fee: "0.3%",
       type: "Main",
       description: "Primary OVER trading pair",
     },
     {
       pair: "WOVER / USDT",
+      token0: "WOVER",
+      token1: "USDT",
       fee: "0.3%",
       type: "Alternative",
       description: "Alternative OVER pair",
@@ -83,7 +90,10 @@ const Pools = () => {
               >
                 <div className="flex items-start justify-between mb-4 md:mb-6">
                   <div>
-                    <h3 className="text-xl md:text-2xl font-bold mb-2 group-hover:text-primary transition-colors">{pool.pair}</h3>
+                    <div className="flex items-center gap-3 mb-2">
+                      <TokenPairIcon token0={pool.token0} token1={pool.token1} size="md" />
+                      <h3 className="text-xl md:text-2xl font-bold group-hover:text-primary transition-colors">{pool.pair}</h3>
+                    </div>
                     <span className="inline-block px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
                       {pool.type}
                     </span>
