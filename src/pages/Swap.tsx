@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
+import { TokenIcon } from "@/components/TokenIcon";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +13,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const TOKENS = [
-  { symbol: "USDT", name: "Tether USD", icon: "💵" },
-  { symbol: "USDC", name: "USD Coin", icon: "💰" },
-  { symbol: "WOVER", name: "Wrapped OVER", icon: "🪙" },
+  { symbol: "USDT", name: "Tether USD" },
+  { symbol: "USDC", name: "USD Coin" },
+  { symbol: "WOVER", name: "Wrapped OVER" },
 ];
 
 const Swap = () => {
@@ -43,22 +44,22 @@ const Swap = () => {
   }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button className="btn-secondary shrink-0 px-4 gap-2 min-w-[120px]">
-          <span className="text-lg">{selected.icon}</span>
-          <span>{selected.symbol}</span>
+        <Button className="btn-secondary shrink-0 px-4 gap-2 min-w-[140px]">
+          <TokenIcon symbol={selected.symbol} size="sm" />
+          <span className="font-semibold">{selected.symbol}</span>
           <ChevronDown className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-48 bg-card border-primary/20">
+      <DropdownMenuContent className="w-52 bg-card/95 backdrop-blur-xl border-primary/20">
         {TOKENS.filter(t => t.symbol !== excludeToken).map((token) => (
           <DropdownMenuItem
             key={token.symbol}
             onClick={() => onSelect(token)}
-            className="flex items-center gap-3 cursor-pointer hover:bg-primary/10"
+            className="flex items-center gap-3 cursor-pointer hover:bg-primary/10 py-3"
           >
-            <span className="text-lg">{token.icon}</span>
+            <TokenIcon symbol={token.symbol} size="md" />
             <div className="flex-1">
-              <p className="font-medium">{token.symbol}</p>
+              <p className="font-semibold">{token.symbol}</p>
               <p className="text-xs text-muted-foreground">{token.name}</p>
             </div>
             {selected.symbol === token.symbol && (
