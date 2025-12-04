@@ -1,6 +1,7 @@
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
+import PriceChart from "@/components/PriceChart";
 import { TrendingUp, DollarSign, Users, Layers, Activity, BarChart3 } from "lucide-react";
 
 const Info = () => {
@@ -78,6 +79,18 @@ const Info = () => {
                   <p className="text-xs md:text-sm text-muted-foreground">{stat.label}</p>
                 </GlowCard>
               ))}
+            </div>
+          </div>
+
+          {/* Price Charts */}
+          <div className="mb-12 md:mb-16">
+            <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-center">Price Charts</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto">
+              <PriceChart token0="WOVER" token1="USDC" />
+              <PriceChart token0="WOVER" token1="USDT" />
+            </div>
+            <div className="mt-6 max-w-3xl mx-auto">
+              <PriceChart token0="USDT" token1="USDC" />
             </div>
           </div>
 
