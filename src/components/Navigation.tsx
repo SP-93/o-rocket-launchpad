@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { NavLink } from "./NavLink";
 import { Button } from "./ui/button";
-import { Rocket, Wallet, Menu, X } from "lucide-react";
+import { Rocket, Wallet, Menu, X, ChevronDown } from "lucide-react";
+import { ConnectWalletModal } from "./ConnectWalletModal";
+import { useWallet } from "@/hooks/useWallet";
 
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
+  const { address, balance, isConnected, isCorrectNetwork } = useWallet();
+
+  const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
   const navLinks = [
     { to: "/swap", label: "Swap" },
@@ -38,11 +44,28 @@ const Navigation = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              <Button className="btn-primary text-sm md:text-base">
-                <Wallet className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Connect Wallet</span>
-                <span className="sm:hidden">Connect</span>
-              </Button>
+              {isConnected && address ? (
+                <Button 
+                  onClick={() => setWalletModalOpen(true)}
+                  className={`text-sm md:text-base ${isCorrectNetwork ? 'btn-primary' : 'bg-warning/20 border-warning/50 text-warning hover:bg-warning/30'}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${isCorrectNetwork ? 'bg-success' : 'bg-warning'} animate-pulse`} />
+                    <span className="hidden sm:inline">{truncateAddress(address)}</span>
+                    <span className="sm:hidden">{address.slice(0, 4)}...</span>
+                    <ChevronDown className="w-4 h-4" />
+                  </div>
+                </Button>
+              ) : (
+                <Button 
+                  onClick={() => setWalletModalOpen(true)}
+                  className="btn-primary text-sm md:text-base"
+                >
+                  <Wallet className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Connect Wallet</span>
+                  <span className="sm:hidden">Connect</span>
+                </Button>
+              )}
 
               {/* Mobile Menu Button */}
               <Button
@@ -86,6 +109,11 @@ const Navigation = () => {
           ))}
         </div>
       </div>
+
+      <ConnectWalletModal 
+        open={walletModalOpen} 
+        onOpenChange={setWalletModalOpen} 
+      />
     </>
   );
 };
