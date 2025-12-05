@@ -11,6 +11,7 @@ import Pools from "./pages/Pools";
 import AddLiquidity from "./pages/AddLiquidity";
 import Positions from "./pages/Positions";
 import Info from "./pages/Info";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/add-liquidity" element={<AddLiquidity />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/info" element={<Info />} />
+            <Route path="/admin" element={<Admin />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

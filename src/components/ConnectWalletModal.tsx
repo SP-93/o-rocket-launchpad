@@ -7,7 +7,7 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { useWallet } from '@/hooks/useWallet';
-import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut } from 'lucide-react';
+import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ConnectWalletModalProps {
@@ -20,13 +20,15 @@ const wallets = [
     id: 'metamask' as const,
     name: 'MetaMask',
     icon: '🦊',
-    description: 'Connect using MetaMask browser extension',
+    description: 'Connect using MetaMask',
+    mobileDescription: 'Open in MetaMask app',
   },
   {
     id: 'overwallet' as const,
     name: 'OverWallet',
     icon: '🌐',
     description: 'Native wallet for OverProtocol',
+    mobileDescription: 'Open in OverWallet app',
   },
 ];
 
@@ -41,17 +43,34 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     connect, 
     disconnect, 
     switchNetwork,
-    error 
+    error,
+    isMobile,
+    openInWalletBrowser,
   } = useWallet();
   
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
 
   const handleConnect = async (walletId: 'metamask' | 'overwallet') => {
+    // Check if we're on mobile and not in a wallet browser
+    if (isMobile) {
+      const ethereum = (window as any).ethereum;
+      if (!ethereum) {
+        // No ethereum provider - redirect to wallet app
+        openInWalletBrowser(walletId);
+        return;
+      }
+    }
+
     setConnectingWallet(walletId);
     try {
       await connect(walletId);
       toast.success('Wallet connected successfully!');
     } catch (err: any) {
+      // On mobile, if connection fails, offer to open wallet app
+      if (isMobile && err.message?.includes('not detected')) {
+        openInWalletBrowser(walletId);
+        return;
+      }
       toast.error(err.message || 'Failed to connect wallet');
     } finally {
       setConnectingWallet(null);
@@ -195,8 +214,24 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
         <div className="space-y-3 py-4">
           <p className="text-sm text-muted-foreground mb-4">
-            Choose your preferred wallet to connect to O'Rocket on OverProtocol Mainnet
+            {isMobile 
+              ? 'Select a wallet to open this dApp in its browser'
+              : 'Choose your preferred wallet to connect to O\'Rocket on OverProtocol Mainnet'
+            }
           </p>
+
+          {/* Mobile notice */}
+          {isMobile && !(window as any).ethereum && (
+            <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 mb-4 flex items-start gap-2">
+              <Smartphone className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Mobile Detected</p>
+                <p className="text-xs text-muted-foreground">
+                  Click a wallet to open this dApp in its built-in browser
+                </p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3 mb-4">
@@ -221,11 +256,14 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                   {wallet.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {wallet.description}
+                  {isMobile && !(window as any).ethereum ? wallet.mobileDescription : wallet.description}
                 </p>
               </div>
               {connectingWallet === wallet.id && (
                 <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              )}
+              {isMobile && !(window as any).ethereum && (
+                <ExternalLink className="w-4 h-4 text-muted-foreground" />
               )}
             </button>
           ))}

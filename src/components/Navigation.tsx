@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NavLink } from "./NavLink";
 import { Button } from "./ui/button";
-import { Rocket, Wallet, Menu, X, ChevronDown } from "lucide-react";
+import { Rocket, Wallet, Menu, X, ChevronDown, Shield } from "lucide-react";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
+import { isAdmin } from "@/config/admin";
 
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -11,6 +12,8 @@ const Navigation = () => {
   const { address, balance, isConnected, isCorrectNetwork } = useWallet();
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+
+  const isAdminWallet = isAdmin(address);
 
   const navLinks = [
     { to: "/swap", label: "Swap" },
@@ -41,6 +44,17 @@ const Navigation = () => {
                   {link.label}
                 </NavLink>
               ))}
+              {/* Admin Link - only visible to admin wallet */}
+              {isAdminWallet && (
+                <NavLink
+                  to="/admin"
+                  className="text-warning hover:text-warning/80 transition-colors font-medium flex items-center gap-1"
+                  activeClassName="text-warning font-semibold"
+                >
+                  <Shield className="w-4 h-4" />
+                  Admin
+                </NavLink>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -107,6 +121,18 @@ const Navigation = () => {
               {link.label}
             </NavLink>
           ))}
+          {/* Admin Link for mobile - only visible to admin wallet */}
+          {isAdminWallet && (
+            <NavLink
+              to="/admin"
+              className="text-lg text-warning hover:text-warning/80 transition-colors font-medium py-3 px-4 rounded-lg hover:bg-warning/10 flex items-center gap-2"
+              activeClassName="text-warning font-semibold bg-warning/10"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <Shield className="w-5 h-5" />
+              Admin Panel
+            </NavLink>
+          )}
         </div>
       </div>
 
