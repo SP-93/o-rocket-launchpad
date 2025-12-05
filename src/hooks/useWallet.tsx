@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { getMetaMaskDeepLink, getOverWalletDeepLink } from './useMobileDetect';
 
 interface WalletState {
   address: string | null;
@@ -15,6 +16,8 @@ interface WalletContextType extends WalletState {
   switchNetwork: () => Promise<void>;
   isConnecting: boolean;
   error: string | null;
+  isMobile: boolean;
+  openInWalletBrowser: (walletType: 'metamask' | 'overwallet') => void;
 }
 
 const OVER_PROTOCOL_MAINNET = {
@@ -43,6 +46,23 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile device
+  useEffect(() => {
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    const mobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+    setIsMobile(mobile);
+  }, []);
+
+  // Open dApp in wallet's in-app browser
+  const openInWalletBrowser = useCallback((walletType: 'metamask' | 'overwallet') => {
+    if (walletType === 'metamask') {
+      window.location.href = getMetaMaskDeepLink();
+    } else {
+      window.location.href = getOverWalletDeepLink();
+    }
+  }, []);
 
   const getProvider = (walletType: 'metamask' | 'overwallet') => {
     if (typeof window === 'undefined') return null;
@@ -222,6 +242,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       switchNetwork,
       isConnecting,
       error,
+      isMobile,
+      openInWalletBrowser,
     }}>
       {children}
     </WalletContext.Provider>
