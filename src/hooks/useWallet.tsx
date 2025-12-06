@@ -7,11 +7,12 @@ interface WalletState {
   chainId: number | null;
   isConnected: boolean;
   isCorrectNetwork: boolean;
-  walletType: 'metamask' | 'overwallet' | null;
+  walletType: 'metamask' | 'overwallet' | 'walletconnect' | null;
 }
 
 interface WalletContextType extends WalletState {
   connect: (walletType: 'metamask' | 'overwallet') => Promise<void>;
+  connectWalletConnect: () => Promise<void>;
   disconnect: () => void;
   switchNetwork: () => Promise<void>;
   isConnecting: boolean;
@@ -34,6 +35,24 @@ const OVER_PROTOCOL_MAINNET = {
 };
 
 const WalletContext = createContext<WalletContextType | null>(null);
+
+// Helper to normalize chainId (can come as hex string, decimal string, or number)
+const normalizeChainId = (chainId: string | number | undefined | null): number => {
+  if (chainId === undefined || chainId === null) return 0;
+  
+  if (typeof chainId === 'number') return chainId;
+  
+  if (typeof chainId === 'string') {
+    // Handle hex format (0x...)
+    if (chainId.startsWith('0x') || chainId.startsWith('0X')) {
+      return parseInt(chainId, 16);
+    }
+    // Handle decimal string
+    return parseInt(chainId, 10);
+  }
+  
+  return 0;
+};
 
 export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<WalletState>({
@@ -121,8 +140,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const address = accounts[0];
-      const chainIdNum = parseInt(chainId, 16);
+      const chainIdNum = normalizeChainId(chainId);
       const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
+
+      console.log('Connected:', { address, chainId, chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId, isCorrectNetwork });
 
       setState({
         address,
@@ -145,6 +166,85 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [updateBalance]);
 
+  // WalletConnect connection
+  const connectWalletConnect = useCallback(async () => {
+    setIsConnecting(true);
+    setError(null);
+
+    try {
+      const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+      
+      const provider = await EthereumProvider.init({
+        projectId: 'b9e64431675dcf8a4d41d6a3b00c73c4', // WalletConnect Cloud Project ID
+        chains: [OVER_PROTOCOL_MAINNET.chainId],
+        optionalChains: [1, 137], // Ethereum, Polygon as fallbacks
+        showQrModal: true,
+        metadata: {
+          name: "O'Rocket DEX",
+          description: "Professional DeFi Platform on OverProtocol",
+          url: window.location.origin,
+          icons: [`${window.location.origin}/favicon.ico`],
+        },
+        rpcMap: {
+          [OVER_PROTOCOL_MAINNET.chainId]: OVER_PROTOCOL_MAINNET.rpcUrls[0],
+        },
+      });
+
+      await provider.connect();
+
+      const accounts = provider.accounts;
+      const chainId = provider.chainId;
+
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts returned from WalletConnect');
+      }
+
+      const address = accounts[0];
+      const chainIdNum = normalizeChainId(chainId);
+      const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
+
+      console.log('WalletConnect connected:', { address, chainId, chainIdNum, isCorrectNetwork });
+
+      // Get balance
+      const balance = await provider.request({
+        method: 'eth_getBalance',
+        params: [address, 'latest'],
+      }) as string;
+      const balanceInEther = parseInt(balance, 16) / 1e18;
+
+      setState({
+        address,
+        balance: balanceInEther.toFixed(4),
+        chainId: chainIdNum,
+        isConnected: true,
+        isCorrectNetwork,
+        walletType: 'walletconnect',
+      });
+
+      localStorage.setItem('walletConnected', 'walletconnect');
+
+      // Listen for disconnect
+      provider.on('disconnect', () => {
+        setState({
+          address: null,
+          balance: '0',
+          chainId: null,
+          isConnected: false,
+          isCorrectNetwork: false,
+          walletType: null,
+        });
+        localStorage.removeItem('walletConnected');
+      });
+
+    } catch (err: any) {
+      console.error('WalletConnect error:', err);
+      setError(err.message || 'Failed to connect with WalletConnect');
+      throw err;
+    } finally {
+      setIsConnecting(false);
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     setState({
       address: null,
@@ -160,6 +260,12 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const switchNetwork = useCallback(async () => {
     if (!state.walletType) return;
+
+    // For WalletConnect, we need different handling
+    if (state.walletType === 'walletconnect') {
+      setError('Please switch network in your wallet app');
+      return;
+    }
 
     const provider = getProvider(state.walletType);
     if (!provider) return;
@@ -192,7 +298,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   // Listen for account and chain changes
   useEffect(() => {
-    if (!state.walletType) return;
+    if (!state.walletType || state.walletType === 'walletconnect') return;
 
     const provider = getProvider(state.walletType);
     if (!provider) return;
@@ -206,8 +312,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    const handleChainChanged = (chainId: string) => {
-      const chainIdNum = parseInt(chainId, 16);
+    const handleChainChanged = (chainId: string | number) => {
+      const chainIdNum = normalizeChainId(chainId);
+      console.log('Chain changed:', { raw: chainId, normalized: chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId });
       setState(prev => ({
         ...prev,
         chainId: chainIdNum,
@@ -226,11 +333,16 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   // Auto-reconnect on mount
   useEffect(() => {
-    const savedWallet = localStorage.getItem('walletConnected') as 'metamask' | 'overwallet' | null;
+    const savedWallet = localStorage.getItem('walletConnected') as 'metamask' | 'overwallet' | 'walletconnect' | null;
     if (savedWallet) {
-      connect(savedWallet).catch(() => {
+      if (savedWallet === 'walletconnect') {
+        // Don't auto-reconnect WalletConnect - requires user interaction
         localStorage.removeItem('walletConnected');
-      });
+      } else {
+        connect(savedWallet).catch(() => {
+          localStorage.removeItem('walletConnected');
+        });
+      }
     }
   }, []);
 
@@ -238,6 +350,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     <WalletContext.Provider value={{
       ...state,
       connect,
+      connectWalletConnect,
       disconnect,
       switchNetwork,
       isConnecting,

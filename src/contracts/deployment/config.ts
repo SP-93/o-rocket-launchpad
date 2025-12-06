@@ -12,6 +12,7 @@ export const DEPLOYMENT_STEPS = [
     dependencies: [],
     constructorArgs: [],
     estimatedGas: '5000000',
+    estimatedGasOVER: '0.005', // ~0.005 OVER at 1 gwei
   },
   {
     id: 'router',
@@ -20,6 +21,7 @@ export const DEPLOYMENT_STEPS = [
     dependencies: ['factory'],
     constructorArgs: ['factory', 'WETH9'],
     estimatedGas: '4500000',
+    estimatedGasOVER: '0.0045',
   },
   {
     id: 'nftDescriptor',
@@ -28,6 +30,7 @@ export const DEPLOYMENT_STEPS = [
     dependencies: [],
     constructorArgs: [],
     estimatedGas: '3000000',
+    estimatedGasOVER: '0.003',
   },
   {
     id: 'positionManager',
@@ -36,6 +39,7 @@ export const DEPLOYMENT_STEPS = [
     dependencies: ['factory', 'nftDescriptor'],
     constructorArgs: ['factory', 'WETH9', 'nftDescriptor'],
     estimatedGas: '6000000',
+    estimatedGasOVER: '0.006',
   },
   {
     id: 'quoter',
@@ -44,6 +48,7 @@ export const DEPLOYMENT_STEPS = [
     dependencies: ['factory'],
     constructorArgs: ['factory', 'WETH9'],
     estimatedGas: '3500000',
+    estimatedGasOVER: '0.0035',
   },
 ];
 
@@ -79,7 +84,7 @@ export const INITIAL_POOLS = [
 ];
 
 // Fee tier configurations with tick spacing
-export const FEE_TIER_CONFIG = {
+export const FEE_TIER_CONFIG: Record<number, { fee: number; tickSpacing: number; label: string; description: string }> = {
   [FEE_TIERS.LOWEST]: {
     fee: FEE_TIERS.LOWEST,
     tickSpacing: 10,
