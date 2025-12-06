@@ -54,7 +54,7 @@ const Admin = () => {
           </div>
 
           {/* Admin Wallet Info */}
-          <GlowCard className="p-4 mb-8" glowColor="warning">
+          <GlowCard className="p-4 mb-8" glowColor="purple">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <Wallet className="w-5 h-5 text-warning" />
@@ -126,7 +126,7 @@ const Admin = () => {
                         <NeonButton 
                           onClick={() => handleDeploy(step.id)}
                           variant="primary"
-                          size="sm"
+                          className="text-sm px-4 py-2"
                         >
                           Deploy
                         </NeonButton>
@@ -180,7 +180,7 @@ const Admin = () => {
                             Fee: {FEE_TIER_CONFIG[pool.fee]?.label || `${pool.fee / 10000}%`}
                           </p>
                         </div>
-                        <NeonButton variant="secondary" size="sm" disabled>
+                        <NeonButton variant="secondary" className="text-sm px-4 py-2" disabled>
                           Create Pool
                         </NeonButton>
                       </div>
@@ -259,7 +259,7 @@ const Admin = () => {
                     <p className="text-sm text-muted-foreground mb-4">
                       Circuit breaker and pause functionality (available after deployment)
                     </p>
-                    <NeonButton variant="secondary" size="sm" disabled>
+                    <NeonButton variant="secondary" className="text-sm px-4 py-2" disabled>
                       Pause Trading
                     </NeonButton>
                   </div>
