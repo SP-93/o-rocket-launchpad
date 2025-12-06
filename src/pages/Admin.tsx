@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
-import { isAdmin, ADMIN_WALLET, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG } from '@/config/admin';
+import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
 import SpaceBackground from '@/components/backgrounds/SpaceBackground';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
-import { Shield, Rocket, Database, Settings, BarChart3, Wallet, AlertTriangle, ExternalLink, Copy } from 'lucide-react';
+import { Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, Copy, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -37,6 +37,10 @@ const Admin = () => {
     // TODO: Implement actual deployment logic
   };
 
+  const truncateAddress = (addr: string) => {
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
   return (
     <div className="min-h-screen relative">
       <SpaceBackground>
@@ -53,25 +57,56 @@ const Admin = () => {
             </div>
           </div>
 
-          {/* Admin Wallet Info */}
+          {/* Admin Wallets Info */}
           <GlowCard className="p-4 mb-8" glowColor="purple">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <Wallet className="w-5 h-5 text-warning" />
-                <span className="text-sm text-muted-foreground">Admin Wallet:</span>
-                <code className="text-sm font-mono text-foreground">{ADMIN_WALLET}</code>
-                <button onClick={() => copyToClipboard(ADMIN_WALLET)} className="text-muted-foreground hover:text-primary">
-                  <Copy className="w-4 h-4" />
-                </button>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mb-3">
+                <Users className="w-5 h-5 text-warning" />
+                <span className="font-semibold text-foreground">Admin Wallets</span>
+                <span className="text-xs text-muted-foreground">({ADMIN_WALLETS.length} authorized)</span>
               </div>
-              <a 
-                href={`https://www.overscan.net/address/${ADMIN_WALLET}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline flex items-center gap-1 text-sm"
-              >
-                View on Explorer <ExternalLink className="w-4 h-4" />
-              </a>
+              
+              {ADMIN_WALLETS.map((wallet, index) => {
+                const isCurrentWallet = address?.toLowerCase() === wallet.toLowerCase();
+                return (
+                  <div 
+                    key={wallet}
+                    className={`flex items-center justify-between flex-wrap gap-2 p-2 rounded-lg ${
+                      isCurrentWallet ? 'bg-primary/10 border border-primary/30' : 'bg-background/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Wallet className={`w-4 h-4 ${isCurrentWallet ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <span className="text-xs text-muted-foreground">
+                        {index === 0 ? 'Primary:' : 'Security:'}
+                      </span>
+                      <code className="text-xs md:text-sm font-mono text-foreground">
+                        <span className="hidden md:inline">{wallet}</span>
+                        <span className="md:hidden">{truncateAddress(wallet)}</span>
+                      </code>
+                      {isCurrentWallet && (
+                        <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                          Connected
+                        </span>
+                      )}
+                      <button 
+                        onClick={() => copyToClipboard(wallet)} 
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <a 
+                      href={`https://www.overscan.net/address/${wallet}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1 text-xs"
+                    >
+                      Explorer <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                );
+              })}
             </div>
           </GlowCard>
 
@@ -120,7 +155,10 @@ const Admin = () => {
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground ml-8 mt-1">
-                            Est. Gas: {parseInt(step.estimatedGas).toLocaleString()}
+                            Est. Cost: <span className="text-primary font-medium">~{step.estimatedGasOVER} OVER</span>
+                            <span className="text-muted-foreground/60 ml-2">
+                              ({parseInt(step.estimatedGas).toLocaleString()} gas units)
+                            </span>
                           </p>
                         </div>
                         <NeonButton 
@@ -140,12 +178,13 @@ const Admin = () => {
               <GlowCard className="p-6">
                 <h3 className="font-semibold mb-4">Token Addresses (OverProtocol Mainnet)</h3>
                 <div className="space-y-2">
-                  {Object.entries(TOKEN_ADDRESSES).map(([symbol, address]) => (
+                  {Object.entries(TOKEN_ADDRESSES).map(([symbol, tokenAddress]) => (
                     <div key={symbol} className="flex items-center justify-between bg-background/50 rounded-lg p-3">
                       <span className="font-medium">{symbol}</span>
                       <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono text-muted-foreground">{address}</code>
-                        <button onClick={() => copyToClipboard(address)} className="text-muted-foreground hover:text-primary">
+                        <code className="text-xs font-mono text-muted-foreground hidden md:block">{tokenAddress}</code>
+                        <code className="text-xs font-mono text-muted-foreground md:hidden">{truncateAddress(tokenAddress)}</code>
+                        <button onClick={() => copyToClipboard(tokenAddress)} className="text-muted-foreground hover:text-primary">
                           <Copy className="w-4 h-4" />
                         </button>
                       </div>

@@ -7,7 +7,7 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { useWallet } from '@/hooks/useWallet';
-import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone } from 'lucide-react';
+import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone, QrCode, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ConnectWalletModalProps {
@@ -19,16 +19,32 @@ const wallets = [
   {
     id: 'metamask' as const,
     name: 'MetaMask',
-    icon: '🦊',
+    icon: '/metamask-icon.svg',
+    iconFallback: '🦊',
     description: 'Connect using MetaMask',
-    mobileDescription: 'Open in MetaMask app',
+    mobileDescription: 'Open in MetaMask browser',
+    color: 'from-orange-500/20 to-orange-600/20',
+    borderColor: 'border-orange-500/30 hover:border-orange-500/50',
   },
   {
     id: 'overwallet' as const,
     name: 'OverWallet',
-    icon: '🌐',
+    icon: '/overwallet-icon.svg',
+    iconFallback: '🌐',
     description: 'Native wallet for OverProtocol',
     mobileDescription: 'Open in OverWallet app',
+    color: 'from-blue-500/20 to-blue-600/20',
+    borderColor: 'border-blue-500/30 hover:border-blue-500/50',
+  },
+  {
+    id: 'walletconnect' as const,
+    name: 'WalletConnect',
+    icon: '/walletconnect-icon.svg',
+    iconFallback: '🔗',
+    description: 'Scan QR with any wallet',
+    mobileDescription: 'Connect with QR code',
+    color: 'from-indigo-500/20 to-purple-600/20',
+    borderColor: 'border-indigo-500/30 hover:border-indigo-500/50',
   },
 ];
 
@@ -41,6 +57,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     isConnecting,
     walletType,
     connect, 
+    connectWalletConnect,
     disconnect, 
     switchNetwork,
     error,
@@ -50,7 +67,24 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
   
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
 
-  const handleConnect = async (walletId: 'metamask' | 'overwallet') => {
+  const handleConnect = async (walletId: 'metamask' | 'overwallet' | 'walletconnect') => {
+    // WalletConnect has its own flow
+    if (walletId === 'walletconnect') {
+      setConnectingWallet('walletconnect');
+      try {
+        await connectWalletConnect();
+        toast.success('Wallet connected via WalletConnect!');
+        onOpenChange(false);
+      } catch (err: any) {
+        if (!err.message?.includes('User rejected') && !err.message?.includes('closed')) {
+          toast.error(err.message || 'Failed to connect with WalletConnect');
+        }
+      } finally {
+        setConnectingWallet(null);
+      }
+      return;
+    }
+
     // Check if we're on mobile and not in a wallet browser
     if (isMobile) {
       const ethereum = (window as any).ethereum;
@@ -65,6 +99,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     try {
       await connect(walletId);
       toast.success('Wallet connected successfully!');
+      onOpenChange(false);
     } catch (err: any) {
       // On mobile, if connection fails, offer to open wallet app
       if (isMobile && err.message?.includes('not detected')) {
@@ -92,6 +127,20 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const getWalletDisplayName = () => {
+    if (walletType === 'metamask') return 'MetaMask';
+    if (walletType === 'overwallet') return 'OverWallet';
+    if (walletType === 'walletconnect') return 'WalletConnect';
+    return 'Wallet';
+  };
+
+  const getWalletIcon = () => {
+    if (walletType === 'metamask') return '🦊';
+    if (walletType === 'overwallet') return '🌐';
+    if (walletType === 'walletconnect') return '🔗';
+    return '💼';
   };
 
   // Connected state view
@@ -138,12 +187,8 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             <div className="bg-background/50 rounded-xl p-4 border border-primary/20">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">
-                    {walletType === 'metamask' ? '🦊' : '🌐'}
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {walletType === 'metamask' ? 'MetaMask' : 'OverWallet'}
-                  </span>
+                  <span className="text-2xl">{getWalletIcon()}</span>
+                  <span className="font-medium text-foreground">{getWalletDisplayName()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
@@ -214,10 +259,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
         <div className="space-y-3 py-4">
           <p className="text-sm text-muted-foreground mb-4">
-            {isMobile 
-              ? 'Select a wallet to open this dApp in its browser'
-              : 'Choose your preferred wallet to connect to O\'Rocket on OverProtocol Mainnet'
-            }
+            Connect to O'Rocket on OverProtocol Mainnet
           </p>
 
           {/* Mobile notice */}
@@ -225,9 +267,9 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 mb-4 flex items-start gap-2">
               <Smartphone className="w-5 h-5 text-primary mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-foreground">Mobile Detected</p>
+                <p className="text-sm font-medium text-foreground">Mobile Device</p>
                 <p className="text-xs text-muted-foreground">
-                  Click a wallet to open this dApp in its built-in browser
+                  Use WalletConnect for best experience, or open in wallet browser
                 </p>
               </div>
             </div>
@@ -239,36 +281,54 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             </div>
           )}
 
-          {wallets.map((wallet) => (
-            <button
-              key={wallet.id}
-              onClick={() => handleConnect(wallet.id)}
-              disabled={isConnecting}
-              className="w-full p-4 rounded-xl border border-primary/20 bg-background/50 
-                         hover:bg-primary/10 hover:border-primary/40 transition-all duration-300
-                         flex items-center gap-4 group disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <span className="text-3xl group-hover:scale-110 transition-transform">
-                {wallet.icon}
-              </span>
-              <div className="text-left flex-1">
-                <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                  {wallet.name}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {isMobile && !(window as any).ethereum ? wallet.mobileDescription : wallet.description}
-                </p>
-              </div>
-              {connectingWallet === wallet.id && (
-                <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              )}
-              {isMobile && !(window as any).ethereum && (
-                <ExternalLink className="w-4 h-4 text-muted-foreground" />
-              )}
-            </button>
-          ))}
+          {/* Wallet Options */}
+          <div className="space-y-2">
+            {wallets.map((wallet) => (
+              <button
+                key={wallet.id}
+                onClick={() => handleConnect(wallet.id)}
+                disabled={isConnecting}
+                className={`w-full p-4 rounded-xl border bg-gradient-to-r ${wallet.color} ${wallet.borderColor}
+                           transition-all duration-300 flex items-center gap-4 group 
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           hover:scale-[1.02] active:scale-[0.98]`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-background/80 flex items-center justify-center text-2xl shadow-lg">
+                  {wallet.id === 'walletconnect' ? (
+                    <QrCode className="w-5 h-5 text-primary" />
+                  ) : (
+                    wallet.iconFallback
+                  )}
+                </div>
+                <div className="text-left flex-1">
+                  <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {wallet.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isMobile && !(window as any).ethereum && wallet.id !== 'walletconnect' 
+                      ? wallet.mobileDescription 
+                      : wallet.description}
+                  </p>
+                </div>
+                {connectingWallet === wallet.id ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                ) : wallet.id === 'walletconnect' ? (
+                  <QrCode className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                ) : isMobile && !(window as any).ethereum ? (
+                  <ExternalLink className="w-4 h-4 text-muted-foreground" />
+                ) : null}
+              </button>
+            ))}
+          </div>
 
-          <p className="text-xs text-muted-foreground text-center pt-4">
+          {/* WalletConnect Info */}
+          <div className="bg-muted/30 rounded-xl p-3 mt-4">
+            <p className="text-xs text-muted-foreground text-center">
+              <span className="font-medium text-foreground">Pro tip:</span> WalletConnect works with 300+ wallets including Trust Wallet, Rainbow, and more
+            </p>
+          </div>
+
+          <p className="text-xs text-muted-foreground text-center pt-2">
             By connecting, you agree to our Terms of Service
           </p>
         </div>

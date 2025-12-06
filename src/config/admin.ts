@@ -1,15 +1,25 @@
 // Admin Configuration
-// This file contains admin wallet address and helper functions
+// This file contains admin wallet addresses and helper functions
 
-export const ADMIN_WALLET = '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8';
+// Admin wallets - both have equal rights for contract deployment and panel access
+export const ADMIN_WALLETS = [
+  '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8', // Primary admin
+  '0x8334966329b7f4b459633696a8ca59118253bc89', // Secondary admin (security)
+];
 
+// Check if address is an admin
 export const isAdmin = (address: string | null): boolean => {
   if (!address) return false;
-  return address.toLowerCase() === ADMIN_WALLET.toLowerCase();
+  return ADMIN_WALLETS.some(
+    wallet => wallet.toLowerCase() === address.toLowerCase()
+  );
 };
 
-// Treasury wallet is the same as admin wallet
-export const TREASURY_WALLET = ADMIN_WALLET;
+// Treasury wallet is the primary admin wallet
+export const TREASURY_WALLET = ADMIN_WALLETS[0];
+
+// Legacy export for backwards compatibility
+export const ADMIN_WALLET = ADMIN_WALLETS[0];
 
 // Protocol fee configuration
 export const PROTOCOL_FEE_CONFIG = {
