@@ -49,17 +49,16 @@ export const FEE_TIERS = {
   HIGH: 10000,    // 1% - for exotic/volatile pairs
 };
 
-// Network configuration
+// Network configuration - OverProtocol Mainnet (from ChainList)
 export const NETWORK_CONFIG = {
-  chainId: 541764,
-  chainIdHex: '0x84444',
+  chainId: 54176,
+  chainIdHex: '0xd3a0',
   chainName: 'OverProtocol Mainnet',
   nativeCurrency: {
     name: 'OVER',
     symbol: 'OVER',
     decimals: 18,
   },
-  rpcUrls: ['https://rpc.over.network', 'https://mainnet.rpc.over.network'],
-  blockExplorerUrls: ['https://www.overscan.net'],
-  wsUrl: 'wss://mainnet-ws.rpc.over.network',
+  rpcUrls: ['https://rpc.overprotocol.com'],
+  blockExplorerUrls: ['https://scan.over.network'],
 };
