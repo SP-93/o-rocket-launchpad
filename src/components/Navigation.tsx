@@ -14,6 +14,9 @@ const Navigation = () => {
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
   const isAdminWallet = isAdmin(address);
+  
+  // Debug admin check
+  console.log('Admin check:', { address, isAdminWallet });
 
   const navLinks = [
     { to: "/swap", label: "Swap" },

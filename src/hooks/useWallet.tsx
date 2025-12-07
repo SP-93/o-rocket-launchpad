@@ -22,16 +22,16 @@ interface WalletContextType extends WalletState {
 }
 
 const OVER_PROTOCOL_MAINNET = {
-  chainId: 541764,
-  chainIdHex: '0x84444',
+  chainId: 54176,
+  chainIdHex: '0xd3a0',
   chainName: 'OverProtocol Mainnet',
   nativeCurrency: {
     name: 'OVER',
     symbol: 'OVER',
     decimals: 18,
   },
-  rpcUrls: ['https://rpc.over.network'],
-  blockExplorerUrls: ['https://www.overscan.net'],
+  rpcUrls: ['https://rpc.overprotocol.com'],
+  blockExplorerUrls: ['https://scan.over.network'],
 };
 
 const WalletContext = createContext<WalletContextType | null>(null);
