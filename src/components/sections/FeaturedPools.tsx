@@ -13,6 +13,7 @@ const FeaturedPools = () => {
       token0: "USDT",
       token1: "USDC",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Stable",
       description: "Low volatility stable pair",
       glowColor: "cyan" as const,
@@ -22,6 +23,7 @@ const FeaturedPools = () => {
       token0: "WOVER",
       token1: "USDC",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Main",
       description: "Primary OVER trading pair",
       glowColor: "purple" as const,
@@ -31,11 +33,16 @@ const FeaturedPools = () => {
       token0: "WOVER",
       token1: "USDT",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Alternative",
       description: "Alternative OVER pair",
       glowColor: "pink" as const,
     },
   ];
+
+  const handleAddLiquidity = (token0: string, token1: string, fee: number) => {
+    navigate(`/add-liquidity?token0=${token0}&token1=${token1}&fee=${fee}`);
+  };
 
   return (
     <section className="py-16 md:py-20 px-4">
@@ -56,7 +63,7 @@ const FeaturedPools = () => {
               glowColor={pool.glowColor}
               className="p-6 md:p-8 animate-slide-up cursor-pointer group"
               style={{ animationDelay: `${index * 0.15}s` } as React.CSSProperties}
-              onClick={() => navigate('/add-liquidity')}
+              onClick={() => handleAddLiquidity(pool.token0, pool.token1, pool.feeValue)}
             >
               <div className="flex items-start justify-between mb-6">
                 <div>
@@ -85,7 +92,7 @@ const FeaturedPools = () => {
               <NeonButton 
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/add-liquidity');
+                  handleAddLiquidity(pool.token0, pool.token1, pool.feeValue);
                 }}
                 className="w-full"
               >

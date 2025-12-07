@@ -1,45 +1,44 @@
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
-import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import PriceChart from "@/components/PriceChart";
 import { TrendingUp, DollarSign, Users, Layers, Activity, BarChart3 } from "lucide-react";
 
 const Info = () => {
   const protocolStats = [
-    { icon: DollarSign, label: "Total TVL", value: 2730000, prefix: "$", suffix: "M", decimals: 2 },
-    { icon: TrendingUp, label: "24h Volume", value: 598900, prefix: "$", suffix: "K", decimals: 0 },
-    { icon: Activity, label: "All-Time Volume", value: 48700000, prefix: "$", suffix: "M", decimals: 0 },
-    { icon: DollarSign, label: "Total Fees", value: 146100, prefix: "$", suffix: "K", decimals: 0 },
-    { icon: BarChart3, label: "Protocol Revenue", value: 36525, prefix: "$", suffix: "K", decimals: 0 },
-    { icon: Layers, label: "Active Pools", value: 3, suffix: "", decimals: 0 },
-    { icon: Users, label: "Total LPs", value: 1250, suffix: "+", decimals: 0 },
-    { icon: TrendingUp, label: "24h Transactions", value: 8947, suffix: "", decimals: 0 },
+    { icon: DollarSign, label: "Total TVL", placeholder: "--" },
+    { icon: TrendingUp, label: "24h Volume", placeholder: "--" },
+    { icon: Activity, label: "All-Time Volume", placeholder: "--" },
+    { icon: DollarSign, label: "Total Fees", placeholder: "--" },
+    { icon: BarChart3, label: "Protocol Revenue", placeholder: "--" },
+    { icon: Layers, label: "Active Pools", value: "3" },
+    { icon: Users, label: "Total LPs", placeholder: "--" },
+    { icon: TrendingUp, label: "24h Transactions", placeholder: "--" },
   ];
 
   const poolStats = [
     {
       name: "USDT/USDC Pool",
-      tvl: "$1.23M",
-      volume24h: "$280K",
-      volume7d: "$1.89M",
-      apr: "12.5%",
-      positions: 687,
+      tvl: "--",
+      volume24h: "--",
+      volume7d: "--",
+      apr: "--",
+      positions: "--",
     },
     {
       name: "WOVER/USDC Pool",
-      tvl: "$856K",
-      volume24h: "$172K",
-      volume7d: "$1.2M",
-      apr: "18.2%",
-      positions: 563,
+      tvl: "--",
+      volume24h: "--",
+      volume7d: "--",
+      apr: "--",
+      positions: "--",
     },
     {
       name: "WOVER/USDT Pool",
-      tvl: "$642K",
-      volume24h: "$145K",
-      volume7d: "$982K",
-      apr: "21.5%",
-      positions: 428,
+      tvl: "--",
+      volume24h: "--",
+      volume7d: "--",
+      apr: "--",
+      positions: "--",
     },
   ];
 
@@ -53,6 +52,15 @@ const Info = () => {
             <p className="text-lg md:text-xl text-muted-foreground">
               Real-time statistics and insights for O'Rocket DEX
             </p>
+          </div>
+
+          {/* Data Notice */}
+          <div className="max-w-2xl mx-auto mb-8">
+            <div className="bg-primary/10 border border-primary/30 rounded-xl p-4 text-center">
+              <p className="text-sm text-muted-foreground">
+                📊 Real data will be available after contract deployment on OverProtocol Mainnet
+              </p>
+            </div>
           </div>
 
           {/* Protocol Overview Stats */}
@@ -69,12 +77,7 @@ const Info = () => {
                     <stat.icon className="w-8 h-8 md:w-10 md:h-10 text-primary" />
                   </div>
                   <div className="text-lg md:text-2xl font-bold mb-1 md:mb-2">
-                    <AnimatedCounter 
-                      end={stat.value}
-                      prefix={stat.prefix}
-                      suffix={stat.suffix}
-                      decimals={stat.decimals}
-                    />
+                    {stat.value || stat.placeholder}
                   </div>
                   <p className="text-xs md:text-sm text-muted-foreground">{stat.label}</p>
                 </GlowCard>
@@ -120,7 +123,7 @@ const Info = () => {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground text-sm">APR</span>
-                      <span className="text-lg md:text-xl font-bold text-success">{pool.apr}</span>
+                      <span className="text-lg md:text-xl font-bold text-muted-foreground">{pool.apr}</span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground text-sm">LP Positions</span>
