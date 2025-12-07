@@ -245,7 +245,22 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
+    // If WalletConnect, try to disconnect the session
+    if (state.walletType === 'walletconnect') {
+      try {
+        const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+        // Clear WalletConnect session from storage
+        const wcKeys = Object.keys(localStorage).filter(key => 
+          key.startsWith('wc@') || key.startsWith('walletconnect')
+        );
+        wcKeys.forEach(key => localStorage.removeItem(key));
+      } catch (e) {
+        console.error('WalletConnect cleanup error:', e);
+      }
+    }
+
+    // Clear state
     setState({
       address: null,
       balance: '0',
@@ -256,7 +271,10 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     });
     localStorage.removeItem('walletConnected');
     setError(null);
-  }, []);
+
+    // Force page reload to clear any cached provider state
+    window.location.reload();
+  }, [state.walletType]);
 
   const switchNetwork = useCallback(async () => {
     if (!state.walletType) return;

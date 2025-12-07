@@ -15,6 +15,7 @@ const Pools = () => {
       token0: "USDT",
       token1: "USDC",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Stable",
       description: "Low volatility stable pair",
     },
@@ -23,6 +24,7 @@ const Pools = () => {
       token0: "WOVER",
       token1: "USDC",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Main",
       description: "Primary OVER trading pair",
     },
@@ -31,10 +33,15 @@ const Pools = () => {
       token0: "WOVER",
       token1: "USDT",
       fee: "0.3%",
+      feeValue: 3000,
       type: "Alternative",
       description: "Alternative OVER pair",
     },
   ];
+
+  const handleAddLiquidity = (token0: string, token1: string, fee: number) => {
+    navigate(`/add-liquidity?token0=${token0}&token1=${token1}&fee=${fee}`);
+  };
 
   return (
     <SpaceBackground>
@@ -113,7 +120,10 @@ const Pools = () => {
                 </div>
 
                 <div className="flex gap-2 md:gap-3">
-                  <Button className="flex-1 btn-primary text-sm" onClick={() => navigate("/add-liquidity")}>
+                  <Button 
+                    className="flex-1 btn-primary text-sm" 
+                    onClick={() => handleAddLiquidity(pool.token0, pool.token1, pool.feeValue)}
+                  >
                     Add Liquidity
                   </Button>
                   <Button variant="outline" className="flex-1 border-primary/30 text-sm">

@@ -7,7 +7,7 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { useWallet } from '@/hooks/useWallet';
-import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone, QrCode, Loader2 } from 'lucide-react';
+import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ConnectWalletModalProps {
@@ -36,16 +36,6 @@ const wallets = [
     color: 'from-blue-500/20 to-blue-600/20',
     borderColor: 'border-blue-500/30 hover:border-blue-500/50',
   },
-  {
-    id: 'walletconnect' as const,
-    name: 'WalletConnect',
-    icon: '/walletconnect-icon.svg',
-    iconFallback: '🔗',
-    description: 'Scan QR with any wallet',
-    mobileDescription: 'Connect with QR code',
-    color: 'from-indigo-500/20 to-purple-600/20',
-    borderColor: 'border-indigo-500/30 hover:border-indigo-500/50',
-  },
 ];
 
 export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalProps) => {
@@ -57,7 +47,6 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     isConnecting,
     walletType,
     connect, 
-    connectWalletConnect,
     disconnect, 
     switchNetwork,
     error,
@@ -67,24 +56,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
   
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
 
-  const handleConnect = async (walletId: 'metamask' | 'overwallet' | 'walletconnect') => {
-    // WalletConnect has its own flow
-    if (walletId === 'walletconnect') {
-      setConnectingWallet('walletconnect');
-      try {
-        await connectWalletConnect();
-        toast.success('Wallet connected via WalletConnect!');
-        onOpenChange(false);
-      } catch (err: any) {
-        if (!err.message?.includes('User rejected') && !err.message?.includes('closed')) {
-          toast.error(err.message || 'Failed to connect with WalletConnect');
-        }
-      } finally {
-        setConnectingWallet(null);
-      }
-      return;
-    }
-
+  const handleConnect = async (walletId: 'metamask' | 'overwallet') => {
     // Check if we're on mobile and not in a wallet browser
     if (isMobile) {
       const ethereum = (window as any).ethereum;
@@ -215,7 +187,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 hover:bg-primary/20"
-                    onClick={() => window.open(`https://www.overscan.net/address/${address}`, '_blank')}
+                    onClick={() => window.open(`https://scan.over.network/address/${address}`, '_blank')}
                   >
                     <ExternalLink className="w-4 h-4" />
                   </Button>
@@ -269,7 +241,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
               <div>
                 <p className="text-sm font-medium text-foreground">Mobile Device</p>
                 <p className="text-xs text-muted-foreground">
-                  Use WalletConnect for best experience, or open in wallet browser
+                  Click a wallet option to open in its app
                 </p>
               </div>
             </div>
@@ -294,26 +266,20 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                            hover:scale-[1.02] active:scale-[0.98]`}
               >
                 <div className="w-10 h-10 rounded-xl bg-background/80 flex items-center justify-center text-2xl shadow-lg">
-                  {wallet.id === 'walletconnect' ? (
-                    <QrCode className="w-5 h-5 text-primary" />
-                  ) : (
-                    wallet.iconFallback
-                  )}
+                  {wallet.iconFallback}
                 </div>
                 <div className="text-left flex-1">
                   <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
                     {wallet.name}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {isMobile && !(window as any).ethereum && wallet.id !== 'walletconnect' 
+                    {isMobile && !(window as any).ethereum 
                       ? wallet.mobileDescription 
                       : wallet.description}
                   </p>
                 </div>
                 {connectingWallet === wallet.id ? (
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                ) : wallet.id === 'walletconnect' ? (
-                  <QrCode className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                 ) : isMobile && !(window as any).ethereum ? (
                   <ExternalLink className="w-4 h-4 text-muted-foreground" />
                 ) : null}
@@ -321,10 +287,10 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             ))}
           </div>
 
-          {/* WalletConnect Info */}
+          {/* WalletConnect Coming Soon */}
           <div className="bg-muted/30 rounded-xl p-3 mt-4">
             <p className="text-xs text-muted-foreground text-center">
-              <span className="font-medium text-foreground">Pro tip:</span> WalletConnect works with 300+ wallets including Trust Wallet, Rainbow, and more
+              WalletConnect support coming soon
             </p>
           </div>
 
