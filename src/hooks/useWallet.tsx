@@ -175,7 +175,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
       
       const provider = await EthereumProvider.init({
-        projectId: 'b9e64431675dcf8a4d41d6a3b00c73c4', // WalletConnect Cloud Project ID
+        projectId: '9755572ea82a112d30546e15634811ca', // WalletConnect Cloud Project ID
         chains: [OVER_PROTOCOL_MAINNET.chainId],
         optionalChains: [1, 137], // Ethereum, Polygon as fallbacks
         showQrModal: true,
