@@ -36,6 +36,16 @@ const wallets = [
     color: 'from-blue-500/20 to-blue-600/20',
     borderColor: 'border-blue-500/30 hover:border-blue-500/50',
   },
+  {
+    id: 'walletconnect' as const,
+    name: 'WalletConnect',
+    icon: '/walletconnect-icon.svg',
+    iconFallback: '🔗',
+    description: 'Scan QR code with mobile wallet',
+    mobileDescription: 'Connect via WalletConnect',
+    color: 'from-purple-500/20 to-purple-600/20',
+    borderColor: 'border-purple-500/30 hover:border-purple-500/50',
+  },
 ];
 
 export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalProps) => {
@@ -46,7 +56,8 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     isCorrectNetwork, 
     isConnecting,
     walletType,
-    connect, 
+    connect,
+    connectWalletConnect,
     disconnect, 
     switchNetwork,
     error,
@@ -56,7 +67,22 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
   
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
 
-  const handleConnect = async (walletId: 'metamask' | 'overwallet') => {
+  const handleConnect = async (walletId: 'metamask' | 'overwallet' | 'walletconnect') => {
+    // WalletConnect uses different flow
+    if (walletId === 'walletconnect') {
+      setConnectingWallet(walletId);
+      try {
+        await connectWalletConnect();
+        toast.success('Wallet connected successfully!');
+        onOpenChange(false);
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to connect with WalletConnect');
+      } finally {
+        setConnectingWallet(null);
+      }
+      return;
+    }
+
     // Check if we're on mobile and not in a wallet browser
     if (isMobile) {
       const ethereum = (window as any).ethereum;
@@ -287,12 +313,6 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             ))}
           </div>
 
-          {/* WalletConnect Coming Soon */}
-          <div className="bg-muted/30 rounded-xl p-3 mt-4">
-            <p className="text-xs text-muted-foreground text-center">
-              WalletConnect support coming soon
-            </p>
-          </div>
 
           <p className="text-xs text-muted-foreground text-center pt-2">
             By connecting, you agree to our Terms of Service
