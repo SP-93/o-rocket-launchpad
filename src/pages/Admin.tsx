@@ -2,16 +2,19 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useContractDeployment } from '@/hooks/useContractDeployment';
+import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
 import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, NETWORK_CONFIG } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
-import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts } from '@/contracts/storage';
+import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools } from '@/contracts/storage';
 import { ContractId } from '@/contracts/bytecode';
+import { priceToSqrtPriceX96, formatPrice, validatePrice, getTokenDecimals } from '@/lib/priceUtils';
 import SpaceBackground from '@/components/backgrounds/SpaceBackground';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
 import { 
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
-  Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2 
+  Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
+  Calculator, Edit3, DollarSign
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -21,13 +24,24 @@ const Admin = () => {
   const { address, isConnected } = useWallet();
   const isAdminWallet = isAdmin(address);
   const { deployContract, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
+  const { createPool, creationStatus, isCreating } = usePoolCreation();
 
   const [deployedContracts, setDeployedContracts] = useState<DeployedContracts>(getDeployedContracts());
+  const [deployedPools, setDeployedPools] = useState(getDeployedPools());
+  
+  // Pool price inputs state
+  const [poolPrices, setPoolPrices] = useState<Record<string, string>>({
+    'USDT/USDC': '1.0',
+    'WOVER/USDC': '0.0081',
+    'WOVER/USDT': '0.0081',
+  });
+  const [useCustomPrice, setUseCustomPrice] = useState<Record<string, boolean>>({});
 
   // Load saved deployment state on mount
   useEffect(() => {
     loadSavedState();
     setDeployedContracts(getDeployedContracts());
+    setDeployedPools(getDeployedPools());
   }, [loadSavedState]);
 
   // Redirect non-admin users
@@ -49,6 +63,7 @@ const Admin = () => {
 
   const refreshContracts = () => {
     setDeployedContracts(getDeployedContracts());
+    setDeployedPools(getDeployedPools());
     loadSavedState();
     toast.success('Refreshed contract data');
   };
@@ -72,8 +87,84 @@ const Admin = () => {
     if (confirm('Are you sure? This will clear all saved contract addresses locally.')) {
       clearAllDeployedData();
       setDeployedContracts(getDeployedContracts());
+      setDeployedPools(getDeployedPools());
       loadSavedState();
       toast.success('Cleared all deployment data');
+    }
+  };
+
+  // Handle pool creation
+  const handleCreatePool = async (pool: typeof INITIAL_POOLS[0]) => {
+    const poolName = pool.name;
+    const priceStr = poolPrices[poolName] || '1';
+    const validation = validatePrice(priceStr);
+    
+    if (!validation.valid) {
+      toast.error(`Invalid price: ${validation.error}`);
+      return;
+    }
+
+    const price = parseFloat(priceStr);
+    
+    // Get token addresses and symbols
+    const tokens = poolName.split('/');
+    const token0Symbol = tokens[0];
+    const token1Symbol = tokens[1];
+    const token0Address = TOKEN_ADDRESSES[token0Symbol as keyof typeof TOKEN_ADDRESSES];
+    const token1Address = TOKEN_ADDRESSES[token1Symbol as keyof typeof TOKEN_ADDRESSES];
+
+    if (!token0Address || !token1Address) {
+      toast.error('Token addresses not found');
+      return;
+    }
+
+    try {
+      toast.info(`Creating ${poolName} pool... Sign the transaction in your wallet.`);
+      
+      const config: PoolConfig = {
+        token0Symbol,
+        token1Symbol,
+        token0Address,
+        token1Address,
+        fee: pool.fee,
+        initialPrice: price,
+      };
+
+      const poolAddress = await createPool(config);
+      
+      if (poolAddress) {
+        saveDeployedPool(poolName, poolAddress);
+        setDeployedPools(getDeployedPools());
+        toast.success(`${poolName} pool created!`, {
+          description: `Address: ${poolAddress.slice(0, 10)}...${poolAddress.slice(-8)}`,
+        });
+      }
+    } catch (error: any) {
+      toast.error(`Pool creation failed: ${error.message}`);
+    }
+  };
+
+  // Calculate sqrtPriceX96 preview
+  const getSqrtPriceX96Preview = (poolName: string): string => {
+    const priceStr = poolPrices[poolName];
+    if (!priceStr) return '—';
+    
+    const validation = validatePrice(priceStr);
+    if (!validation.valid) return 'Invalid';
+    
+    try {
+      const price = parseFloat(priceStr);
+      const tokens = poolName.split('/');
+      const token0Decimals = getTokenDecimals(tokens[0]);
+      const token1Decimals = getTokenDecimals(tokens[1]);
+      const sqrtPrice = priceToSqrtPriceX96(price, token0Decimals, token1Decimals);
+      // Truncate for display
+      if (sqrtPrice.length > 20) {
+        return sqrtPrice.slice(0, 10) + '...' + sqrtPrice.slice(-6);
+      }
+      return sqrtPrice;
+    } catch {
+      return 'Error';
     }
   };
 
@@ -450,27 +541,159 @@ const Admin = () => {
                   </div>
                 )}
 
-                <div className="space-y-4">
-                  {INITIAL_POOLS.map((pool) => (
-                    <div key={pool.name} className="bg-background/50 rounded-xl p-4 border border-primary/20">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold text-foreground">{pool.name}</h3>
-                          <p className="text-sm text-muted-foreground">{pool.description}</p>
-                          <p className="text-xs text-primary mt-1">
-                            Fee: {FEE_TIER_CONFIG[pool.fee]?.label || `${pool.fee / 10000}%`}
-                          </p>
+                {/* Price Reference Info */}
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6">
+                  <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-primary" />
+                    Price Reference
+                  </h4>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Reference prices from OverSwap.fi / Izumi Finance. You can use suggested prices or enter custom values.
+                  </p>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="bg-background/50 px-2 py-1 rounded">WOVER ≈ $0.0081 USDT</span>
+                    <span className="bg-background/50 px-2 py-1 rounded">USDT ≈ $1.00 USDC</span>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {INITIAL_POOLS.map((pool) => {
+                    const poolName = pool.name;
+                    const isPoolCreated = !!deployedPools[poolName];
+                    const poolStatus = creationStatus[poolName];
+                    const isPoolCreating = poolStatus?.status === 'creating';
+                    const currentPrice = poolPrices[poolName] || '1';
+                    const isCustom = useCustomPrice[poolName];
+
+                    return (
+                      <div key={pool.name} className="bg-background/50 rounded-xl p-5 border border-primary/20">
+                        <div className="flex flex-col gap-4">
+                          {/* Pool Header */}
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-foreground text-lg">{pool.name}</h3>
+                                {isPoolCreated && (
+                                  <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> Created
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">{pool.description}</p>
+                              <p className="text-xs text-primary mt-1">
+                                Fee Tier: {FEE_TIER_CONFIG[pool.fee]?.label || `${pool.fee / 10000}%`}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Price Input Section */}
+                          {!isPoolCreated && (
+                            <div className="bg-background/30 rounded-lg p-4 border border-border/30">
+                              <div className="flex items-center justify-between mb-3">
+                                <label className="text-sm font-medium flex items-center gap-2">
+                                  <Calculator className="w-4 h-4 text-primary" />
+                                  Initial Price
+                                </label>
+                                <button
+                                  onClick={() => setUseCustomPrice(prev => ({ ...prev, [poolName]: !prev[poolName] }))}
+                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                  {isCustom ? 'Use Suggested' : 'Custom Price'}
+                                </button>
+                              </div>
+                              
+                              <div className="flex flex-col md:flex-row gap-3">
+                                <div className="flex-1">
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      value={currentPrice}
+                                      onChange={(e) => setPoolPrices(prev => ({ ...prev, [poolName]: e.target.value }))}
+                                      disabled={!isCustom && !deployedContracts.positionManager}
+                                      className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm font-mono focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/50 disabled:opacity-50"
+                                      placeholder="Enter price"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                                      {pool.name.split('/')[1]} per {pool.name.split('/')[0]}
+                                    </span>
+                                  </div>
+                                  {!validatePrice(currentPrice).valid && currentPrice && (
+                                    <p className="text-xs text-destructive mt-1">{validatePrice(currentPrice).error}</p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* sqrtPriceX96 Preview */}
+                              <div className="mt-3 pt-3 border-t border-border/30">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-muted-foreground">sqrtPriceX96:</span>
+                                  <code className="font-mono text-primary bg-primary/10 px-2 py-1 rounded">
+                                    {getSqrtPriceX96Preview(poolName)}
+                                  </code>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Created Pool Address */}
+                          {isPoolCreated && deployedPools[poolName] && (
+                            <div className="flex items-center gap-2 bg-success/10 rounded-lg p-3">
+                              <span className="text-xs text-muted-foreground">Pool Address:</span>
+                              <code className="text-xs font-mono text-success flex-1 truncate">
+                                {deployedPools[poolName]}
+                              </code>
+                              <button onClick={() => copyToClipboard(deployedPools[poolName]!)} className="text-muted-foreground hover:text-primary">
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <a 
+                                href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/address/${deployedPools[poolName]}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Transaction Hash (during creation) */}
+                          {poolStatus?.txHash && !isPoolCreated && (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin text-warning" />
+                              <a 
+                                href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/tx/${poolStatus.txHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline"
+                              >
+                                View transaction
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Create Button */}
+                          <div className="flex justify-end">
+                            <NeonButton 
+                              variant={isPoolCreated ? 'secondary' : 'primary'}
+                              className="text-sm px-5 py-2.5"
+                              onClick={() => handleCreatePool(pool)}
+                              disabled={!deployedContracts.positionManager || isCreating || isPoolCreated || !validatePrice(currentPrice).valid}
+                            >
+                              {isPoolCreating ? (
+                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</>
+                              ) : isPoolCreated ? (
+                                <><CheckCircle className="w-4 h-4 mr-2" /> Pool Created</>
+                              ) : (
+                                <><Rocket className="w-4 h-4 mr-2" /> Create Pool</>
+                              )}
+                            </NeonButton>
+                          </div>
                         </div>
-                        <NeonButton 
-                          variant="secondary" 
-                          className="text-sm px-4 py-2" 
-                          disabled={!deployedContracts.positionManager}
-                        >
-                          Create Pool
-                        </NeonButton>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </GlowCard>
             </TabsContent>
