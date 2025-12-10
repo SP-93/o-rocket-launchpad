@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from './useWallet';
+import logger from '@/lib/logger';
 import { TOKEN_ADDRESSES } from '@/config/admin';
 import {
   FACTORY_BYTECODE,
@@ -174,10 +175,10 @@ export const useContractDeployment = () => {
       const estimatedGas = await provider.estimateGas(deployTx);
       const gasPrice = await provider.getGasPrice();
       
-      console.log(`Deploying ${config.name}...`);
-      console.log(`Estimated gas: ${estimatedGas.toString()}`);
-      console.log(`Gas price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
-      console.log(`Constructor args:`, constructorArgs);
+      logger.log(`Deploying ${config.name}...`);
+      logger.log(`Estimated gas: ${estimatedGas.toString()}`);
+      logger.log(`Gas price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
+      logger.debug(`Constructor args:`, constructorArgs);
 
       // Deploy contract
       const contract = await factory.deploy(...constructorArgs, {
@@ -189,14 +190,14 @@ export const useContractDeployment = () => {
         txHash: contract.deployTransaction.hash 
       });
 
-      console.log(`Transaction hash: ${contract.deployTransaction.hash}`);
-      console.log('Waiting for confirmation...');
+      logger.log(`Transaction hash: ${contract.deployTransaction.hash}`);
+      logger.log('Waiting for confirmation...');
 
       // Wait for deployment
       await contract.deployed();
 
       const deployedAddress = contract.address;
-      console.log(`${config.name} deployed at: ${deployedAddress}`);
+      logger.log(`${config.name} deployed at: ${deployedAddress}`);
 
       // Save to storage
       saveDeployedContract(contractId, deployedAddress);
@@ -214,7 +215,7 @@ export const useContractDeployment = () => {
 
       return deployedAddress;
     } catch (error: any) {
-      console.error(`Error deploying ${contractId}:`, error);
+      logger.error(`Error deploying ${contractId}:`, error);
       
       const errorStatus: DeploymentStatus = {
         contractId,

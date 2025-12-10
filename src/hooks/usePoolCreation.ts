@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { useWallet } from './useWallet';
+import logger from '@/lib/logger';
 import { TOKEN_ADDRESSES } from '@/config/admin';
 import { getDeployedContracts } from '@/contracts/storage';
 import { priceToSqrtPriceX96, getTokenDecimals } from '@/lib/priceUtils';
@@ -93,11 +94,11 @@ export const usePoolCreation = () => {
       const token1Decimals = getTokenDecimals(sorted.symbol1);
       const sqrtPriceX96 = priceToSqrtPriceX96(sorted.sortedPrice, token0Decimals, token1Decimals);
 
-      console.log('Creating pool:', {
+      logger.log('Creating pool:', {
         token0: sorted.token0,
         token1: sorted.token1,
         fee: config.fee,
-        sqrtPriceX96,
+        sqrtPriceX96: sqrtPriceX96.toString(),
         originalPrice: config.initialPrice,
         sortedPrice: sorted.sortedPrice,
       });
@@ -127,8 +128,8 @@ export const usePoolCreation = () => {
         [poolName]: { poolName, status: 'creating', txHash: tx.hash },
       }));
 
-      console.log('Transaction hash:', tx.hash);
-      console.log('Waiting for confirmation...');
+      logger.log('Transaction hash:', tx.hash);
+      logger.log('Waiting for confirmation...');
 
       // Wait for transaction
       const receipt = await tx.wait();
@@ -142,7 +143,7 @@ export const usePoolCreation = () => {
       
       const poolAddress = await factoryContract.getPool(sorted.token0, sorted.token1, config.fee);
 
-      console.log('Pool created at:', poolAddress);
+      logger.log('Pool created at:', poolAddress);
 
       setCreationStatus(prev => ({
         ...prev,
@@ -156,7 +157,7 @@ export const usePoolCreation = () => {
 
       return poolAddress;
     } catch (error: any) {
-      console.error('Error creating pool:', error);
+      logger.error('Error creating pool:', error);
       
       setCreationStatus(prev => ({
         ...prev,

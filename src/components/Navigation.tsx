@@ -5,6 +5,7 @@ import { Rocket, Wallet, Menu, X, ChevronDown, Shield } from "lucide-react";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
 import { isAdmin } from "@/config/admin";
+import logger from "@/lib/logger";
 
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -15,8 +16,7 @@ const Navigation = () => {
 
   const isAdminWallet = isAdmin(address);
   
-  // Debug admin check
-  console.log('Admin check:', { address, isAdminWallet });
+  logger.debug('Admin check:', { address, isAdminWallet });
 
   const navLinks = [
     { to: "/swap", label: "Swap" },
