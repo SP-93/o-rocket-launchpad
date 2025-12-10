@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { getMetaMaskDeepLink, getOverWalletDeepLink } from './useMobileDetect';
+import logger from '@/lib/logger';
 
 interface WalletState {
   address: string | null;
@@ -115,7 +116,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const balanceInEther = parseInt(balance, 16) / 1e18;
       setState(prev => ({ ...prev, balance: balanceInEther.toFixed(4) }));
     } catch (err) {
-      console.error('Failed to get balance:', err);
+      logger.error('Failed to get balance:', err);
     }
   }, []);
 
@@ -143,7 +144,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const chainIdNum = normalizeChainId(chainId);
       const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
 
-      console.log('Connected:', { address, chainId, chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId, isCorrectNetwork });
+      logger.log('Connected:', { address, chainId, chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId, isCorrectNetwork });
 
       setState({
         address,
@@ -203,7 +204,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const chainIdNum = normalizeChainId(chainId);
       const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
 
-      console.log('WalletConnect connected:', { address, chainId, chainIdNum, isCorrectNetwork });
+      logger.log('WalletConnect connected:', { address, chainId, chainIdNum, isCorrectNetwork });
 
       // Get balance
       const balance = await provider.request({
@@ -237,7 +238,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       });
 
     } catch (err: any) {
-      console.error('WalletConnect error:', err);
+      logger.error('WalletConnect error:', err);
       setError(err.message || 'Failed to connect with WalletConnect');
       throw err;
     } finally {
@@ -256,7 +257,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         );
         wcKeys.forEach(key => localStorage.removeItem(key));
       } catch (e) {
-        console.error('WalletConnect cleanup error:', e);
+        logger.error('WalletConnect cleanup error:', e);
       }
     }
 
@@ -332,7 +333,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
     const handleChainChanged = (chainId: string | number) => {
       const chainIdNum = normalizeChainId(chainId);
-      console.log('Chain changed:', { raw: chainId, normalized: chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId });
+      logger.log('Chain changed:', { raw: chainId, normalized: chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId });
       setState(prev => ({
         ...prev,
         chainId: chainIdNum,
