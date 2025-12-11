@@ -370,6 +370,43 @@ const Admin = () => {
                   Deploy Uniswap V3 contracts to OverProtocol Mainnet. Each step requires manual transaction signing.
                 </p>
 
+                {/* Deployment Progress */}
+                {(() => {
+                  const totalContracts = DEPLOYMENT_STEPS.length;
+                  const deployedCount = DEPLOYMENT_STEPS.filter(step => 
+                    deployedContracts[step.id as keyof DeployedContracts]
+                  ).length;
+                  const progressPercent = (deployedCount / totalContracts) * 100;
+                  
+                  return (
+                    <div className="bg-background/50 border border-border/30 rounded-xl p-4 mb-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="font-medium text-sm flex items-center gap-2">
+                          <Rocket className="w-4 h-4 text-primary" />
+                          Deployment Progress
+                        </h4>
+                        <span className={`text-sm font-bold ${deployedCount === totalContracts ? 'text-success' : 'text-primary'}`}>
+                          {deployedCount}/{totalContracts} Contracts
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-background rounded-full overflow-hidden border border-border/30">
+                        <div 
+                          className={`h-full transition-all duration-500 ease-out ${
+                            deployedCount === totalContracts 
+                              ? 'bg-gradient-to-r from-success to-success/80' 
+                              : 'bg-gradient-to-r from-primary to-primary/80'
+                          }`}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                        <span>{deployedCount === 0 ? 'Not started' : deployedCount === totalContracts ? 'All contracts deployed!' : 'In progress...'}</span>
+                        <span>{Math.round(progressPercent)}%</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Deployment Order Info */}
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6">
                   <h4 className="font-medium text-sm mb-2">📋 Deployment Order</h4>
