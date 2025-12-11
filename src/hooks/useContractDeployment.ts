@@ -108,7 +108,7 @@ export const useContractDeployment = () => {
       quoter: ['factory'],
     };
 
-    const required = dependencies[contractId];
+    const required = dependencies[contractId] || [];
     const missing = required.filter(dep => !isContractDeployed(dep));
     
     return {
