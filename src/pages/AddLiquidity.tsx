@@ -2,10 +2,14 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Info, ChevronDown } from "lucide-react";
+import { ArrowLeft, Info, ChevronDown, Loader2, AlertTriangle, Check } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { TokenIcon } from "@/components/TokenIcon";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
+import { ConnectWalletModal } from "@/components/ConnectWalletModal";
+import { useWallet } from "@/hooks/useWallet";
+import { useLiquidity } from "@/hooks/useLiquidity";
+import { toast } from "sonner";
 
 const AVAILABLE_TOKENS = [
   { symbol: "USDT", name: "Tether USD" },
@@ -14,15 +18,23 @@ const AVAILABLE_TOKENS = [
 ];
 
 const FEE_TIERS = [
-  { value: 500, label: "0.05%", description: "Stable pairs" },
-  { value: 3000, label: "0.3%", description: "Standard (Best)" },
-  { value: 10000, label: "1%", description: "Volatile pairs" },
+  { value: 500, label: "0.05%", description: "Stable pairs", tickSpacing: 10 },
+  { value: 3000, label: "0.3%", description: "Standard (Best)", tickSpacing: 60 },
+  { value: 10000, label: "1%", description: "Volatile pairs", tickSpacing: 200 },
 ];
+
+// Tick bounds for full range
+const MIN_TICK = -887272;
+const MAX_TICK = 887272;
 
 const AddLiquidity = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isConnected, isCorrectNetwork, address, switchNetwork } = useWallet();
+  const { status, error, txHash, addLiquidity, getTokenBalance, getPoolPrice, reset } = useLiquidity();
+  
   const [step, setStep] = useState(1);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   
   // Get tokens from URL params or default
   const [token0, setToken0] = useState(searchParams.get("token0") || "USDT");
@@ -33,6 +45,22 @@ const AddLiquidity = () => {
 
   // Token selector state
   const [selectingToken, setSelectingToken] = useState<"token0" | "token1" | null>(null);
+  
+  // Price range state
+  const [isFullRange, setIsFullRange] = useState(true);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  
+  // Deposit amounts
+  const [amount0, setAmount0] = useState("");
+  const [amount1, setAmount1] = useState("");
+  const [balance0, setBalance0] = useState("0");
+  const [balance1, setBalance1] = useState("0");
+
+  // Slippage and deadline
+  const [slippage, setSlippage] = useState(0.5);
+  const [deadline, setDeadline] = useState(20);
 
   useEffect(() => {
     // Update from URL params if they change
@@ -45,16 +73,33 @@ const AddLiquidity = () => {
     if (urlFee) setSelectedFee(parseInt(urlFee));
   }, [searchParams]);
 
+  // Fetch balances and pool price
+  useEffect(() => {
+    const fetchData = async () => {
+      if (isConnected && address) {
+        const [b0, b1] = await Promise.all([
+          getTokenBalance(token0),
+          getTokenBalance(token1),
+        ]);
+        setBalance0(parseFloat(b0).toFixed(4));
+        setBalance1(parseFloat(b1).toFixed(4));
+        
+        // Get pool price
+        const price = await getPoolPrice(token0, token1, selectedFee);
+        setCurrentPrice(price);
+      }
+    };
+    fetchData();
+  }, [isConnected, address, token0, token1, selectedFee, getTokenBalance, getPoolPrice]);
+
   const handleTokenSelect = (symbol: string) => {
     if (selectingToken === "token0") {
       if (symbol === token1) {
-        // Swap tokens if selecting the same
         setToken1(token0);
       }
       setToken0(symbol);
     } else if (selectingToken === "token1") {
       if (symbol === token0) {
-        // Swap tokens if selecting the same
         setToken0(token1);
       }
       setToken1(symbol);
@@ -62,7 +107,89 @@ const AddLiquidity = () => {
     setSelectingToken(null);
   };
 
+  const handleAddLiquidity = async () => {
+    if (!isConnected) {
+      setShowWalletModal(true);
+      return;
+    }
+
+    if (!isCorrectNetwork) {
+      await switchNetwork();
+      return;
+    }
+
+    if (!amount0 || !amount1 || parseFloat(amount0) === 0 || parseFloat(amount1) === 0) {
+      toast.error("Please enter deposit amounts");
+      return;
+    }
+
+    // Get tick spacing for selected fee
+    const feeTier = FEE_TIERS.find(f => f.value === selectedFee);
+    const tickSpacing = feeTier?.tickSpacing || 60;
+
+    // Calculate ticks
+    let tickLower = MIN_TICK;
+    let tickUpper = MAX_TICK;
+
+    if (!isFullRange && minPrice && maxPrice) {
+      // Convert prices to ticks (simplified)
+      const minPriceNum = parseFloat(minPrice);
+      const maxPriceNum = parseFloat(maxPrice);
+      
+      if (minPriceNum > 0 && maxPriceNum > 0 && maxPriceNum > minPriceNum) {
+        tickLower = Math.floor(Math.log(minPriceNum) / Math.log(1.0001));
+        tickUpper = Math.ceil(Math.log(maxPriceNum) / Math.log(1.0001));
+      }
+    }
+
+    // Round to tick spacing
+    tickLower = Math.floor(tickLower / tickSpacing) * tickSpacing;
+    tickUpper = Math.ceil(tickUpper / tickSpacing) * tickSpacing;
+
+    const tokenId = await addLiquidity({
+      token0Symbol: token0,
+      token1Symbol: token1,
+      fee: selectedFee,
+      amount0,
+      amount1,
+      tickLower,
+      tickUpper,
+      slippageTolerance: slippage,
+      deadline,
+    });
+
+    if (tokenId) {
+      toast.success("Liquidity added successfully!", {
+        description: `Position NFT #${tokenId} created`,
+      });
+      navigate("/positions");
+    } else if (error) {
+      toast.error("Failed to add liquidity", { description: error });
+    }
+  };
+
   const selectedFeeLabel = FEE_TIERS.find(f => f.value === selectedFee)?.label || "0.3%";
+
+  const getButtonText = () => {
+    if (!isConnected) return "Connect Wallet";
+    if (!isCorrectNetwork) return "Switch to OverProtocol";
+    if (status === "approving") return "Approving Tokens...";
+    if (status === "adding") return "Adding Liquidity...";
+    if (!amount0 || !amount1) return "Enter Amounts";
+    if (parseFloat(amount0) > parseFloat(balance0)) return `Insufficient ${token0}`;
+    if (parseFloat(amount1) > parseFloat(balance1)) return `Insufficient ${token1}`;
+    return "Add Liquidity";
+  };
+
+  const isButtonDisabled = () => {
+    if (!isConnected) return false;
+    if (!isCorrectNetwork) return false;
+    if (status === "approving" || status === "adding") return true;
+    if (!amount0 || !amount1) return true;
+    if (parseFloat(amount0) > parseFloat(balance0)) return true;
+    if (parseFloat(amount1) > parseFloat(balance1)) return true;
+    return false;
+  };
 
   return (
     <SpaceBackground>
@@ -93,7 +220,7 @@ const AddLiquidity = () => {
                       : "bg-muted text-muted-foreground"
                   }`}
                 >
-                  {num}
+                  {step > num ? <Check className="w-5 h-5" /> : num}
                 </div>
                 {num < 4 && (
                   <div className={`w-12 h-1 ${step > num ? "bg-primary" : "bg-muted"}`} />
@@ -187,7 +314,9 @@ const AddLiquidity = () => {
                     </div>
                     <div>
                       <p className="text-muted-foreground mb-1">Current Price</p>
-                      <p className="font-semibold">--</p>
+                      <p className="font-semibold">
+                        {currentPrice ? `${currentPrice.toFixed(6)} ${token1}/${token0}` : '--'}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -203,39 +332,60 @@ const AddLiquidity = () => {
                 <h2 className="text-2xl font-bold mb-6">Set Price Range</h2>
 
                 <div className="mb-6">
-                  <Button className="w-full btn-secondary mb-4">
-                    Full Range (Recommended)
+                  <Button 
+                    className={`w-full mb-4 ${isFullRange ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setIsFullRange(!isFullRange)}
+                  >
+                    {isFullRange ? '✓ Full Range (Recommended)' : 'Full Range'}
                   </Button>
 
                   <div className="bg-muted/20 rounded-lg p-6 mb-4">
                     <div className="text-center mb-4">
                       <p className="text-sm text-muted-foreground mb-2">Current Price</p>
-                      <p className="text-3xl font-bold">-- {token1} per {token0}</p>
+                      <p className="text-3xl font-bold">
+                        {currentPrice ? `${currentPrice.toFixed(6)}` : '--'} {token1} per {token0}
+                      </p>
                     </div>
 
                     <div className="h-32 bg-gradient-to-r from-primary/20 via-accent/30 to-primary/20 rounded-lg flex items-center justify-center mb-4">
-                      <p className="text-muted-foreground">Price Range Visualization</p>
+                      <p className="text-muted-foreground">
+                        {isFullRange ? 'Full Range Position' : 'Custom Range Position'}
+                      </p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Min Price</label>
-                      <Input placeholder="0.0000" className="glass-card border-primary/20" />
+                  {!isFullRange && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Min Price</label>
+                        <Input 
+                          placeholder="0.0000" 
+                          value={minPrice}
+                          onChange={(e) => setMinPrice(e.target.value)}
+                          className="glass-card border-primary/20" 
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">Max Price</label>
+                        <Input 
+                          placeholder="∞" 
+                          value={maxPrice}
+                          onChange={(e) => setMaxPrice(e.target.value)}
+                          className="glass-card border-primary/20" 
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium mb-2 block">Max Price</label>
-                      <Input placeholder="∞" className="glass-card border-primary/20" />
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <Card className="glass-card p-4 mb-6 border-primary/20">
                   <div className="flex gap-3">
                     <Info className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                     <p className="text-sm text-muted-foreground">
-                      Your liquidity will only earn fees when the price is within your selected range.
-                      Full range positions earn fees at all prices but with lower capital efficiency.
+                      {isFullRange 
+                        ? "Full range positions earn fees at all prices but with lower capital efficiency."
+                        : "Your liquidity will only earn fees when the price is within your selected range."
+                      }
                     </p>
                   </div>
                 </Card>
@@ -262,15 +412,27 @@ const AddLiquidity = () => {
                         <TokenIcon symbol={token0} size="sm" />
                         <span className="text-sm text-muted-foreground">{token0}</span>
                       </div>
-                      <span className="text-sm text-muted-foreground">Balance: 0.00</span>
+                      <button 
+                        onClick={() => setAmount0(balance0)}
+                        className="text-sm text-muted-foreground hover:text-primary"
+                      >
+                        Balance: {balance0} <span className="text-primary">MAX</span>
+                      </button>
                     </div>
                     <div className="flex items-center gap-4">
                       <Input
                         type="number"
                         placeholder="0.0"
+                        value={amount0}
+                        onChange={(e) => setAmount0(e.target.value)}
                         className="border-0 bg-transparent text-2xl font-semibold p-0 h-auto focus-visible:ring-0"
                       />
-                      <Button className="btn-secondary shrink-0">MAX</Button>
+                      <Button 
+                        className="btn-secondary shrink-0"
+                        onClick={() => setAmount0(balance0)}
+                      >
+                        MAX
+                      </Button>
                     </div>
                   </div>
 
@@ -280,22 +442,34 @@ const AddLiquidity = () => {
                         <TokenIcon symbol={token1} size="sm" />
                         <span className="text-sm text-muted-foreground">{token1}</span>
                       </div>
-                      <span className="text-sm text-muted-foreground">Balance: 0.00</span>
+                      <button 
+                        onClick={() => setAmount1(balance1)}
+                        className="text-sm text-muted-foreground hover:text-primary"
+                      >
+                        Balance: {balance1} <span className="text-primary">MAX</span>
+                      </button>
                     </div>
                     <div className="flex items-center gap-4">
                       <Input
                         type="number"
                         placeholder="0.0"
+                        value={amount1}
+                        onChange={(e) => setAmount1(e.target.value)}
                         className="border-0 bg-transparent text-2xl font-semibold p-0 h-auto focus-visible:ring-0"
                       />
-                      <Button className="btn-secondary shrink-0">MAX</Button>
+                      <Button 
+                        className="btn-secondary shrink-0"
+                        onClick={() => setAmount1(balance1)}
+                      >
+                        MAX
+                      </Button>
                     </div>
                   </div>
                 </div>
 
                 <Card className="glass-card p-4 mb-6 border-warning/20 bg-warning/5">
                   <p className="text-sm text-warning">
-                    ⚠️ Amounts are auto-calculated based on your selected price range and current pool ratio.
+                    ⚠️ For full range positions, you can deposit any ratio. For custom ranges, amounts are auto-calculated based on the price range.
                   </p>
                 </Card>
 
@@ -326,7 +500,9 @@ const AddLiquidity = () => {
 
                   <div className="bg-muted/20 rounded-lg p-4">
                     <p className="text-sm text-muted-foreground mb-1">Price Range</p>
-                    <p className="text-lg font-semibold">Full Range</p>
+                    <p className="text-lg font-semibold">
+                      {isFullRange ? 'Full Range' : `${minPrice || '0'} - ${maxPrice || '∞'}`}
+                    </p>
                   </div>
 
                   <div className="bg-muted/20 rounded-lg p-4">
@@ -334,34 +510,68 @@ const AddLiquidity = () => {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <TokenIcon symbol={token0} size="sm" />
-                        <p className="font-semibold">0.00 {token0}</p>
+                        <p className="font-semibold">{amount0 || '0.00'} {token0}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <TokenIcon symbol={token1} size="sm" />
-                        <p className="font-semibold">0.00 {token1}</p>
+                        <p className="font-semibold">{amount1 || '0.00'} {token1}</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-4 border border-primary/20">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Estimated APR</span>
-                      <span className="text-2xl font-bold text-muted-foreground">--</span>
+                      <span className="text-sm text-muted-foreground">Slippage Tolerance</span>
+                      <span className="font-bold">{slippage}%</span>
                     </div>
                   </div>
 
                   <div className="bg-muted/20 rounded-lg p-4">
                     <p className="text-sm text-muted-foreground mb-1">You will receive</p>
-                    <p className="text-lg font-semibold">Position NFT</p>
+                    <p className="text-lg font-semibold">Position NFT (ERC-721)</p>
                   </div>
                 </div>
+
+                {/* Error Display */}
+                {error && (
+                  <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
+                    <span className="text-sm text-destructive">{error}</span>
+                  </div>
+                )}
+
+                {/* Transaction Status */}
+                {status === 'approving' && (
+                  <div className="mb-4 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+                    <p className="text-sm text-primary flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Please approve token spending in your wallet...
+                    </p>
+                  </div>
+                )}
+
+                {status === 'adding' && (
+                  <div className="mb-4 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+                    <p className="text-sm text-primary flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Confirm the transaction to add liquidity...
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={() => setStep(3)}>
                     Back
                   </Button>
-                  <Button className="flex-1 btn-primary">
-                    Add Liquidity
+                  <Button 
+                    className="flex-1 btn-primary"
+                    onClick={handleAddLiquidity}
+                    disabled={isButtonDisabled()}
+                  >
+                    {(status === 'approving' || status === 'adding') && (
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                    )}
+                    {getButtonText()}
                   </Button>
                 </div>
               </div>
@@ -369,6 +579,8 @@ const AddLiquidity = () => {
           </Card>
         </div>
       </div>
+
+      <ConnectWalletModal open={showWalletModal} onOpenChange={setShowWalletModal} />
     </SpaceBackground>
   );
 };

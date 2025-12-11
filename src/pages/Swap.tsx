@@ -1,16 +1,25 @@
-import { useState } from "react";
-import { ArrowDownUp, Settings, Info, ChevronDown, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowDownUp, Settings, Info, ChevronDown, Check, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import { TokenIcon } from "@/components/TokenIcon";
+import { ConnectWalletModal } from "@/components/ConnectWalletModal";
+import { useWallet } from "@/hooks/useWallet";
+import { useSwap } from "@/hooks/useSwap";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 const TOKENS = [
   { symbol: "USDT", name: "Tether USD" },
@@ -19,18 +28,119 @@ const TOKENS = [
 ];
 
 const Swap = () => {
+  const { isConnected, isCorrectNetwork, switchNetwork, address } = useWallet();
+  const { status, quote, error, txHash, getQuote, executeSwap, getTokenBalance, reset } = useSwap();
+  
   const [fromAmount, setFromAmount] = useState("");
   const [toAmount, setToAmount] = useState("");
   const [fromToken, setFromToken] = useState(TOKENS[0]);
   const [toToken, setToToken] = useState(TOKENS[1]);
+  const [fromBalance, setFromBalance] = useState("0.00");
+  const [toBalance, setToBalance] = useState("0.00");
+  const [slippage, setSlippage] = useState(0.5);
+  const [deadline, setDeadline] = useState(20);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Fetch balances
+  useEffect(() => {
+    const fetchBalances = async () => {
+      if (isConnected && address) {
+        const [from, to] = await Promise.all([
+          getTokenBalance(fromToken.symbol),
+          getTokenBalance(toToken.symbol),
+        ]);
+        setFromBalance(parseFloat(from).toFixed(4));
+        setToBalance(parseFloat(to).toFixed(4));
+      }
+    };
+    fetchBalances();
+  }, [isConnected, address, fromToken.symbol, toToken.symbol, getTokenBalance, status]);
+
+  // Get quote when amount changes
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (fromAmount && parseFloat(fromAmount) > 0) {
+        const newQuote = await getQuote(fromToken.symbol, toToken.symbol, fromAmount);
+        if (newQuote) {
+          setToAmount(parseFloat(newQuote.amountOut).toFixed(6));
+        }
+      } else {
+        setToAmount("");
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote]);
 
   const handleSwitch = () => {
     const tempToken = fromToken;
     const tempAmount = fromAmount;
+    const tempBalance = fromBalance;
     setFromToken(toToken);
     setToToken(tempToken);
     setFromAmount(toAmount);
     setToAmount(tempAmount);
+    setFromBalance(toBalance);
+    setToBalance(tempBalance);
+  };
+
+  const handleSwap = async () => {
+    if (!isConnected) {
+      setShowWalletModal(true);
+      return;
+    }
+
+    if (!isCorrectNetwork) {
+      await switchNetwork();
+      return;
+    }
+
+    if (!fromAmount || parseFloat(fromAmount) === 0) {
+      toast.error("Enter an amount to swap");
+      return;
+    }
+
+    const success = await executeSwap({
+      tokenIn: fromToken.symbol,
+      tokenOut: toToken.symbol,
+      amountIn: fromAmount,
+      slippageTolerance: slippage,
+      deadline,
+    });
+
+    if (success) {
+      toast.success("Swap successful!", {
+        description: `Swapped ${fromAmount} ${fromToken.symbol} for ${toAmount} ${toToken.symbol}`,
+      });
+      setFromAmount("");
+      setToAmount("");
+      reset();
+    } else if (error) {
+      toast.error("Swap failed", { description: error });
+    }
+  };
+
+  const handleMaxClick = () => {
+    setFromAmount(fromBalance);
+  };
+
+  const getButtonText = () => {
+    if (!isConnected) return "Connect Wallet";
+    if (!isCorrectNetwork) return "Switch to OverProtocol";
+    if (status === "quoting") return "Getting Quote...";
+    if (status === "approving") return "Approving Token...";
+    if (status === "swapping") return "Swapping...";
+    if (!fromAmount || parseFloat(fromAmount) === 0) return "Enter Amount";
+    if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "Insufficient Balance";
+    return "Swap";
+  };
+
+  const isButtonDisabled = () => {
+    if (!isConnected) return false;
+    if (!isCorrectNetwork) return false;
+    if (status === "quoting" || status === "approving" || status === "swapping") return true;
+    if (!fromAmount || parseFloat(fromAmount) === 0) return true;
+    if (parseFloat(fromAmount) > parseFloat(fromBalance)) return true;
+    return false;
   };
 
   const TokenSelector = ({ 
@@ -83,9 +193,52 @@ const Swap = () => {
           <Card className="glass-card p-4 md:p-6 mb-4">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg md:text-xl font-semibold">Swap</h2>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-                <Settings className="w-5 h-5" />
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                    <Settings className="w-5 h-5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 bg-card/95 backdrop-blur-xl border-primary/20">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Slippage Tolerance</label>
+                      <div className="flex gap-2">
+                        {[0.1, 0.5, 1].map((val) => (
+                          <Button
+                            key={val}
+                            variant={slippage === val ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSlippage(val)}
+                            className={slippage === val ? "bg-primary" : ""}
+                          >
+                            {val}%
+                          </Button>
+                        ))}
+                        <Input
+                          type="number"
+                          value={slippage}
+                          onChange={(e) => setSlippage(parseFloat(e.target.value) || 0.5)}
+                          className="w-20 text-center"
+                          placeholder="0.5"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Transaction Deadline</label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={deadline}
+                          onChange={(e) => setDeadline(parseInt(e.target.value) || 20)}
+                          className="w-20"
+                        />
+                        <span className="text-sm text-muted-foreground">minutes</span>
+                      </div>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* From Token */}
@@ -93,7 +246,12 @@ const Swap = () => {
               <div className="bg-muted/20 rounded-xl p-4 border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">From</span>
-                  <span className="text-sm text-muted-foreground">Balance: 0.00</span>
+                  <button 
+                    onClick={handleMaxClick}
+                    className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    Balance: {fromBalance} <span className="text-primary ml-1">MAX</span>
+                  </button>
                 </div>
                 <div className="flex items-center gap-3">
                   <Input
@@ -129,14 +287,14 @@ const Swap = () => {
               <div className="bg-muted/20 rounded-xl p-4 border border-border">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-muted-foreground">To</span>
-                  <span className="text-sm text-muted-foreground">Balance: 0.00</span>
+                  <span className="text-sm text-muted-foreground">Balance: {toBalance}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Input
                     type="number"
                     placeholder="0.0"
                     value={toAmount}
-                    onChange={(e) => setToAmount(e.target.value)}
+                    readOnly
                     className="border-0 bg-transparent text-xl md:text-2xl font-semibold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0"
                   />
                   <TokenSelector 
@@ -149,23 +307,53 @@ const Swap = () => {
             </div>
 
             {/* Info Section */}
-            <div className="space-y-2 mb-6 text-sm">
-              <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
-                <span className="text-muted-foreground">Price</span>
-                <span className="font-medium">1 {fromToken.symbol} = {fromToken.symbol === toToken.symbol ? '1' : '0.9998'} {toToken.symbol}</span>
+            {quote && fromAmount && (
+              <div className="space-y-2 mb-6 text-sm">
+                <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
+                  <span className="text-muted-foreground">Price</span>
+                  <span className="font-medium">
+                    1 {fromToken.symbol} = {(parseFloat(toAmount) / parseFloat(fromAmount)).toFixed(6)} {toToken.symbol}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
+                  <span className="text-muted-foreground">Price Impact</span>
+                  <span className={`font-medium ${
+                    quote.priceImpact < 1 ? 'text-success' : 
+                    quote.priceImpact < 5 ? 'text-warning' : 'text-destructive'
+                  }`}>
+                    {quote.priceImpact < 0.01 ? '<0.01' : quote.priceImpact.toFixed(2)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
+                  <span className="text-muted-foreground">Liquidity Provider Fee</span>
+                  <span className="font-medium">0.3%</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
+                  <span className="text-muted-foreground">Minimum Received</span>
+                  <span className="font-medium">
+                    {(parseFloat(toAmount) * (1 - slippage / 100)).toFixed(6)} {toToken.symbol}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
-                <span className="text-muted-foreground">Price Impact</span>
-                <span className="font-medium text-success">{'<0.01%'}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
-                <span className="text-muted-foreground">Liquidity Provider Fee</span>
-                <span className="font-medium">0.3%</span>
-              </div>
-            </div>
+            )}
 
-            <Button className="w-full btn-primary text-lg">
-              Connect Wallet
+            {/* Error Display */}
+            {error && (
+              <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-destructive" />
+                <span className="text-sm text-destructive">{error}</span>
+              </div>
+            )}
+
+            <Button 
+              className="w-full btn-primary text-lg"
+              onClick={handleSwap}
+              disabled={isButtonDisabled()}
+            >
+              {(status === "approving" || status === "swapping" || status === "quoting") && (
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              )}
+              {getButtonText()}
             </Button>
           </Card>
 
@@ -181,6 +369,11 @@ const Swap = () => {
           </Card>
         </div>
       </div>
+      
+      <ConnectWalletModal 
+        open={showWalletModal} 
+        onOpenChange={setShowWalletModal} 
+      />
     </SpaceBackground>
   );
 };
