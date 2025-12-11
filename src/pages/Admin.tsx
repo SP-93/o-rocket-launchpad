@@ -451,22 +451,45 @@ const Admin = () => {
                                 </a>
                               </div>
                             )}
+
+                            {/* Error Message for Failed Deployment */}
+                            {deploymentState[contractId]?.status === 'failed' && deploymentState[contractId]?.error && (
+                              <div className="ml-8 mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded-lg">
+                                <p className="text-xs text-destructive flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  {deploymentState[contractId].error}
+                                </p>
+                              </div>
+                            )}
                           </div>
                           
-                          <NeonButton 
-                            onClick={() => handleDeploy(contractId)}
-                            variant={savedAddress ? 'secondary' : 'primary'}
-                            className="text-sm px-4 py-2"
-                            disabled={!canDeploy(contractId) && !savedAddress}
-                          >
-                            {isDeploying && deploymentState[contractId]?.status === 'deploying' ? (
-                              <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deploying...</>
-                            ) : savedAddress ? (
-                              <><CheckCircle className="w-4 h-4 mr-1" /> Deployed</>
+                          <div className="flex flex-col gap-2">
+                            {deploymentState[contractId]?.status === 'failed' && !savedAddress ? (
+                              <NeonButton 
+                                onClick={() => handleDeploy(contractId)}
+                                variant="primary"
+                                className="text-sm px-4 py-2"
+                                disabled={isDeploying || !deps.met}
+                              >
+                                <RefreshCw className="w-4 h-4 mr-1" /> Retry
+                              </NeonButton>
                             ) : (
-                              'Deploy'
+                              <NeonButton 
+                                onClick={() => handleDeploy(contractId)}
+                                variant={savedAddress ? 'secondary' : 'primary'}
+                                className="text-sm px-4 py-2"
+                                disabled={!canDeploy(contractId) && !savedAddress}
+                              >
+                                {isDeploying && deploymentState[contractId]?.status === 'deploying' ? (
+                                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deploying...</>
+                                ) : savedAddress ? (
+                                  <><CheckCircle className="w-4 h-4 mr-1" /> Deployed</>
+                                ) : (
+                                  'Deploy'
+                                )}
+                              </NeonButton>
                             )}
-                          </NeonButton>
+                          </div>
                         </div>
                       </div>
                     );
