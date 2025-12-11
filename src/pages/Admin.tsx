@@ -210,14 +210,6 @@ const Admin = () => {
     return deps.met;
   };
 
-  // Map DEPLOYMENT_STEPS to ContractIds
-  const stepToContractId: Record<string, ContractId> = {
-    'UniswapV3Factory': 'factory',
-    'SwapRouter': 'router',
-    'NFTDescriptor': 'nftDescriptor',
-    'NonfungiblePositionManager': 'positionManager',
-    'QuoterV2': 'quoter',
-  };
 
   return (
     <div className="min-h-screen relative">
@@ -388,7 +380,7 @@ const Admin = () => {
 
                 <div className="space-y-4">
                   {DEPLOYMENT_STEPS.map((step, index) => {
-                    const contractId = stepToContractId[step.id] || step.id.toLowerCase();
+                    const contractId = step.id as ContractId;
                     const status = getStatusDisplay(contractId);
                     const savedAddress = deployedContracts[contractId as keyof DeployedContracts];
                     const deps = checkDependencies(contractId as ContractId);
