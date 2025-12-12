@@ -39,13 +39,6 @@ export default defineConfig(({ mode }) => ({
         chunkFileNames: mode === "production" ? "assets/[hash].js" : "assets/[name]-[hash].js",
         entryFileNames: mode === "production" ? "assets/[hash].js" : "assets/[name]-[hash].js",
         assetFileNames: mode === "production" ? "assets/[hash].[ext]" : "assets/[name]-[hash].[ext]",
-        // Separate large Uniswap contract bytecodes into their own chunk
-        manualChunks: {
-          'uniswap-contracts': [
-            '@uniswap/v3-core',
-            '@uniswap/v3-periphery'
-          ]
-        }
       },
     },
   },
