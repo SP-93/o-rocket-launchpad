@@ -9,6 +9,12 @@ import {
   POSITION_MANAGER_BYTECODE,
   QUOTER_BYTECODE,
   NFT_DESCRIPTOR_BYTECODE,
+  FACTORY_ABI,
+  ROUTER_ABI,
+  POSITION_MANAGER_ABI,
+  QUOTER_ABI,
+  NFT_DESCRIPTOR_ABI,
+  FALLBACK_GAS_LIMITS,
   ContractId,
 } from '@/contracts/bytecode';
 import {
@@ -19,19 +25,6 @@ import {
   addDeploymentToHistory,
   isContractDeployed,
 } from '@/contracts/storage';
-import UniswapV3FactoryABI from '@/contracts/abis/UniswapV3Factory.json';
-import SwapRouterABI from '@/contracts/abis/SwapRouter.json';
-import NonfungiblePositionManagerABI from '@/contracts/abis/NonfungiblePositionManager.json';
-import QuoterV2ABI from '@/contracts/abis/QuoterV2.json';
-
-// NFTDescriptor has minimal ABI - just for deployment
-const NFTDescriptorABI = [
-  {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  }
-];
 
 export interface DeploymentState {
   [key: string]: DeploymentStatus;
@@ -42,31 +35,31 @@ export const useContractDeployment = () => {
   const [deploymentState, setDeploymentState] = useState<DeploymentState>({});
   const [isDeploying, setIsDeploying] = useState(false);
 
-  // Get contract config by ID
+  // Get contract config by ID - using ABIs directly from bytecode imports
   const getContractConfig = (contractId: ContractId) => {
     const configs: Record<ContractId, { abi: any; bytecode: string; name: string }> = {
       factory: {
-        abi: UniswapV3FactoryABI,
+        abi: FACTORY_ABI,
         bytecode: FACTORY_BYTECODE,
         name: 'UniswapV3Factory',
       },
       router: {
-        abi: SwapRouterABI,
+        abi: ROUTER_ABI,
         bytecode: ROUTER_BYTECODE,
         name: 'SwapRouter',
       },
       nftDescriptor: {
-        abi: NFTDescriptorABI,
+        abi: NFT_DESCRIPTOR_ABI,
         bytecode: NFT_DESCRIPTOR_BYTECODE,
         name: 'NFTDescriptor',
       },
       positionManager: {
-        abi: NonfungiblePositionManagerABI,
+        abi: POSITION_MANAGER_ABI,
         bytecode: POSITION_MANAGER_BYTECODE,
         name: 'NonfungiblePositionManager',
       },
       quoter: {
-        abi: QuoterV2ABI,
+        abi: QUOTER_ABI,
         bytecode: QUOTER_BYTECODE,
         name: 'QuoterV2',
       },
@@ -129,7 +122,7 @@ export const useContractDeployment = () => {
     }));
   }, []);
 
-  // Deploy a contract
+  // Deploy a contract with improved error handling
   const deployContract = useCallback(async (contractId: ContractId): Promise<string | null> => {
     if (!address) {
       throw new Error('Wallet not connected');
@@ -159,6 +152,19 @@ export const useContractDeployment = () => {
       const config = getContractConfig(contractId);
       const constructorArgs = getConstructorArgs(contractId);
 
+      // Validate bytecode
+      if (!config.bytecode || config.bytecode.length < 100) {
+        throw new Error(`Invalid bytecode for ${config.name}. Bytecode is missing or too short.`);
+      }
+
+      // Validate ABI
+      if (!config.abi || !Array.isArray(config.abi)) {
+        throw new Error(`Invalid ABI for ${config.name}. ABI must be an array.`);
+      }
+
+      logger.log(`Bytecode length for ${config.name}: ${config.bytecode.length} characters`);
+      logger.log(`ABI entries for ${config.name}: ${config.abi.length}`);
+
       // Create provider and signer
       const provider = new ethers.providers.Web3Provider(ethereum);
       const signer = provider.getSigner();
@@ -170,19 +176,31 @@ export const useContractDeployment = () => {
         signer
       );
 
-      // Estimate gas
+      // Estimate gas with fallback
+      let gasLimit: ethers.BigNumber;
       const deployTx = factory.getDeployTransaction(...constructorArgs);
-      const estimatedGas = await provider.estimateGas(deployTx);
+      
+      try {
+        const estimatedGas = await provider.estimateGas(deployTx);
+        gasLimit = estimatedGas.mul(130).div(100); // Add 30% buffer
+        logger.log(`Estimated gas: ${estimatedGas.toString()}`);
+      } catch (gasError: any) {
+        // Use fallback gas limit
+        gasLimit = ethers.BigNumber.from(FALLBACK_GAS_LIMITS[contractId]);
+        logger.warn(`Gas estimation failed, using fallback: ${gasLimit.toString()}`);
+        logger.warn(`Gas estimation error: ${gasError.message}`);
+      }
+
       const gasPrice = await provider.getGasPrice();
       
       logger.log(`Deploying ${config.name}...`);
-      logger.log(`Estimated gas: ${estimatedGas.toString()}`);
+      logger.log(`Gas limit: ${gasLimit.toString()}`);
       logger.log(`Gas price: ${ethers.utils.formatUnits(gasPrice, 'gwei')} gwei`);
       logger.debug(`Constructor args:`, constructorArgs);
 
       // Deploy contract
       const contract = await factory.deploy(...constructorArgs, {
-        gasLimit: estimatedGas.mul(120).div(100), // Add 20% buffer
+        gasLimit,
       });
 
       updateStatus(contractId, { 
@@ -217,16 +235,29 @@ export const useContractDeployment = () => {
     } catch (error: any) {
       logger.error(`Error deploying ${contractId}:`, error);
       
+      // Parse error for better user feedback
+      let errorMessage = error.message || 'Deployment failed';
+      
+      if (error.code === 'UNPREDICTABLE_GAS_LIMIT') {
+        errorMessage = 'Gas estimation failed. This may indicate an issue with the contract bytecode or constructor arguments.';
+      } else if (error.code === 'INSUFFICIENT_FUNDS') {
+        errorMessage = 'Insufficient OVER balance for gas fees.';
+      } else if (error.code === 4001) {
+        errorMessage = 'Transaction rejected by user.';
+      } else if (error.message?.includes('execution reverted')) {
+        errorMessage = `Contract execution reverted: ${error.reason || 'Unknown reason'}`;
+      }
+
       const errorStatus: DeploymentStatus = {
         contractId,
         status: 'failed',
-        error: error.message || 'Deployment failed',
+        error: errorMessage,
         timestamp: Date.now(),
       };
       updateStatus(contractId, errorStatus);
       addDeploymentToHistory(errorStatus);
 
-      throw error;
+      throw new Error(errorMessage);
     } finally {
       setIsDeploying(false);
     }
