@@ -23,7 +23,10 @@ const Admin = () => {
   const navigate = useNavigate();
   const { address, isConnected } = useWallet();
   const isAdminWallet = isAdmin(address);
-  const { deployContract, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
+  const { saveContractAddress, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
+  
+  // Manual address input state
+  const [addressInputs, setAddressInputs] = useState<Record<string, string>>({});
   const { createPool, creationStatus, isCreating } = usePoolCreation();
 
   const [deployedContracts, setDeployedContracts] = useState<DeployedContracts>(getDeployedContracts());
@@ -68,18 +71,22 @@ const Admin = () => {
     toast.success('Refreshed contract data');
   };
 
-  const handleDeploy = async (contractId: string) => {
+  const handleSaveAddress = async (contractId: string) => {
+    const inputAddress = addressInputs[contractId];
+    if (!inputAddress) {
+      toast.error('Please enter a contract address');
+      return;
+    }
+    
     try {
-      toast.info(`Preparing ${contractId} deployment... Sign the transaction in your wallet.`);
-      const deployedAddress = await deployContract(contractId as ContractId);
-      if (deployedAddress) {
-        toast.success(`${contractId} deployed successfully!`, {
-          description: `Address: ${deployedAddress.slice(0, 10)}...${deployedAddress.slice(-8)}`,
-        });
-        setDeployedContracts(getDeployedContracts());
-      }
+      await saveContractAddress(contractId as ContractId, inputAddress);
+      toast.success(`${contractId} address saved!`, {
+        description: `Address: ${inputAddress.slice(0, 10)}...${inputAddress.slice(-8)}`,
+      });
+      setDeployedContracts(getDeployedContracts());
+      setAddressInputs(prev => ({ ...prev, [contractId]: '' }));
     } catch (error: any) {
-      toast.error(`Deployment failed: ${error.message}`);
+      toast.error(`Failed to save: ${error.message}`);
     }
   };
 
@@ -407,6 +414,26 @@ const Admin = () => {
                   );
                 })()}
 
+                {/* Deploy CLI Instructions */}
+                <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 mb-6">
+                  <h4 className="font-medium text-sm mb-2 text-warning">🚀 Deploy Contracts Externally</h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Use the official Uniswap CLI tool to deploy contracts, then enter the addresses below:
+                  </p>
+                  <code className="block text-xs font-mono bg-background/80 text-foreground/90 p-3 rounded-lg overflow-x-auto whitespace-pre">
+{`npx @uniswap/deploy-v3 \\
+  --private-key YOUR_PRIVATE_KEY \\
+  --json-rpc https://rpc.overprotocol.com \\
+  --weth9-address 0x59c914C8ac6F212bb655737CC80d9Abc79A1e273 \\
+  --native-currency-label OVER \\
+  --owner-address ${address || 'YOUR_ADMIN_WALLET'} \\
+  --confirmations 2`}
+                  </code>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    After deployment, copy each contract address from the CLI output and paste it below.
+                  </p>
+                </div>
+
                 {/* Deployment Order Info */}
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6">
                   <h4 className="font-medium text-sm mb-2">📋 Deployment Order</h4>
@@ -475,21 +502,20 @@ const Admin = () => {
                               </div>
                             )}
 
-                            {/* Transaction Hash (during deployment) */}
-                            {deploymentState[contractId]?.txHash && !savedAddress && (
-                              <div className="ml-8 mt-2">
-                                <a 
-                                  href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/tx/${deploymentState[contractId].txHash}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                                >
-                                  View transaction <ExternalLink className="w-3 h-3" />
-                                </a>
+                            {/* Input for manual address entry */}
+                            {!savedAddress && (
+                              <div className="ml-8 mt-3 flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Enter deployed contract address (0x...)"
+                                  value={addressInputs[contractId] || ''}
+                                  onChange={(e) => setAddressInputs(prev => ({ ...prev, [contractId]: e.target.value }))}
+                                  className="flex-1 text-xs font-mono bg-background/50 border border-primary/30 rounded-lg px-3 py-2 placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary"
+                                />
                               </div>
                             )}
 
-                            {/* Error Message for Failed Deployment */}
+                            {/* Error Message for Failed Save */}
                             {deploymentState[contractId]?.status === 'failed' && deploymentState[contractId]?.error && (
                               <div className="ml-8 mt-2 p-2 bg-destructive/10 border border-destructive/30 rounded-lg">
                                 <p className="text-xs text-destructive flex items-center gap-1">
@@ -501,28 +527,25 @@ const Admin = () => {
                           </div>
                           
                           <div className="flex flex-col gap-2">
-                            {deploymentState[contractId]?.status === 'failed' && !savedAddress ? (
+                            {savedAddress ? (
                               <NeonButton 
-                                onClick={() => handleDeploy(contractId)}
-                                variant="primary"
+                                variant="secondary"
                                 className="text-sm px-4 py-2"
-                                disabled={isDeploying || !deps.met}
+                                disabled
                               >
-                                <RefreshCw className="w-4 h-4 mr-1" /> Retry
+                                <CheckCircle className="w-4 h-4 mr-1" /> Saved
                               </NeonButton>
                             ) : (
                               <NeonButton 
-                                onClick={() => handleDeploy(contractId)}
-                                variant={savedAddress ? 'secondary' : 'primary'}
+                                onClick={() => handleSaveAddress(contractId)}
+                                variant="primary"
                                 className="text-sm px-4 py-2"
-                                disabled={!canDeploy(contractId) && !savedAddress}
+                                disabled={isDeploying || !deps.met || !addressInputs[contractId]}
                               >
                                 {isDeploying && deploymentState[contractId]?.status === 'deploying' ? (
-                                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deploying...</>
-                                ) : savedAddress ? (
-                                  <><CheckCircle className="w-4 h-4 mr-1" /> Deployed</>
+                                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving...</>
                                 ) : (
-                                  'Deploy'
+                                  'Save Address'
                                 )}
                               </NeonButton>
                             )}

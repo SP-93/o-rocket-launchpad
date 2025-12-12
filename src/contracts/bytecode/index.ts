@@ -1,69 +1,50 @@
-// Uniswap V3 Contract Bytecodes - imported from official packages
-import UniswapV3FactoryArtifact from '@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json';
-import SwapRouterArtifact from '@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json';
-import NonfungiblePositionManagerArtifact from '@uniswap/v3-periphery/artifacts/contracts/NonfungiblePositionManager.sol/NonfungiblePositionManager.json';
-import QuoterV2Artifact from '@uniswap/v3-periphery/artifacts/contracts/lens/QuoterV2.sol/QuoterV2.json';
-import NFTDescriptorArtifact from '@uniswap/v3-periphery/artifacts/contracts/libraries/NFTDescriptor.sol/NFTDescriptor.json';
+// Uniswap V3 Contract Configuration
+// 
+// IMPORTANT: For deploying Uniswap V3 contracts on a new chain, use the official CLI tool:
+// npx @uniswap/deploy-v3 --private-key YOUR_KEY --json-rpc https://rpc.overprotocol.com --weth9-address 0x59c914C8ac6F212bb655737CC80d9Abc79A1e273 --native-currency-label OVER --owner-address ADMIN_WALLET
+//
+// After deployment, enter the contract addresses in the Admin panel.
 
-// Export bytecodes
-export const FACTORY_BYTECODE = UniswapV3FactoryArtifact.bytecode;
-export const ROUTER_BYTECODE = SwapRouterArtifact.bytecode;
-export const POSITION_MANAGER_BYTECODE = NonfungiblePositionManagerArtifact.bytecode;
-export const QUOTER_BYTECODE = QuoterV2Artifact.bytecode;
-export const NFT_DESCRIPTOR_BYTECODE = NFTDescriptorArtifact.bytecode;
-
-// Export ABIs for convenience
-export const FACTORY_ABI = UniswapV3FactoryArtifact.abi;
-export const ROUTER_ABI = SwapRouterArtifact.abi;
-export const POSITION_MANAGER_ABI = NonfungiblePositionManagerArtifact.abi;
-export const QUOTER_ABI = QuoterV2Artifact.abi;
-export const NFT_DESCRIPTOR_ABI = NFTDescriptorArtifact.abi;
+export type ContractId = 'factory' | 'router' | 'nftDescriptor' | 'positionManager' | 'quoter';
 
 // Contract deployment order with dependencies
 export const DEPLOYMENT_ORDER = [
   {
-    id: 'factory',
+    id: 'factory' as ContractId,
     name: 'UniswapV3Factory',
-    bytecode: FACTORY_BYTECODE,
-    abi: FACTORY_ABI,
     constructorArgs: [],
     dependencies: [],
+    description: 'Creates and manages liquidity pools',
   },
   {
-    id: 'router',
+    id: 'router' as ContractId,
     name: 'SwapRouter',
-    bytecode: ROUTER_BYTECODE,
-    abi: ROUTER_ABI,
     constructorArgs: ['factory', 'WOVER'],
     dependencies: ['factory'],
+    description: 'Handles token swaps',
   },
   {
-    id: 'nftDescriptor',
+    id: 'nftDescriptor' as ContractId,
     name: 'NFTDescriptor',
-    bytecode: NFT_DESCRIPTOR_BYTECODE,
-    abi: NFT_DESCRIPTOR_ABI,
     constructorArgs: [],
     dependencies: [],
+    description: 'Generates NFT metadata',
   },
   {
-    id: 'positionManager',
+    id: 'positionManager' as ContractId,
     name: 'NonfungiblePositionManager',
-    bytecode: POSITION_MANAGER_BYTECODE,
-    abi: POSITION_MANAGER_ABI,
     constructorArgs: ['factory', 'WOVER', 'nftDescriptor'],
     dependencies: ['factory', 'nftDescriptor'],
+    description: 'Manages LP NFT positions',
   },
   {
-    id: 'quoter',
+    id: 'quoter' as ContractId,
     name: 'QuoterV2',
-    bytecode: QUOTER_BYTECODE,
-    abi: QUOTER_ABI,
     constructorArgs: ['factory', 'WOVER'],
     dependencies: ['factory'],
+    description: 'Provides swap quotes without executing',
   },
 ];
-
-export type ContractId = 'factory' | 'router' | 'nftDescriptor' | 'positionManager' | 'quoter';
 
 // Fallback gas limits for each contract type (used when estimation fails)
 export const FALLBACK_GAS_LIMITS: Record<ContractId, number> = {
@@ -73,3 +54,14 @@ export const FALLBACK_GAS_LIMITS: Record<ContractId, number> = {
   positionManager: 6_500_000,
   quoter: 3_500_000,
 };
+
+// CLI command for deploying Uniswap V3 contracts
+export const getDeployCommand = (privateKey: string, ownerAddress: string) => `
+npx @uniswap/deploy-v3 \\
+  --private-key ${privateKey} \\
+  --json-rpc https://rpc.overprotocol.com \\
+  --weth9-address 0x59c914C8ac6F212bb655737CC80d9Abc79A1e273 \\
+  --native-currency-label OVER \\
+  --owner-address ${ownerAddress} \\
+  --confirmations 2
+`;
