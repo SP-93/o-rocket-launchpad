@@ -23,7 +23,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const { address, isConnected } = useWallet();
   const isAdminWallet = isAdmin(address);
-  const { saveContractAddress, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
+  const { deployContract, saveContractAddress, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
   
   // Manual address input state
   const [addressInputs, setAddressInputs] = useState<Record<string, string>>({});
@@ -533,21 +533,42 @@ const Admin = () => {
                                 className="text-sm px-4 py-2"
                                 disabled
                               >
-                                <CheckCircle className="w-4 h-4 mr-1" /> Saved
+                                <CheckCircle className="w-4 h-4 mr-1" /> Deployed
                               </NeonButton>
                             ) : (
-                              <NeonButton 
-                                onClick={() => handleSaveAddress(contractId)}
-                                variant="primary"
-                                className="text-sm px-4 py-2"
-                                disabled={isDeploying || !deps.met || !addressInputs[contractId]}
-                              >
-                                {isDeploying && deploymentState[contractId]?.status === 'deploying' ? (
-                                  <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving...</>
-                                ) : (
-                                  'Save Address'
+                              <div className="flex flex-col gap-2">
+                                <NeonButton 
+                                  onClick={async () => {
+                                    try {
+                                      toast.info(`Deploying ${step.name}... Sign the transaction in your wallet.`);
+                                      await deployContract(contractId);
+                                      setDeployedContracts(getDeployedContracts());
+                                      toast.success(`${step.name} deployed successfully!`);
+                                    } catch (error: any) {
+                                      toast.error(`Deployment failed: ${error.message}`);
+                                    }
+                                  }}
+                                  variant="primary"
+                                  className="text-sm px-4 py-2"
+                                  disabled={isDeploying || !deps.met}
+                                >
+                                  {isDeploying && deploymentState[contractId]?.status === 'deploying' ? (
+                                    <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Deploying...</>
+                                  ) : (
+                                    <>🚀 Deploy</>
+                                  )}
+                                </NeonButton>
+                                {addressInputs[contractId] && (
+                                  <NeonButton 
+                                    onClick={() => handleSaveAddress(contractId)}
+                                    variant="secondary"
+                                    className="text-xs px-3 py-1"
+                                    disabled={isDeploying}
+                                  >
+                                    Save Manual
+                                  </NeonButton>
                                 )}
-                              </NeonButton>
+                              </div>
                             )}
                           </div>
                         </div>
