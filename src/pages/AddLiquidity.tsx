@@ -12,9 +12,10 @@ import { useLiquidity } from "@/hooks/useLiquidity";
 import { toast } from "sonner";
 
 const AVAILABLE_TOKENS = [
+  { symbol: "OVER", name: "Native OVER", isNative: true },
+  { symbol: "WOVER", name: "Wrapped OVER" },
   { symbol: "USDT", name: "Tether USD" },
   { symbol: "USDC", name: "USD Coin" },
-  { symbol: "WOVER", name: "Wrapped OVER" },
 ];
 
 const FEE_TIERS = [
@@ -183,6 +184,7 @@ const AddLiquidity = () => {
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
+    if (status === "wrapping") return "Wrapping OVER...";
     if (status === "approving") return "Approving Tokens...";
     if (status === "adding") return "Adding Liquidity...";
     if (!amount0 || !amount1) return "Enter Amounts";
@@ -194,7 +196,7 @@ const AddLiquidity = () => {
   const isButtonDisabled = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
-    if (status === "approving" || status === "adding") return true;
+    if (status === "wrapping" || status === "approving" || status === "adding") return true;
     if (!amount0 || !amount1) return true;
     if (parseFloat(amount0) > parseFloat(balance0)) return true;
     if (parseFloat(amount1) > parseFloat(balance1)) return true;
@@ -279,10 +281,20 @@ const AddLiquidity = () => {
                             onClick={() => handleTokenSelect(t.symbol)}
                             className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors"
                           >
-                            <TokenIcon symbol={t.symbol} size="md" />
-                            <div className="text-left">
-                              <p className="font-semibold">{t.symbol}</p>
-                              <p className="text-xs text-muted-foreground">{t.name}</p>
+                            <TokenIcon symbol={t.symbol === "OVER" ? "WOVER" : t.symbol} size="md" />
+                            <div className="text-left flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="font-semibold">{t.symbol}</p>
+                                {t.isNative && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary">
+                                    Native
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                {t.name}
+                                {t.isNative && " (auto-wraps to WOVER)"}
+                              </p>
                             </div>
                           </button>
                         ))}
