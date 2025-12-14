@@ -19,6 +19,15 @@ const ERC20_ABI = [
   'function decimals() external view returns (uint8)',
 ];
 
+// WOVER (Wrapped OVER) ABI - for wrapping native OVER
+const WOVER_ABI = [
+  'function deposit() external payable',
+  'function withdraw(uint256 amount) external',
+  'function balanceOf(address account) external view returns (uint256)',
+  'function approve(address spender, uint256 amount) external returns (bool)',
+  'function allowance(address owner, address spender) external view returns (uint256)',
+];
+
 // Pool ABI for reading price
 const POOL_ABI = [
   'function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
@@ -61,15 +70,21 @@ export interface RemoveLiquidityParams {
   deadline: number;
 }
 
-export type LiquidityStatus = 'idle' | 'approving' | 'adding' | 'removing' | 'collecting' | 'success' | 'error';
+export type LiquidityStatus = 'idle' | 'wrapping' | 'approving' | 'adding' | 'removing' | 'collecting' | 'success' | 'error';
 
 const getTokenAddress = (symbol: string): string => {
   const addresses: Record<string, string> = {
     USDT: TOKEN_ADDRESSES.USDT,
     USDC: TOKEN_ADDRESSES.USDC,
     WOVER: TOKEN_ADDRESSES.WOVER,
+    OVER: TOKEN_ADDRESSES.WOVER, // OVER uses WOVER address (will be wrapped)
   };
   return addresses[symbol] || '';
+};
+
+// Check if token is native OVER (needs wrapping)
+const isNativeToken = (symbol: string): boolean => {
+  return symbol === 'OVER';
 };
 
 const getTokenDecimals = (symbol: string): number => {
@@ -129,6 +144,30 @@ export const useLiquidity = () => {
     }
   }, [address]);
 
+  // Wrap native OVER to WOVER
+  const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
+    if (!address) return false;
+
+    try {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const signer = provider.getSigner();
+      const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
+      
+      const amountWei = ethers.utils.parseUnits(amount, 18);
+      logger.info(`Wrapping ${amount} OVER to WOVER...`);
+      
+      const tx = await wover.deposit({ value: amountWei });
+      await tx.wait();
+      
+      logger.info(`Successfully wrapped ${amount} OVER to WOVER`);
+      return true;
+    } catch (err: any) {
+      logger.error('Wrap OVER error:', err);
+      setError(`Failed to wrap OVER: ${err.reason || err.message}`);
+      return false;
+    }
+  }, [address]);
+
   // Add liquidity (mint new position)
   const addLiquidity = useCallback(async (params: AddLiquidityParams): Promise<string | null> => {
     if (!isConnected || !isCorrectNetwork || !address) {
@@ -150,6 +189,32 @@ export const useLiquidity = () => {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const signer = provider.getSigner();
 
+      // Check if we need to wrap OVER to WOVER
+      const needsWrap0 = isNativeToken(params.token0Symbol);
+      const needsWrap1 = isNativeToken(params.token1Symbol);
+
+      // Step 0: Wrap OVER if needed
+      if (needsWrap0 || needsWrap1) {
+        setStatus('wrapping');
+        
+        if (needsWrap0) {
+          const wrapped = await wrapOver(params.amount0);
+          if (!wrapped) {
+            setStatus('error');
+            return null;
+          }
+        }
+        
+        if (needsWrap1) {
+          const wrapped = await wrapOver(params.amount1);
+          if (!wrapped) {
+            setStatus('error');
+            return null;
+          }
+        }
+      }
+
+      // Use WOVER address for OVER tokens (they've been wrapped now)
       const token0Address = getTokenAddress(params.token0Symbol);
       const token1Address = getTokenAddress(params.token1Symbol);
       
@@ -434,7 +499,7 @@ export const useLiquidity = () => {
     }
   }, [isConnected, address]);
 
-  // Get token balance
+  // Get token balance (supports both ERC20 and native OVER)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
     if (!address) {
       logger.info(`getTokenBalance: No address connected`);
@@ -443,12 +508,21 @@ export const useLiquidity = () => {
 
     try {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      
+      // Handle native OVER balance
+      if (tokenSymbol === 'OVER') {
+        const balance = await provider.getBalance(address);
+        const formatted = ethers.utils.formatUnits(balance, 18);
+        logger.info(`getTokenBalance: OVER (native) balance = ${formatted}`);
+        return formatted;
+      }
+      
       const tokenAddress = getTokenAddress(tokenSymbol);
       
       // Validate token address exists
       if (!tokenAddress) {
         logger.error(`getTokenBalance: Token address not found for symbol: ${tokenSymbol}`);
-        logger.info(`Available tokens: USDT, USDC, WOVER`);
+        logger.info(`Available tokens: USDT, USDC, WOVER, OVER`);
         return '0';
       }
       
