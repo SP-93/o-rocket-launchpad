@@ -57,6 +57,7 @@ const AddLiquidity = () => {
   const [amount1, setAmount1] = useState("");
   const [balance0, setBalance0] = useState("0");
   const [balance1, setBalance1] = useState("0");
+  const [loadingBalances, setLoadingBalances] = useState(false);
 
   // Slippage and deadline
   const [slippage, setSlippage] = useState(0.5);
@@ -77,16 +78,25 @@ const AddLiquidity = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (isConnected && address) {
-        const [b0, b1] = await Promise.all([
-          getTokenBalance(token0),
-          getTokenBalance(token1),
-        ]);
-        setBalance0(parseFloat(b0).toFixed(4));
-        setBalance1(parseFloat(b1).toFixed(4));
-        
-        // Get pool price
-        const price = await getPoolPrice(token0, token1, selectedFee);
-        setCurrentPrice(price);
+        setLoadingBalances(true);
+        try {
+          console.log(`Fetching balances for ${token0} and ${token1}...`);
+          const [b0, b1] = await Promise.all([
+            getTokenBalance(token0),
+            getTokenBalance(token1),
+          ]);
+          console.log(`Balances received: ${token0}=${b0}, ${token1}=${b1}`);
+          setBalance0(parseFloat(b0).toFixed(4));
+          setBalance1(parseFloat(b1).toFixed(4));
+          
+          // Get pool price
+          const price = await getPoolPrice(token0, token1, selectedFee);
+          setCurrentPrice(price);
+        } catch (err) {
+          console.error('Error fetching balances:', err);
+        } finally {
+          setLoadingBalances(false);
+        }
       }
     };
     fetchData();
@@ -416,7 +426,7 @@ const AddLiquidity = () => {
                         onClick={() => setAmount0(balance0)}
                         className="text-sm text-muted-foreground hover:text-primary"
                       >
-                        Balance: {balance0} <span className="text-primary">MAX</span>
+                        Balance: {loadingBalances ? '...' : balance0} <span className="text-primary">MAX</span>
                       </button>
                     </div>
                     <div className="flex items-center gap-4">
@@ -446,7 +456,7 @@ const AddLiquidity = () => {
                         onClick={() => setAmount1(balance1)}
                         className="text-sm text-muted-foreground hover:text-primary"
                       >
-                        Balance: {balance1} <span className="text-primary">MAX</span>
+                        Balance: {loadingBalances ? '...' : balance1} <span className="text-primary">MAX</span>
                       </button>
                     </div>
                     <div className="flex items-center gap-4">
