@@ -436,17 +436,32 @@ export const useLiquidity = () => {
 
   // Get token balance
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
-    if (!address) return '0';
+    if (!address) {
+      logger.info(`getTokenBalance: No address connected`);
+      return '0';
+    }
 
     try {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const tokenAddress = getTokenAddress(tokenSymbol);
-      const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       
+      // Validate token address exists
+      if (!tokenAddress) {
+        logger.error(`getTokenBalance: Token address not found for symbol: ${tokenSymbol}`);
+        logger.info(`Available tokens: USDT, USDC, WOVER`);
+        return '0';
+      }
+      
+      logger.info(`getTokenBalance: Fetching ${tokenSymbol} balance at ${tokenAddress} for ${address}`);
+      
+      const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       const balance = await token.balanceOf(address);
-      return ethers.utils.formatUnits(balance, 18);
-    } catch (err) {
-      logger.error('Balance error:', err);
+      const formatted = ethers.utils.formatUnits(balance, 18);
+      
+      logger.info(`getTokenBalance: ${tokenSymbol} balance = ${formatted}`);
+      return formatted;
+    } catch (err: any) {
+      logger.error(`getTokenBalance error for ${tokenSymbol}:`, err?.message || err);
       return '0';
     }
   }, [address]);
