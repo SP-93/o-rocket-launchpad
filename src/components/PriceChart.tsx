@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
   AreaChart, 
   Area, 
@@ -93,13 +93,19 @@ const CustomTooltip = ({ active, payload, label, token0, token1 }: any) => {
 
 export const PriceChart = ({ token0, token1, className = '' }: PriceChartProps) => {
   const [timeframe, setTimeframe] = useState('24h');
+  const [refreshKey, setRefreshKey] = useState(0);
+  
+  // Force regenerate data on mount and when pair changes
+  useEffect(() => {
+    setRefreshKey(prev => prev + 1);
+  }, [token0, token1]);
   
   const config = useMemo(() => getPairConfig(token0, token1), [token0, token1]);
   
   const data = useMemo(() => {
     const tf = timeframes.find(t => t.value === timeframe);
     return generatePriceData(config.basePrice, config.volatility, tf?.points || 24, config.trend);
-  }, [timeframe, config]);
+  }, [timeframe, config, refreshKey]);
   
   const currentPrice = data[data.length - 1]?.price || 0;
   const startPrice = data[0]?.price || 0;

@@ -69,7 +69,7 @@ export const useSwap = () => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Get quote for swap
+  // Get quote for swap with pool existence validation
   const getQuote = useCallback(async (
     tokenInSymbol: string,
     tokenOutSymbol: string,
@@ -130,7 +130,17 @@ export const useSwap = () => {
       return swapQuote;
     } catch (err: any) {
       logger.error('Quote error:', err);
-      setError('Failed to get quote. Pool may not have enough liquidity.');
+      
+      // Parse error to provide better message
+      const errorMessage = err.message || err.reason || '';
+      
+      // Check for pool not existing or no liquidity
+      if (errorMessage.includes('SPL') || errorMessage.includes('pool') || 
+          errorMessage.includes('liquidity') || errorMessage.includes('0x')) {
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} doesn't exist or has no liquidity. Try a different pair (e.g., WOVER/USDT).`);
+      } else {
+        setError('Failed to get quote. Pool may not exist for this pair.');
+      }
       setStatus('error');
       return null;
     }
