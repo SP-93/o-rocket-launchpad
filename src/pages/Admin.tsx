@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useContractDeployment } from '@/hooks/useContractDeployment';
 import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
+import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, NETWORK_CONFIG } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
 import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools } from '@/contracts/storage';
@@ -14,7 +15,7 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
   Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
-  Calculator, Edit3, DollarSign
+  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -28,6 +29,7 @@ const Admin = () => {
   // Manual address input state
   const [addressInputs, setAddressInputs] = useState<Record<string, string>>({});
   const { createPool, creationStatus, isCreating } = usePoolCreation();
+  const { price: cexPrice, change24h: cexChange, loading: cexLoading, refetch: refetchCexPrice } = useCoinGeckoPrice();
 
   const [deployedContracts, setDeployedContracts] = useState<DeployedContracts>(getDeployedContracts());
   const [deployedPools, setDeployedPools] = useState(getDeployedPools());
@@ -637,19 +639,47 @@ const Admin = () => {
                   </div>
                 )}
 
-                {/* Price Reference Info */}
+                {/* Live CEX Price Reference */}
                 <div className="bg-primary/5 border border-primary/20 rounded-xl p-4 mb-6">
                   <h4 className="font-medium text-sm mb-2 flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-primary" />
-                    Price Reference
+                    Live CEX Price Reference
                   </h4>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Reference prices from OverSwap.fi / Izumi Finance. You can use suggested prices or enter custom values.
-                  </p>
-                  <div className="flex flex-wrap gap-3 text-xs">
-                    <span className="bg-background/50 px-2 py-1 rounded">WOVER ≈ $0.0081 USDT</span>
-                    <span className="bg-background/50 px-2 py-1 rounded">USDT ≈ $1.00 USDC</span>
+                  <div className="flex flex-wrap items-center gap-4 mb-3">
+                    <div className="flex items-center gap-2 bg-background/50 px-3 py-2 rounded-lg">
+                      <span className="text-sm font-medium">OVER:</span>
+                      {cexLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <>
+                          <span className="text-lg font-bold gradient-text">${cexPrice.toFixed(5)}</span>
+                          <span className={`text-xs flex items-center gap-0.5 ${cexChange >= 0 ? 'text-success' : 'text-destructive'}`}>
+                            {cexChange >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                            {cexChange >= 0 ? '+' : ''}{cexChange.toFixed(2)}%
+                          </span>
+                        </>
+                      )}
+                    </div>
+                    <NeonButton 
+                      variant="secondary" 
+                      className="text-xs px-3 py-1.5"
+                      onClick={() => refetchCexPrice()}
+                      disabled={cexLoading}
+                    >
+                      <RefreshCw className={`w-3 h-3 mr-1 ${cexLoading ? 'animate-spin' : ''}`} /> Refresh
+                    </NeonButton>
+                    <a 
+                      href="https://www.coingecko.com/en/coins/overprotocol" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      CoinGecko <ExternalLink className="w-3 h-3" />
+                    </a>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use "Fetch CEX Price" button below to auto-populate pool prices with live market data.
+                  </p>
                 </div>
 
                 <div className="space-y-6">
@@ -719,6 +749,25 @@ const Admin = () => {
                                     <p className="text-xs text-destructive mt-1">{validatePrice(currentPrice).error}</p>
                                   )}
                                 </div>
+                                {/* Fetch CEX Price Button */}
+                                {poolName.startsWith('WOVER/') && (
+                                  <NeonButton
+                                    variant="secondary"
+                                    className="text-xs px-3 py-2"
+                                    onClick={() => {
+                                      if (cexPrice > 0) {
+                                        setPoolPrices(prev => ({ ...prev, [poolName]: cexPrice.toFixed(6) }));
+                                        setUseCustomPrice(prev => ({ ...prev, [poolName]: true }));
+                                        toast.success(`Set ${poolName} price to $${cexPrice.toFixed(6)} from CoinGecko`);
+                                      } else {
+                                        toast.error('CEX price not available. Try refreshing.');
+                                      }
+                                    }}
+                                    disabled={cexLoading || cexPrice <= 0}
+                                  >
+                                    <TrendingUp className="w-3 h-3 mr-1" /> Fetch CEX Price
+                                  </NeonButton>
+                                )}
                               </div>
 
                               {/* sqrtPriceX96 Preview */}

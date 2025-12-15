@@ -51,13 +51,14 @@ const generatePriceData = (basePrice: number, volatility: number, points: number
 const getPairConfig = (token0: string, token1: string) => {
   const pair = `${token0}/${token1}`;
   
+  // OVER price ~$0.005 based on CoinGecko data
   const configs: Record<string, { basePrice: number; volatility: number; trend: number }> = {
     'USDT/USDC': { basePrice: 1.0001, volatility: 0.0002, trend: 0.1 },
     'USDC/USDT': { basePrice: 0.9999, volatility: 0.0002, trend: -0.1 },
-    'WOVER/USDC': { basePrice: 0.85, volatility: 0.03, trend: 2.5 },
-    'WOVER/USDT': { basePrice: 0.85, volatility: 0.03, trend: 2.5 },
-    'USDC/WOVER': { basePrice: 1.18, volatility: 0.03, trend: -2.5 },
-    'USDT/WOVER': { basePrice: 1.18, volatility: 0.03, trend: -2.5 },
+    'WOVER/USDC': { basePrice: 0.005, volatility: 0.05, trend: -4.5 },
+    'WOVER/USDT': { basePrice: 0.005, volatility: 0.05, trend: -4.5 },
+    'USDC/WOVER': { basePrice: 200, volatility: 0.05, trend: 4.5 },
+    'USDT/WOVER': { basePrice: 200, volatility: 0.05, trend: 4.5 },
   };
   
   return configs[pair] || { basePrice: 1, volatility: 0.02, trend: 0 };
