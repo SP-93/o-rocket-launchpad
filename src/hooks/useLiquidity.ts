@@ -234,9 +234,16 @@ export const useLiquidity = () => {
       const [sortedAmount0, sortedAmount1] = sortedToken0 === token0Address 
         ? [params.amount0, params.amount1]
         : [params.amount1, params.amount0];
+      const [sortedSymbol0, sortedSymbol1] = sortedToken0 === token0Address
+        ? [params.token0Symbol, params.token1Symbol]
+        : [params.token1Symbol, params.token0Symbol];
 
-      const decimals0 = getTokenDecimals(params.token0Symbol);
-      const decimals1 = getTokenDecimals(params.token1Symbol);
+      // Dynamically fetch decimals from contracts
+      const decimals0 = await getTokenDecimalsFromContract(sortedToken0, provider);
+      const decimals1 = await getTokenDecimalsFromContract(sortedToken1, provider);
+      
+      logger.info(`AddLiquidity: ${sortedSymbol0} (${decimals0} decimals) amount=${sortedAmount0}`);
+      logger.info(`AddLiquidity: ${sortedSymbol1} (${decimals1} decimals) amount=${sortedAmount1}`);
 
       // Step 1: Approve token0
       setStatus('approving');
@@ -275,9 +282,14 @@ export const useLiquidity = () => {
       const amount0Wei = ethers.utils.parseUnits(sortedAmount0, decimals0);
       const amount1Wei = ethers.utils.parseUnits(sortedAmount1, decimals1);
       
-      // Calculate minimum amounts with slippage
-      const amount0Min = amount0Wei.mul(100 - Math.floor(params.slippageTolerance * 100)).div(10000);
-      const amount1Min = amount1Wei.mul(100 - Math.floor(params.slippageTolerance * 100)).div(10000);
+      logger.info(`AddLiquidity: amount0Wei=${amount0Wei.toString()}, amount1Wei=${amount1Wei.toString()}`);
+      
+      // Calculate minimum amounts with slippage (e.g., 0.5% slippage = 99.5% of original)
+      const slippageBps = Math.floor(params.slippageTolerance * 100); // 0.5% = 50 bps
+      const amount0Min = amount0Wei.mul(10000 - slippageBps).div(10000);
+      const amount1Min = amount1Wei.mul(10000 - slippageBps).div(10000);
+      
+      logger.info(`AddLiquidity: slippage=${params.slippageTolerance}%, amount0Min=${amount0Min.toString()}, amount1Min=${amount1Min.toString()}`);
 
       const deadline = Math.floor(Date.now() / 1000) + params.deadline * 60;
 
