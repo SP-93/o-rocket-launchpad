@@ -206,6 +206,7 @@ const AddLiquidity = () => {
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
+    if (currentPrice === null) return "Pool Doesn't Exist";
     if (status === "wrapping") return "Wrapping OVER...";
     if (status === "approving") return "Approving Tokens...";
     if (status === "adding") return "Adding Liquidity...";
@@ -218,6 +219,7 @@ const AddLiquidity = () => {
   const isButtonDisabled = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
+    if (currentPrice === null) return true; // Pool doesn't exist
     if (status === "wrapping" || status === "approving" || status === "adding") return true;
     if (!amount0 || !amount1) return true;
     if (parseFloat(amount0) > parseFloat(balance0)) return true;
@@ -365,8 +367,24 @@ const AddLiquidity = () => {
                   </div>
                 </div>
 
-                <Button className="w-full btn-primary" onClick={() => setStep(2)}>
-                  Continue
+                {/* Pool existence warning on Step 1 */}
+                {currentPrice === null && (
+                  <Card className="glass-card p-4 mb-4 border-yellow-500/30 bg-yellow-500/10">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                      <p className="text-sm text-yellow-500">
+                        Pool doesn't exist for {token0}/{token1} with {selectedFeeLabel} fee. Contact admin to create it first.
+                      </p>
+                    </div>
+                  </Card>
+                )}
+
+                <Button 
+                  className="w-full btn-primary" 
+                  onClick={() => setStep(2)}
+                  disabled={currentPrice === null}
+                >
+                  {currentPrice === null ? "Pool Doesn't Exist" : "Continue"}
                 </Button>
               </div>
             )}
@@ -533,8 +551,12 @@ const AddLiquidity = () => {
                   <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>
                     Back
                   </Button>
-                  <Button className="flex-1 btn-primary" onClick={() => setStep(4)}>
-                    Continue
+                  <Button 
+                    className="flex-1 btn-primary" 
+                    onClick={() => setStep(4)}
+                    disabled={currentPrice === null}
+                  >
+                    {currentPrice === null ? "Pool Doesn't Exist" : "Continue"}
                   </Button>
                 </div>
               </div>
