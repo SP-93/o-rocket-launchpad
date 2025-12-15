@@ -3,6 +3,7 @@ import { ArrowDownUp, Settings, Info, ChevronDown, Check, Loader2, AlertTriangle
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import { TokenIcon } from "@/components/TokenIcon";
 import { ConnectWalletModal } from "@/components/ConnectWalletModal";
@@ -465,6 +466,18 @@ const Swap = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* High Price Impact Warning */}
+                {quote && quote.priceImpact > 10 && (
+                  <Alert variant="destructive" className="mb-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Warning:</strong> Price impact is {quote.priceImpact.toFixed(2)}%! 
+                      This means the pool has very low liquidity. Consider using a smaller amount 
+                      or adding liquidity first.
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 {/* Info Section */}
                 {quote && fromAmount && (

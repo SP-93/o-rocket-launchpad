@@ -87,15 +87,53 @@ export const useSwap = () => {
       return null;
     }
 
+    if (!contracts.factory) {
+      setError('Factory contract not deployed');
+      return null;
+    }
+
     setStatus('quoting');
     setError(null);
 
     try {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-      const quoter = new ethers.Contract(contracts.quoter, QuoterV2ABI.abi, provider);
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
+      
+      // Check if pool exists first
+      const factoryAbi = ['function getPool(address, address, uint24) view returns (address)'];
+      const factory = new ethers.Contract(contracts.factory, factoryAbi, provider);
+      const poolAddress = await factory.getPool(tokenIn, tokenOut, fee);
+      
+      if (poolAddress === ethers.constants.AddressZero) {
+        // Build list of available pools
+        const availablePools: string[] = [];
+        const tokenPairs = [
+          ['WOVER', 'USDT'],
+          ['WOVER', 'USDC'],
+          ['USDT', 'USDC'],
+        ];
+        
+        for (const [t0, t1] of tokenPairs) {
+          const addr0 = getTokenAddress(t0);
+          const addr1 = getTokenAddress(t1);
+          const pool = await factory.getPool(addr0, addr1, fee);
+          if (pool !== ethers.constants.AddressZero) {
+            availablePools.push(`${t0}/${t1}`);
+          }
+        }
+        
+        const availableMsg = availablePools.length > 0 
+          ? `Available pools: ${availablePools.join(', ')}`
+          : 'No pools available yet';
+          
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} doesn't exist. ${availableMsg}`);
+        setStatus('idle');
+        return null;
+      }
+
+      const quoter = new ethers.Contract(contracts.quoter, QuoterV2ABI.abi, provider);
       
       // Get decimals dynamically
       const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
@@ -137,11 +175,11 @@ export const useSwap = () => {
       // Check for pool not existing or no liquidity
       if (errorMessage.includes('SPL') || errorMessage.includes('pool') || 
           errorMessage.includes('liquidity') || errorMessage.includes('0x')) {
-        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} doesn't exist or has no liquidity. Try a different pair (e.g., WOVER/USDT).`);
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has no liquidity. Try WOVER/USDT if available.`);
       } else {
-        setError('Failed to get quote. Pool may not exist for this pair.');
+        setError('Failed to get quote. Pool may not exist or have no liquidity.');
       }
-      setStatus('error');
+      setStatus('idle');
       return null;
     }
   }, []);
@@ -181,7 +219,7 @@ export const useSwap = () => {
     }
   }, [address]);
 
-  // Wrap OVER to WOVER
+  // Wrap OVER to WOVER with gas estimation and fallback
   const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
     if (!address) return false;
 
@@ -197,13 +235,40 @@ export const useSwap = () => {
       const amountWei = ethers.utils.parseUnits(amount, 18);
       logger.info(`Wrapping ${amount} OVER to WOVER...`);
       
-      const tx = await wover.deposit({ value: amountWei });
-      setTxHash(tx.hash);
-      await tx.wait();
+      // Try to estimate gas first
+      let gasLimit;
+      try {
+        const gasEstimate = await wover.estimateGas.deposit({ value: amountWei });
+        gasLimit = gasEstimate.mul(150).div(100); // +50% buffer for safety
+        logger.info(`Gas estimate for wrap: ${gasEstimate.toString()}, using: ${gasLimit.toString()}`);
+      } catch (gasErr) {
+        logger.warn('Gas estimation failed, using default:', gasErr);
+        gasLimit = ethers.BigNumber.from(100000); // Fallback gas limit
+      }
       
-      logger.info(`Successfully wrapped ${amount} OVER to WOVER`);
-      setStatus('success');
-      return true;
+      // Try deposit() method first
+      try {
+        const tx = await wover.deposit({ value: amountWei, gasLimit });
+        setTxHash(tx.hash);
+        await tx.wait();
+        logger.info(`Successfully wrapped ${amount} OVER to WOVER via deposit()`);
+        setStatus('success');
+        return true;
+      } catch (depositErr: any) {
+        logger.warn('deposit() failed, trying direct transfer:', depositErr);
+        
+        // Fallback: Send OVER directly to WOVER contract (triggers receive/fallback)
+        const tx = await signer.sendTransaction({
+          to: TOKEN_ADDRESSES.WOVER,
+          value: amountWei,
+          gasLimit: ethers.BigNumber.from(100000),
+        });
+        setTxHash(tx.hash);
+        await tx.wait();
+        logger.info(`Successfully wrapped ${amount} OVER to WOVER via direct transfer`);
+        setStatus('success');
+        return true;
+      }
     } catch (err: any) {
       logger.error('Wrap OVER error:', err);
       setError(`Failed to wrap OVER: ${err.reason || err.message}`);
