@@ -270,8 +270,20 @@ export const useLiquidity = () => {
         return null;
       }
 
-      // Step 3: Mint position
+      // Step 3: Verify pool exists before minting
       setStatus('adding');
+      
+      // Check if pool exists
+      const factory = new ethers.Contract(contracts.factory!, UniswapV3FactoryABI.abi, provider);
+      const poolAddress = await factory.getPool(sortedToken0, sortedToken1, params.fee);
+      
+      if (poolAddress === ethers.constants.AddressZero) {
+        setError(`Pool does not exist for ${params.token0Symbol}/${params.token1Symbol} with fee ${params.fee / 10000}%. Admin must create the pool first.`);
+        setStatus('error');
+        return null;
+      }
+      
+      logger.info(`AddLiquidity: Pool found at ${poolAddress}`);
       
       const positionManager = new ethers.Contract(
         contracts.positionManager, 
@@ -566,7 +578,7 @@ export const useLiquidity = () => {
     }
   }, [address]);
 
-  // Get current pool price
+  // Get current pool price (adjusted for token decimals)
   const getPoolPrice = useCallback(async (
     token0Symbol: string,
     token1Symbol: string,
@@ -579,13 +591,14 @@ export const useLiquidity = () => {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
       const factory = new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider);
 
-      const token0Address = getTokenAddress(token0Symbol);
-      const token1Address = getTokenAddress(token1Symbol);
+      const token0Address = getTokenAddress(token0Symbol === 'OVER' ? 'WOVER' : token0Symbol);
+      const token1Address = getTokenAddress(token1Symbol === 'OVER' ? 'WOVER' : token1Symbol);
       const [sortedToken0, sortedToken1] = sortTokens(token0Address, token1Address);
 
       const poolAddress = await factory.getPool(sortedToken0, sortedToken1, fee);
       
       if (poolAddress === ethers.constants.AddressZero) {
+        logger.info(`Pool does not exist for ${token0Symbol}/${token1Symbol} with fee ${fee}`);
         return null;
       }
 
@@ -593,10 +606,26 @@ export const useLiquidity = () => {
       const slot0 = await pool.slot0();
       
       const sqrtPriceX96 = slot0.sqrtPriceX96;
-      const price = (Number(sqrtPriceX96) / (2 ** 96)) ** 2;
+      
+      // Fetch decimals for both tokens
+      const decimals0 = await getTokenDecimalsFromContract(sortedToken0, provider);
+      const decimals1 = await getTokenDecimalsFromContract(sortedToken1, provider);
+      
+      // Calculate raw price from sqrtPriceX96
+      const rawPrice = (Number(sqrtPriceX96) / (2 ** 96)) ** 2;
+      
+      // Adjust for decimal difference between tokens
+      // rawPrice = token1/token0 in raw units, need to adjust for decimals
+      const decimalAdjustment = Math.pow(10, decimals0 - decimals1);
+      const adjustedPrice = rawPrice * decimalAdjustment;
+      
+      logger.info(`Pool price: raw=${rawPrice}, decimals0=${decimals0}, decimals1=${decimals1}, adjusted=${adjustedPrice}`);
 
-      // Adjust if tokens were swapped
-      return sortedToken0 === token0Address ? price : 1 / price;
+      // Adjust if input token order was swapped during sorting
+      const finalPrice = sortedToken0 === token0Address ? adjustedPrice : 1 / adjustedPrice;
+      logger.info(`Final price for ${token0Symbol}/${token1Symbol}: ${finalPrice}`);
+      
+      return finalPrice;
     } catch (err) {
       logger.error('Pool price error:', err);
       return null;
