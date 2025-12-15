@@ -7,6 +7,7 @@ import logger from '@/lib/logger';
 export interface DeployedContracts {
   factory: string | null;
   router: string | null;
+  nftDescriptorLibrary: string | null;
   nftDescriptor: string | null;
   positionManager: string | null;
   quoter: string | null;
@@ -34,6 +35,7 @@ const STORAGE_KEYS = {
 const DEFAULT_CONTRACTS: DeployedContracts = {
   factory: null,
   router: null,
+  nftDescriptorLibrary: null,
   nftDescriptor: null,
   positionManager: null,
   quoter: null,

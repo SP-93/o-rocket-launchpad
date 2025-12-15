@@ -17,9 +17,11 @@ import {
   POSITION_MANAGER_ABI,
   QUOTER_ABI,
   NFT_DESCRIPTOR_ABI,
+  NFT_DESCRIPTOR_LIBRARY_ABI,
   getBytecode,
   CONTRACT_CONFIGS,
   stringToBytes32,
+  linkNftDescriptorLibrary,
 } from '@/contracts/artifacts';
 
 // WOVER address on OverProtocol
@@ -74,6 +76,9 @@ export const useContractDeployment = () => {
     switch (contractId) {
       case 'factory':
         return [];
+      case 'nftDescriptorLibrary':
+        // Library has no constructor args
+        return [];
       case 'nftDescriptor':
         // NonfungibleTokenPositionDescriptor(address _WETH9, bytes32 _nativeCurrencyLabelBytes)
         return [WOVER_ADDRESS, stringToBytes32('OVER')];
@@ -98,6 +103,7 @@ export const useContractDeployment = () => {
       case 'router': return ROUTER_ABI;
       case 'positionManager': return POSITION_MANAGER_ABI;
       case 'quoter': return QUOTER_ABI;
+      case 'nftDescriptorLibrary': return NFT_DESCRIPTOR_LIBRARY_ABI;
       case 'nftDescriptor': return NFT_DESCRIPTOR_ABI;
       default: throw new Error(`Unknown contract: ${contractId}`);
     }
@@ -130,7 +136,18 @@ export const useContractDeployment = () => {
       const signer = provider.getSigner();
       
       // Get bytecode and ABI
-      const bytecode = await getBytecode(contractId);
+      let bytecode = await getBytecode(contractId);
+      
+      // Special handling for nftDescriptor - link the library address
+      if (contractId === 'nftDescriptor') {
+        const deployedContracts = getDeployedContracts();
+        if (!deployedContracts.nftDescriptorLibrary) {
+          throw new Error('NFTDescriptor Library must be deployed first');
+        }
+        bytecode = linkNftDescriptorLibrary(bytecode, deployedContracts.nftDescriptorLibrary);
+        logger.log('Linked NFTDescriptor library at:', deployedContracts.nftDescriptorLibrary);
+      }
+      
       const abi = getABI(contractId);
       const constructorArgs = getConstructorArgs(contractId);
       

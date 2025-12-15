@@ -12,7 +12,16 @@ export const DEPLOYMENT_STEPS = [
     dependencies: [],
     constructorArgs: [],
     estimatedGas: '5000000',
-    estimatedGasOVER: '0.005', // ~0.005 OVER at 1 gwei
+    estimatedGasOVER: '0.005',
+  },
+  {
+    id: 'nftDescriptorLibrary',
+    name: 'NFTDescriptor Library',
+    description: 'Library for generating NFT SVG images (deploy first!)',
+    dependencies: [],
+    constructorArgs: [],
+    estimatedGas: '2500000',
+    estimatedGasOVER: '0.0025',
   },
   {
     id: 'router',
@@ -24,13 +33,22 @@ export const DEPLOYMENT_STEPS = [
     estimatedGasOVER: '0.0045',
   },
   {
+    id: 'quoter',
+    name: 'QuoterV2',
+    description: 'Contract for getting swap quotes',
+    dependencies: ['factory'],
+    constructorArgs: ['factory', 'WETH9'],
+    estimatedGas: '3500000',
+    estimatedGasOVER: '0.0035',
+  },
+  {
     id: 'nftDescriptor',
-    name: 'NFTDescriptor',
-    description: 'Library for generating NFT token URIs',
-    dependencies: [],
-    constructorArgs: [],
-    estimatedGas: '3000000',
-    estimatedGasOVER: '0.003',
+    name: 'NonfungibleTokenPositionDescriptor',
+    description: 'Generates NFT metadata (uses linked library)',
+    dependencies: ['nftDescriptorLibrary'],
+    constructorArgs: ['WETH9', 'nativeCurrencyLabel'],
+    estimatedGas: '3500000',
+    estimatedGasOVER: '0.0035',
   },
   {
     id: 'positionManager',
@@ -40,15 +58,6 @@ export const DEPLOYMENT_STEPS = [
     constructorArgs: ['factory', 'WETH9', 'nftDescriptor'],
     estimatedGas: '6000000',
     estimatedGasOVER: '0.006',
-  },
-  {
-    id: 'quoter',
-    name: 'QuoterV2',
-    description: 'Contract for getting swap quotes',
-    dependencies: ['factory'],
-    constructorArgs: ['factory', 'WETH9'],
-    estimatedGas: '3500000',
-    estimatedGasOVER: '0.0035',
   },
 ];
 

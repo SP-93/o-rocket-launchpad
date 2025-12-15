@@ -5,7 +5,7 @@
 //
 // After deployment, enter the contract addresses in the Admin panel.
 
-export type ContractId = 'factory' | 'router' | 'nftDescriptor' | 'positionManager' | 'quoter';
+export type ContractId = 'factory' | 'router' | 'nftDescriptorLibrary' | 'nftDescriptor' | 'positionManager' | 'quoter';
 
 // Contract deployment order with dependencies
 export const DEPLOYMENT_ORDER = [
@@ -17,25 +17,18 @@ export const DEPLOYMENT_ORDER = [
     description: 'Creates and manages liquidity pools',
   },
   {
+    id: 'nftDescriptorLibrary' as ContractId,
+    name: 'NFTDescriptor Library',
+    constructorArgs: [],
+    dependencies: [],
+    description: 'Library for generating NFT SVG images (deploy first!)',
+  },
+  {
     id: 'router' as ContractId,
     name: 'SwapRouter',
     constructorArgs: ['factory', 'WOVER'],
     dependencies: ['factory'],
     description: 'Handles token swaps',
-  },
-  {
-    id: 'nftDescriptor' as ContractId,
-    name: 'NFTDescriptor',
-    constructorArgs: [],
-    dependencies: [],
-    description: 'Generates NFT metadata',
-  },
-  {
-    id: 'positionManager' as ContractId,
-    name: 'NonfungiblePositionManager',
-    constructorArgs: ['factory', 'WOVER', 'nftDescriptor'],
-    dependencies: ['factory', 'nftDescriptor'],
-    description: 'Manages LP NFT positions',
   },
   {
     id: 'quoter' as ContractId,
@@ -44,13 +37,28 @@ export const DEPLOYMENT_ORDER = [
     dependencies: ['factory'],
     description: 'Provides swap quotes without executing',
   },
+  {
+    id: 'nftDescriptor' as ContractId,
+    name: 'NonfungibleTokenPositionDescriptor',
+    constructorArgs: ['WOVER', 'OVER'],
+    dependencies: ['nftDescriptorLibrary'],
+    description: 'Generates NFT metadata for positions (uses linked library)',
+  },
+  {
+    id: 'positionManager' as ContractId,
+    name: 'NonfungiblePositionManager',
+    constructorArgs: ['factory', 'WOVER', 'nftDescriptor'],
+    dependencies: ['factory', 'nftDescriptor'],
+    description: 'Manages LP NFT positions',
+  },
 ];
 
 // Fallback gas limits for each contract type (used when estimation fails)
 export const FALLBACK_GAS_LIMITS: Record<ContractId, number> = {
   factory: 5_000_000,
   router: 4_500_000,
-  nftDescriptor: 1_500_000,
+  nftDescriptorLibrary: 2_500_000,
+  nftDescriptor: 3_500_000,
   positionManager: 6_500_000,
   quoter: 3_500_000,
 };
