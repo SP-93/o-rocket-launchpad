@@ -1,9 +1,24 @@
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import PriceChart from "@/components/PriceChart";
-import { TrendingUp, DollarSign, Users, Layers, Activity, BarChart3 } from "lucide-react";
+import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
+import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { TokenIcon } from "@/components/TokenIcon";
+import NeonButton from "@/components/ui/NeonButton";
+
+// Exchanges where OVER is traded
+const EXCHANGES = [
+  { name: 'Bybit', url: 'https://www.bybit.com/trade/spot/OVER/USDT', logo: '🔶' },
+  { name: 'MEXC', url: 'https://www.mexc.com/exchange/OVER_USDT', logo: '🟦' },
+  { name: 'Gate.io', url: 'https://www.gate.io/trade/OVER_USDT', logo: '🔷' },
+  { name: 'Bitget', url: 'https://www.bitget.com/spot/OVERUSDT', logo: '🟩' },
+  { name: 'KuCoin', url: 'https://www.kucoin.com/trade/OVER-USDT', logo: '🟢' },
+];
 
 const Info = () => {
+  const { price, change24h, marketCap, volume24h, high24h, low24h, loading, error, refetch, lastUpdated } = useCoinGeckoPrice();
+  const isPositive = change24h >= 0;
+
   const protocolStats = [
     { icon: DollarSign, label: "Total TVL", placeholder: "--" },
     { icon: TrendingUp, label: "24h Volume", placeholder: "--" },
@@ -42,6 +57,13 @@ const Info = () => {
     },
   ];
 
+  const formatNumber = (num: number) => {
+    if (num >= 1e9) return `$${(num / 1e9).toFixed(2)}B`;
+    if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
+    if (num >= 1e3) return `$${(num / 1e3).toFixed(2)}K`;
+    return `$${num.toFixed(2)}`;
+  };
+
   return (
     <SpaceBackground>
       <div className="min-h-screen pt-24 md:pt-32 pb-20 px-4">
@@ -54,11 +76,125 @@ const Info = () => {
             </p>
           </div>
 
+          {/* Live Market Data Section */}
+          <div className="mb-12 md:mb-16">
+            <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-center">Live Market Data</h2>
+            <div className="max-w-4xl mx-auto">
+              <GlowCard className="p-6" glowColor="cyan">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <TokenIcon symbol="WOVER" size="lg" />
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground">OVER Token</h3>
+                      <p className="text-sm text-muted-foreground">OverProtocol Native Token</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <NeonButton variant="secondary" className="text-xs px-3 py-1.5" onClick={refetch} disabled={loading}>
+                      <RefreshCw className={`w-3 h-3 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+                    </NeonButton>
+                    <a 
+                      href="https://www.coingecko.com/en/coins/overprotocol" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      CoinGecko <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <a 
+                      href="https://coinmarketcap.com/currencies/overprotocol/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      CMC <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">Failed to load price data</p>
+                    <NeonButton variant="secondary" className="mt-3" onClick={refetch}>
+                      Try Again
+                    </NeonButton>
+                  </div>
+                ) : (
+                  <>
+                    {/* Price and Change */}
+                    <div className="flex flex-col md:flex-row md:items-end gap-4 mb-6">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Current Price</p>
+                        <p className="text-4xl md:text-5xl font-bold gradient-text">${price.toFixed(5)}</p>
+                      </div>
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+                        isPositive ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+                      }`}>
+                        {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                        {isPositive ? '+' : ''}{change24h.toFixed(2)}% (24h)
+                      </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                      <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">Market Cap</p>
+                        <p className="text-lg font-bold text-foreground">{formatNumber(marketCap)}</p>
+                      </div>
+                      <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">24h Volume</p>
+                        <p className="text-lg font-bold text-foreground">{formatNumber(volume24h)}</p>
+                      </div>
+                      <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">24h High</p>
+                        <p className="text-lg font-bold text-success">${high24h.toFixed(5)}</p>
+                      </div>
+                      <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+                        <p className="text-xs text-muted-foreground mb-1">24h Low</p>
+                        <p className="text-lg font-bold text-destructive">${low24h.toFixed(5)}</p>
+                      </div>
+                    </div>
+
+                    {/* Exchanges */}
+                    <div>
+                      <p className="text-sm font-medium text-foreground mb-3">Trade OVER on:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {EXCHANGES.map((exchange) => (
+                          <a
+                            key={exchange.name}
+                            href={exchange.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-lg px-3 py-2 transition-all"
+                          >
+                            <span>{exchange.logo}</span>
+                            <span className="text-sm font-medium">{exchange.name}</span>
+                            <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+
+                    {lastUpdated && (
+                      <p className="text-xs text-muted-foreground mt-4 text-right">
+                        Last updated: {new Date(lastUpdated).toLocaleTimeString()}
+                      </p>
+                    )}
+                  </>
+                )}
+              </GlowCard>
+            </div>
+          </div>
+
           {/* Data Notice */}
           <div className="max-w-2xl mx-auto mb-8">
             <div className="bg-primary/10 border border-primary/30 rounded-xl p-4 text-center">
               <p className="text-sm text-muted-foreground">
-                📊 Real data will be available after contract deployment on OverProtocol Mainnet
+                📊 Protocol-specific data will be available after pools receive trading activity
               </p>
             </div>
           </div>
