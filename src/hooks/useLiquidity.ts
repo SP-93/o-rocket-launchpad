@@ -231,12 +231,20 @@ export const useLiquidity = () => {
       
       // Sort tokens
       const [sortedToken0, sortedToken1] = sortTokens(token0Address, token1Address);
-      const [sortedAmount0, sortedAmount1] = sortedToken0 === token0Address 
-        ? [params.amount0, params.amount1]
-        : [params.amount1, params.amount0];
-      const [sortedSymbol0, sortedSymbol1] = sortedToken0 === token0Address
-        ? [params.token0Symbol, params.token1Symbol]
-        : [params.token1Symbol, params.token0Symbol];
+      const tokensSwapped = sortedToken0 !== token0Address;
+      const [sortedAmount0, sortedAmount1] = tokensSwapped 
+        ? [params.amount1, params.amount0]
+        : [params.amount0, params.amount1];
+      const [sortedSymbol0, sortedSymbol1] = tokensSwapped
+        ? [params.token1Symbol, params.token0Symbol]
+        : [params.token0Symbol, params.token1Symbol];
+      
+      // Fix tick bounds when tokens are swapped - negate and swap ticks
+      const [sortedTickLower, sortedTickUpper] = tokensSwapped
+        ? [-params.tickUpper, -params.tickLower]
+        : [params.tickLower, params.tickUpper];
+      
+      logger.info(`AddLiquidity: tokensSwapped=${tokensSwapped}, tickLower=${sortedTickLower}, tickUpper=${sortedTickUpper}`);
 
       // Dynamically fetch decimals from contracts
       const decimals0 = await getTokenDecimalsFromContract(sortedToken0, provider);
@@ -309,8 +317,8 @@ export const useLiquidity = () => {
         token0: sortedToken0,
         token1: sortedToken1,
         fee: params.fee,
-        tickLower: params.tickLower,
-        tickUpper: params.tickUpper,
+        tickLower: sortedTickLower,
+        tickUpper: sortedTickUpper,
         amount0Desired: amount0Wei,
         amount1Desired: amount1Wei,
         amount0Min,
