@@ -268,8 +268,8 @@ const Admin = () => {
               <CheckCircle className="w-4 h-4 text-success" />
               Deployed Contracts
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {(['factory', 'router', 'positionManager', 'quoter'] as const).map(key => (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {(['factory', 'nftDescriptorLibrary', 'router', 'quoter', 'nftDescriptor', 'positionManager'] as const).map(key => (
                 <div key={key} className="bg-background/50 rounded-lg p-3 border border-border/30">
                   <p className="text-xs text-muted-foreground capitalize">{key}</p>
                   {deployedContracts[key] ? (

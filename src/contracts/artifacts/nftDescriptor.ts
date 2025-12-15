@@ -63,6 +63,16 @@ export async function getNftDescriptorBytecode(): Promise<string> {
   return artifact.bytecode;
 }
 
+// Link NFTDescriptor library address into bytecode
+// The bytecode contains a placeholder like __$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx$__
+// which must be replaced with the deployed library address
+export function linkNftDescriptorLibrary(bytecode: string, libraryAddress: string): string {
+  // NFTDescriptor library placeholder pattern: __$<34 hex chars>$__
+  const placeholder = /__\$[a-fA-F0-9]{34}\$__/g;
+  const linkedAddress = libraryAddress.slice(2).toLowerCase(); // Remove 0x prefix
+  return bytecode.replace(placeholder, linkedAddress);
+}
+
 // Helper to convert string to bytes32 for native currency label
 export function stringToBytes32(str: string): string {
   const bytes = new TextEncoder().encode(str);

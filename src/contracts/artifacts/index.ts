@@ -5,7 +5,8 @@ export { FACTORY_ABI, getFactoryBytecode } from './factory';
 export { ROUTER_ABI, getRouterBytecode } from './router';
 export { POSITION_MANAGER_ABI, getPositionManagerBytecode } from './positionManager';
 export { QUOTER_ABI, getQuoterBytecode } from './quoter';
-export { NFT_DESCRIPTOR_ABI, getNftDescriptorBytecode, stringToBytes32 } from './nftDescriptor';
+export { NFT_DESCRIPTOR_ABI, getNftDescriptorBytecode, stringToBytes32, linkNftDescriptorLibrary } from './nftDescriptor';
+export { NFT_DESCRIPTOR_LIBRARY_ABI, getNftDescriptorLibraryBytecode } from './nftDescriptorLibrary';
 
 import type { ContractId } from '../bytecode';
 
@@ -26,11 +27,18 @@ export const CONTRACT_CONFIGS: Record<ContractId, ContractConfig> = {
     dependencies: [],
     estimatedGas: 5_000_000,
   },
+  nftDescriptorLibrary: {
+    id: 'nftDescriptorLibrary',
+    name: 'NFTDescriptor Library',
+    description: 'Library for generating NFT SVG images (deploy first!)',
+    dependencies: [],
+    estimatedGas: 2_500_000,
+  },
   nftDescriptor: {
     id: 'nftDescriptor',
     name: 'NonfungibleTokenPositionDescriptor',
-    description: 'Generates NFT metadata for positions',
-    dependencies: [],
+    description: 'Generates NFT metadata for positions (uses linked library)',
+    dependencies: ['nftDescriptorLibrary'],
     estimatedGas: 3_500_000,
   },
   router: {
@@ -67,6 +75,8 @@ export async function getBytecode(contractId: ContractId): Promise<string> {
       return (await import('./positionManager')).getPositionManagerBytecode();
     case 'quoter':
       return (await import('./quoter')).getQuoterBytecode();
+    case 'nftDescriptorLibrary':
+      return (await import('./nftDescriptorLibrary')).getNftDescriptorLibraryBytecode();
     case 'nftDescriptor':
       return (await import('./nftDescriptor')).getNftDescriptorBytecode();
     default:
@@ -85,6 +95,8 @@ export function getABI(contractId: ContractId): readonly object[] {
       return require('./positionManager').POSITION_MANAGER_ABI;
     case 'quoter':
       return require('./quoter').QUOTER_ABI;
+    case 'nftDescriptorLibrary':
+      return require('./nftDescriptorLibrary').NFT_DESCRIPTOR_LIBRARY_ABI;
     case 'nftDescriptor':
       return require('./nftDescriptor').NFT_DESCRIPTOR_ABI;
     default:

@@ -17,6 +17,13 @@ const ERC20_ABI = [
   'function symbol() external view returns (string)',
 ];
 
+// WOVER ABI for wrapping/unwrapping
+const WOVER_ABI = [
+  'function deposit() external payable',
+  'function withdraw(uint256 amount) external',
+  'function balanceOf(address account) external view returns (uint256)',
+];
+
 export interface SwapQuote {
   amountOut: string;
   priceImpact: number;
@@ -32,24 +39,27 @@ export interface SwapParams {
   deadline: number; // in minutes
 }
 
-export type SwapStatus = 'idle' | 'quoting' | 'approving' | 'swapping' | 'success' | 'error';
+export type SwapStatus = 'idle' | 'quoting' | 'approving' | 'swapping' | 'wrapping' | 'unwrapping' | 'success' | 'error';
 
 const getTokenAddress = (symbol: string): string => {
   const addresses: Record<string, string> = {
     USDT: TOKEN_ADDRESSES.USDT,
     USDC: TOKEN_ADDRESSES.USDC,
     WOVER: TOKEN_ADDRESSES.WOVER,
+    OVER: TOKEN_ADDRESSES.WOVER, // Use WOVER address for OVER
   };
   return addresses[symbol] || '';
 };
 
-const getTokenDecimals = (symbol: string): number => {
-  const decimals: Record<string, number> = {
-    USDT: 18,
-    USDC: 18,
-    WOVER: 18,
-  };
-  return decimals[symbol] || 18;
+// Dynamic decimals fetching from contract
+const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethers.providers.Web3Provider): Promise<number> => {
+  try {
+    const token = new ethers.Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
+    const decimals = await token.decimals();
+    return decimals;
+  } catch {
+    return 18; // Fallback
+  }
 };
 
 export const useSwap = () => {
@@ -86,8 +96,10 @@ export const useSwap = () => {
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
-      const decimalsIn = getTokenDecimals(tokenInSymbol);
-      const decimalsOut = getTokenDecimals(tokenOutSymbol);
+      
+      // Get decimals dynamically
+      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
+      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, provider);
 
       const amountInWei = ethers.utils.parseUnits(amountIn, decimalsIn);
 
@@ -136,7 +148,7 @@ export const useSwap = () => {
     const signer = provider.getSigner();
     
     const tokenAddress = getTokenAddress(tokenSymbol);
-    const decimals = getTokenDecimals(tokenSymbol);
+    const decimals = await getTokenDecimalsFromContract(tokenAddress, provider);
     const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
     const amountWei = ethers.utils.parseUnits(amount, decimals);
@@ -155,6 +167,68 @@ export const useSwap = () => {
     } catch (err: any) {
       logger.error('Approve error:', err);
       setError('Failed to approve token');
+      return false;
+    }
+  }, [address]);
+
+  // Wrap OVER to WOVER
+  const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
+    if (!address) return false;
+
+    setStatus('wrapping');
+    setError(null);
+    setTxHash(null);
+
+    try {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const signer = provider.getSigner();
+      const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
+      
+      const amountWei = ethers.utils.parseUnits(amount, 18);
+      logger.info(`Wrapping ${amount} OVER to WOVER...`);
+      
+      const tx = await wover.deposit({ value: amountWei });
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      logger.info(`Successfully wrapped ${amount} OVER to WOVER`);
+      setStatus('success');
+      return true;
+    } catch (err: any) {
+      logger.error('Wrap OVER error:', err);
+      setError(`Failed to wrap OVER: ${err.reason || err.message}`);
+      setStatus('error');
+      return false;
+    }
+  }, [address]);
+
+  // Unwrap WOVER to OVER
+  const unwrapWover = useCallback(async (amount: string): Promise<boolean> => {
+    if (!address) return false;
+
+    setStatus('unwrapping');
+    setError(null);
+    setTxHash(null);
+
+    try {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const signer = provider.getSigner();
+      const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
+      
+      const amountWei = ethers.utils.parseUnits(amount, 18);
+      logger.info(`Unwrapping ${amount} WOVER to OVER...`);
+      
+      const tx = await wover.withdraw(amountWei);
+      setTxHash(tx.hash);
+      await tx.wait();
+      
+      logger.info(`Successfully unwrapped ${amount} WOVER to OVER`);
+      setStatus('success');
+      return true;
+    } catch (err: any) {
+      logger.error('Unwrap WOVER error:', err);
+      setError(`Failed to unwrap WOVER: ${err.reason || err.message}`);
+      setStatus('error');
       return false;
     }
   }, [address]);
@@ -182,8 +256,8 @@ export const useSwap = () => {
 
       const tokenIn = getTokenAddress(params.tokenIn);
       const tokenOut = getTokenAddress(params.tokenOut);
-      const decimalsIn = getTokenDecimals(params.tokenIn);
-      const decimalsOut = getTokenDecimals(params.tokenOut);
+      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
+      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, provider);
 
       // Step 1: Approve token
       const approved = await checkAndApprove(params.tokenIn, params.amountIn, contracts.router);
@@ -239,17 +313,28 @@ export const useSwap = () => {
     }
   }, [isConnected, isCorrectNetwork, address, quote, checkAndApprove, getQuote]);
 
-  // Get token balance
+  // Get token balance (supports native OVER and ERC20 tokens with dynamic decimals)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
     if (!address) return '0';
 
     try {
       const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      
+      // Handle native OVER balance
+      if (tokenSymbol === 'OVER') {
+        const balance = await provider.getBalance(address);
+        return ethers.utils.formatUnits(balance, 18);
+      }
+      
       const tokenAddress = getTokenAddress(tokenSymbol);
-      const decimals = getTokenDecimals(tokenSymbol);
+      if (!tokenAddress) return '0';
+      
       const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
       
+      // Get decimals dynamically from contract
+      const decimals = await token.decimals();
       const balance = await token.balanceOf(address);
+      
       return ethers.utils.formatUnits(balance, decimals);
     } catch (err) {
       logger.error('Balance error:', err);
@@ -272,6 +357,8 @@ export const useSwap = () => {
     getQuote,
     executeSwap,
     getTokenBalance,
+    wrapOver,
+    unwrapWover,
     reset,
   };
 };

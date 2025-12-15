@@ -87,8 +87,19 @@ const isNativeToken = (symbol: string): boolean => {
   return symbol === 'OVER';
 };
 
+// Dynamic decimals fetching from contract
+const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethers.providers.Web3Provider): Promise<number> => {
+  try {
+    const token = new ethers.Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
+    const decimals = await token.decimals();
+    return decimals;
+  } catch {
+    return 18; // Fallback
+  }
+};
+
 const getTokenDecimals = (symbol: string): number => {
-  return 18; // All tokens on OverProtocol use 18 decimals
+  return 18; // Fallback, actual value fetched from contract
 };
 
 const getTokenSymbol = (address: string): string => {
@@ -499,7 +510,7 @@ export const useLiquidity = () => {
     }
   }, [isConnected, address]);
 
-  // Get token balance (supports both ERC20 and native OVER)
+  // Get token balance (supports both ERC20 and native OVER with dynamic decimals)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
     if (!address) {
       logger.info(`getTokenBalance: No address connected`);
@@ -529,10 +540,13 @@ export const useLiquidity = () => {
       logger.info(`getTokenBalance: Fetching ${tokenSymbol} balance at ${tokenAddress} for ${address}`);
       
       const token = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-      const balance = await token.balanceOf(address);
-      const formatted = ethers.utils.formatUnits(balance, 18);
       
-      logger.info(`getTokenBalance: ${tokenSymbol} balance = ${formatted}`);
+      // Get decimals dynamically from contract
+      const decimals = await token.decimals();
+      const balance = await token.balanceOf(address);
+      const formatted = ethers.utils.formatUnits(balance, decimals);
+      
+      logger.info(`getTokenBalance: ${tokenSymbol} balance = ${formatted} (${decimals} decimals)`);
       return formatted;
     } catch (err: any) {
       logger.error(`getTokenBalance error for ${tokenSymbol}:`, err?.message || err);
