@@ -70,15 +70,25 @@ const Swap = () => {
     fetchBalances();
   }, [isConnected, address, fromToken.symbol, toToken.symbol, getTokenBalance, status]);
 
-  // Get quote when amount changes
+  // Get quote when amount changes (auto-converts OVER to WOVER for quotes)
   useEffect(() => {
     if (activeTab !== "swap") return;
     
     const timer = setTimeout(async () => {
-      if (fromAmount && parseFloat(fromAmount) > 0 && fromToken.symbol !== "OVER" && toToken.symbol !== "OVER") {
-        const newQuote = await getQuote(fromToken.symbol, toToken.symbol, fromAmount);
-        if (newQuote) {
-          setToAmount(parseFloat(newQuote.amountOut).toFixed(6));
+      if (fromAmount && parseFloat(fromAmount) > 0) {
+        // Convert OVER to WOVER for quote purposes (same price)
+        const quoteFromToken = fromToken.symbol === "OVER" ? "WOVER" : fromToken.symbol;
+        const quoteToToken = toToken.symbol === "OVER" ? "WOVER" : toToken.symbol;
+        
+        // If both are OVER/WOVER, it's just a wrap/unwrap (1:1)
+        if ((fromToken.symbol === "OVER" || fromToken.symbol === "WOVER") && 
+            (toToken.symbol === "OVER" || toToken.symbol === "WOVER")) {
+          setToAmount(fromAmount);
+        } else {
+          const newQuote = await getQuote(quoteFromToken, quoteToToken, fromAmount);
+          if (newQuote) {
+            setToAmount(parseFloat(newQuote.amountOut).toFixed(6));
+          }
         }
       } else {
         setToAmount("");
@@ -115,15 +125,59 @@ const Swap = () => {
       return;
     }
 
+    // Handle OVER → WOVER wrap first if needed
+    if (fromToken.symbol === "OVER") {
+      const wrapSuccess = await wrapOver(fromAmount);
+      if (!wrapSuccess) {
+        toast.error("Failed to wrap OVER", { description: error || "Wrap failed" });
+        return;
+      }
+      toast.success("Wrapped OVER to WOVER");
+      
+      // If target is also WOVER, we're done (it's just a wrap)
+      if (toToken.symbol === "WOVER") {
+        setFromAmount("");
+        setToAmount("");
+        reset();
+        return;
+      }
+    }
+
+    // Handle OVER/WOVER swap (1:1 wrap/unwrap)
+    if (fromToken.symbol === "WOVER" && toToken.symbol === "OVER") {
+      const unwrapSuccess = await unwrapWover(fromAmount);
+      if (unwrapSuccess) {
+        toast.success("Unwrapped WOVER to OVER");
+        setFromAmount("");
+        setToAmount("");
+        reset();
+      } else {
+        toast.error("Unwrap failed", { description: error });
+      }
+      return;
+    }
+
+    // Execute actual swap (use WOVER if original was OVER)
+    const actualFromToken = fromToken.symbol === "OVER" ? "WOVER" : fromToken.symbol;
+    const actualToToken = toToken.symbol === "OVER" ? "WOVER" : toToken.symbol;
+
     const success = await executeSwap({
-      tokenIn: fromToken.symbol,
-      tokenOut: toToken.symbol,
+      tokenIn: actualFromToken,
+      tokenOut: actualToToken,
       amountIn: fromAmount,
       slippageTolerance: slippage,
       deadline,
     });
 
     if (success) {
+      // If user wanted OVER as output, unwrap WOVER
+      if (toToken.symbol === "OVER" && actualToToken === "WOVER") {
+        const unwrapSuccess = await unwrapWover(toAmount);
+        if (!unwrapSuccess) {
+          toast.warning("Swap succeeded but unwrap failed. You received WOVER instead.");
+        }
+      }
+      
       toast.success("Swap successful!", {
         description: `Swapped ${fromAmount} ${fromToken.symbol} for ${toAmount} ${toToken.symbol}`,
       });
@@ -371,7 +425,6 @@ const Swap = () => {
                         selected={fromToken} 
                         onSelect={setFromToken}
                         excludeToken={toToken.symbol}
-                        excludeNative={true}
                       />
                     </div>
                   </div>
@@ -408,7 +461,6 @@ const Swap = () => {
                         selected={toToken} 
                         onSelect={setToToken}
                         excludeToken={fromToken.symbol}
-                        excludeNative={true}
                       />
                     </div>
                   </div>

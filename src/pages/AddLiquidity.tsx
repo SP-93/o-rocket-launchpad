@@ -24,9 +24,9 @@ const FEE_TIERS = [
   { value: 10000, label: "1%", description: "Volatile pairs", tickSpacing: 200 },
 ];
 
-// Tick bounds for full range
-const MIN_TICK = -887272;
-const MAX_TICK = 887272;
+// Tick bounds for full range - must be aligned to tickSpacing
+const getMinTick = (tickSpacing: number) => Math.ceil(-887272 / tickSpacing) * tickSpacing;
+const getMaxTick = (tickSpacing: number) => Math.floor(887272 / tickSpacing) * tickSpacing;
 
 const AddLiquidity = () => {
   const navigate = useNavigate();
@@ -160,9 +160,9 @@ const AddLiquidity = () => {
     const feeTier = FEE_TIERS.find(f => f.value === selectedFee);
     const tickSpacing = feeTier?.tickSpacing || 60;
 
-    // Calculate ticks
-    let tickLower = MIN_TICK;
-    let tickUpper = MAX_TICK;
+    // Calculate ticks - use aligned min/max for full range
+    let tickLower = getMinTick(tickSpacing);
+    let tickUpper = getMaxTick(tickSpacing);
 
     if (!isFullRange && minPrice && maxPrice) {
       // Convert prices to ticks (simplified)
