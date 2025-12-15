@@ -59,10 +59,32 @@ const AddLiquidity = () => {
   const [balance0, setBalance0] = useState("0");
   const [balance1, setBalance1] = useState("0");
   const [loadingBalances, setLoadingBalances] = useState(false);
+  const [isAutoCalculating, setIsAutoCalculating] = useState(false);
 
   // Slippage and deadline
   const [slippage, setSlippage] = useState(0.5);
   const [deadline, setDeadline] = useState(20);
+
+  // Auto-calculate other token amount based on pool price
+  const handleAmount0Change = (value: string) => {
+    setAmount0(value);
+    if (currentPrice && value && parseFloat(value) > 0 && !isAutoCalculating) {
+      setIsAutoCalculating(true);
+      const calculatedAmount1 = parseFloat(value) * currentPrice;
+      setAmount1(calculatedAmount1.toFixed(6));
+      setTimeout(() => setIsAutoCalculating(false), 100);
+    }
+  };
+
+  const handleAmount1Change = (value: string) => {
+    setAmount1(value);
+    if (currentPrice && value && parseFloat(value) > 0 && !isAutoCalculating) {
+      setIsAutoCalculating(true);
+      const calculatedAmount0 = parseFloat(value) / currentPrice;
+      setAmount0(calculatedAmount0.toFixed(6));
+      setTimeout(() => setIsAutoCalculating(false), 100);
+    }
+  };
 
   useEffect(() => {
     // Update from URL params if they change
@@ -435,7 +457,7 @@ const AddLiquidity = () => {
                         <span className="text-sm text-muted-foreground">{token0}</span>
                       </div>
                       <button 
-                        onClick={() => setAmount0(balance0)}
+                        onClick={() => handleAmount0Change(balance0)}
                         className="text-sm text-muted-foreground hover:text-primary"
                       >
                         Balance: {loadingBalances ? '...' : balance0} <span className="text-primary">MAX</span>
@@ -446,12 +468,12 @@ const AddLiquidity = () => {
                         type="number"
                         placeholder="0.0"
                         value={amount0}
-                        onChange={(e) => setAmount0(e.target.value)}
+                        onChange={(e) => handleAmount0Change(e.target.value)}
                         className="border-0 bg-transparent text-2xl font-semibold p-0 h-auto focus-visible:ring-0"
                       />
                       <Button 
                         className="btn-secondary shrink-0"
-                        onClick={() => setAmount0(balance0)}
+                        onClick={() => handleAmount0Change(balance0)}
                       >
                         MAX
                       </Button>
@@ -465,7 +487,7 @@ const AddLiquidity = () => {
                         <span className="text-sm text-muted-foreground">{token1}</span>
                       </div>
                       <button 
-                        onClick={() => setAmount1(balance1)}
+                        onClick={() => handleAmount1Change(balance1)}
                         className="text-sm text-muted-foreground hover:text-primary"
                       >
                         Balance: {loadingBalances ? '...' : balance1} <span className="text-primary">MAX</span>
@@ -476,18 +498,30 @@ const AddLiquidity = () => {
                         type="number"
                         placeholder="0.0"
                         value={amount1}
-                        onChange={(e) => setAmount1(e.target.value)}
+                        onChange={(e) => handleAmount1Change(e.target.value)}
                         className="border-0 bg-transparent text-2xl font-semibold p-0 h-auto focus-visible:ring-0"
                       />
                       <Button 
                         className="btn-secondary shrink-0"
-                        onClick={() => setAmount1(balance1)}
+                        onClick={() => handleAmount1Change(balance1)}
                       >
                         MAX
                       </Button>
                     </div>
                   </div>
                 </div>
+
+                {/* Pool existence warning */}
+                {currentPrice === null && (
+                  <Card className="glass-card p-4 mb-4 border-yellow-500/30 bg-yellow-500/10">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
+                      <p className="text-sm text-yellow-500">
+                        Pool doesn't exist for {token0}/{token1} with {selectedFeeLabel} fee. Contact admin to create it first.
+                      </p>
+                    </div>
+                  </Card>
+                )}
 
                 <Card className="glass-card p-4 mb-6 border-warning/20 bg-warning/5">
                   <p className="text-sm text-warning">
