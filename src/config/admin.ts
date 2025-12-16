@@ -33,18 +33,17 @@ export const PROTOCOL_FEE_CONFIG = {
 // Admin should update these after deploying contracts
 // ============================================================
 export const MAINNET_CONTRACTS = {
-  factory: '', // Paste factory address after deployment
-  router: '', // Paste router address after deployment
-  nftDescriptorLibrary: '', // Paste NFTDescriptor library address
-  nftDescriptor: '', // Paste NFTDescriptor address
-  positionManager: '', // Paste position manager address
-  quoter: '', // Paste quoter address
+  factory: '0x7Ff6342b79926813E674732e88F39837FA8B64ed',
+  router: '0xFd83B523C6281343FBCa163F7908bCC5874a245B',
+  nftDescriptorLibrary: '0x0688dc5670dFc719cc0dAf0429382b3fb27fE274',
+  nftDescriptor: '0x324910c4062f20e7E19e711B61c841F5eD032C14',
+  positionManager: '0x7862fEdaa679712bD69402a61aA2063ad9DA3363',
+  quoter: '0x4Db49b37aaC5978AB9CC476E887f0c290dE1ee54',
 };
 
 // DEPLOYED POOL ADDRESSES - OverProtocol Mainnet
 export const MAINNET_POOLS: Record<string, string> = {
-  // Format: 'TOKEN0/TOKEN1-FEE': 'pool_address'
-  // Example: 'WOVER/USDT-3000': '0x...'
+  'WOVER/USDT-3000': '0x65d22Adf0DA92c31528dC38f3ff87ed221c01e77',
 };
 
 // Legacy export (deprecated - use MAINNET_CONTRACTS)

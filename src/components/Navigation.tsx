@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "./NavLink";
 import { Button } from "./ui/button";
-import { Rocket, Wallet, Menu, X, ChevronDown, Shield } from "lucide-react";
+import { Rocket, Wallet, Menu, X, ChevronDown, Shield, Download } from "lucide-react";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
 import { isAdmin } from "@/config/admin";
@@ -10,7 +10,7 @@ import logger from "@/lib/logger";
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const { address, balance, isConnected, isCorrectNetwork } = useWallet();
+  const { address, balance, isConnected, isCorrectNetwork, isMobile } = useWallet();
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -23,6 +23,7 @@ const Navigation = () => {
     { to: "/pools", label: "Pools" },
     { to: "/positions", label: "Positions" },
     { to: "/info", label: "Info" },
+    { to: "/install", label: "Install App", icon: Download, highlight: isMobile },
   ];
 
   return (
@@ -41,9 +42,14 @@ const Navigation = () => {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  className="text-muted-foreground hover:text-primary transition-colors font-medium"
+                  className={`transition-colors font-medium flex items-center gap-1 ${
+                    link.highlight 
+                      ? 'text-primary hover:text-primary/80' 
+                      : 'text-muted-foreground hover:text-primary'
+                  }`}
                   activeClassName="text-primary font-semibold"
                 >
+                  {link.icon && <link.icon className="w-4 h-4" />}
                   {link.label}
                 </NavLink>
               ))}
@@ -117,10 +123,15 @@ const Navigation = () => {
             <NavLink
               key={link.to}
               to={link.to}
-              className="text-lg text-muted-foreground hover:text-primary transition-colors font-medium py-3 px-4 rounded-lg hover:bg-primary/10"
+              className={`text-lg transition-colors font-medium py-3 px-4 rounded-lg flex items-center gap-2 ${
+                link.highlight 
+                  ? 'text-primary hover:text-primary/80 hover:bg-primary/10 bg-primary/5' 
+                  : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
+              }`}
               activeClassName="text-primary font-semibold bg-primary/10"
               onClick={() => setMobileMenuOpen(false)}
             >
+              {link.icon && <link.icon className="w-5 h-5" />}
               {link.label}
             </NavLink>
           ))}
