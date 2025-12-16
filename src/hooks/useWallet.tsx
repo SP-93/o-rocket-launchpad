@@ -350,19 +350,40 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [state.walletType, disconnect, updateBalance]);
 
-  // Auto-reconnect on mount
+  // Auto-reconnect on mount with retry mechanism for wallet browsers
   useEffect(() => {
     const savedWallet = localStorage.getItem('walletConnected') as 'metamask' | 'overwallet' | 'walletconnect' | null;
-    if (savedWallet) {
-      if (savedWallet === 'walletconnect') {
-        // Don't auto-reconnect WalletConnect - requires user interaction
-        localStorage.removeItem('walletConnected');
-      } else {
-        connect(savedWallet).catch(() => {
-          localStorage.removeItem('walletConnected');
-        });
-      }
+    if (!savedWallet) return;
+
+    if (savedWallet === 'walletconnect') {
+      // Don't auto-reconnect WalletConnect - requires user interaction
+      localStorage.removeItem('walletConnected');
+      return;
     }
+
+    // Retry mechanism for wallet browsers where provider may not be immediately available
+    let attempts = 0;
+    const maxAttempts = 3;
+    const retryDelay = 500; // ms
+
+    const tryConnect = async () => {
+      attempts++;
+      try {
+        await connect(savedWallet);
+        logger.log('Auto-reconnect successful on attempt', attempts);
+      } catch (err) {
+        if (attempts < maxAttempts) {
+          logger.log(`Auto-reconnect attempt ${attempts} failed, retrying...`);
+          setTimeout(tryConnect, retryDelay);
+        } else {
+          logger.log('Auto-reconnect failed after', maxAttempts, 'attempts');
+          localStorage.removeItem('walletConnected');
+        }
+      }
+    };
+
+    // Initial delay to let provider initialize (especially in wallet browsers)
+    setTimeout(tryConnect, 300);
   }, []);
 
   return (
