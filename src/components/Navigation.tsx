@@ -29,10 +29,10 @@ const Navigation = () => {
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 glass-card border-b border-primary/20 backdrop-blur-xl">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <NavLink to="/" className="flex items-center gap-2 text-xl md:text-2xl font-bold hover:scale-105 transition-transform">
-              <Rocket className="w-6 h-6 md:w-8 md:h-8 text-primary glow-effect animate-float" />
+            <NavLink to="/" className="flex items-center gap-1.5 sm:gap-2 text-lg sm:text-xl md:text-2xl font-bold hover:scale-105 transition-transform">
+              <Rocket className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-primary glow-effect animate-float" />
               <span className="gradient-text">O'ROCKET</span>
             </NavLink>
 
