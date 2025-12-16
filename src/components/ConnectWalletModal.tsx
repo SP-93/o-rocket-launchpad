@@ -150,47 +150,6 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     );
   }
 
-  // Connect state - just a button that opens Web3Modal
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="glass-card border-primary/30 bg-card/95 backdrop-blur-xl max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold gradient-text flex items-center gap-2">
-            <Wallet className="w-5 h-5" />
-            Connect Wallet
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Choose your preferred wallet to connect
-          </p>
-          
-          <button
-            onClick={handleConnect}
-            className="w-full p-4 rounded-xl border bg-gradient-to-r from-primary/20 to-secondary/20 
-                       border-primary/30 hover:border-primary/50
-                       transition-all duration-300 flex items-center gap-4 group 
-                       hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <div className="w-12 h-12 rounded-xl bg-background/80 flex items-center justify-center text-2xl shadow-lg">
-              <Wallet className="w-6 h-6 text-primary" />
-            </div>
-            <div className="text-left flex-1">
-              <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                Connect Wallet
-              </p>
-              <p className="text-sm text-muted-foreground">
-                MetaMask, WalletConnect & more
-              </p>
-            </div>
-          </button>
-          
-          <p className="text-xs text-muted-foreground text-center">
-            Supports MetaMask, Phantom, Coinbase Wallet, and 300+ other wallets
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+  // Disconnected state - Web3Modal opens directly from Navigation.tsx
+  return null;
 };
