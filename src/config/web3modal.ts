@@ -1,4 +1,5 @@
 import { createConfig, http } from 'wagmi';
+import { reconnect } from '@wagmi/core';
 import { injected, walletConnect, coinbaseWallet } from 'wagmi/connectors';
 import { defineChain } from 'viem';
 
@@ -34,16 +35,14 @@ const metadata = {
 const chains = [overProtocol] as const;
 
 // Create wagmi config with EXPLICIT connectors
-// CRITICAL: showQrModal: false prevents WalletConnect from showing its own QR modal
-// Web3Modal will handle the modal display instead
 export const wagmiConfig = createConfig({
   chains,
   connectors: [
-    injected({ shimDisconnect: true }), // MetaMask, Phantom, etc.
+    injected({ shimDisconnect: true }),
     walletConnect({ 
       projectId, 
       metadata,
-      showQrModal: false, // CRITICAL! Web3Modal shows modal, not WalletConnect
+      showQrModal: false,
     }),
     coinbaseWallet({ 
       appName: metadata.name,
@@ -53,6 +52,11 @@ export const wagmiConfig = createConfig({
     [overProtocol.id]: http('https://rpc.overprotocol.com'),
   },
 });
+
+// CRITICAL: Auto-reconnect wallet on page load
+if (typeof window !== 'undefined') {
+  reconnect(wagmiConfig);
+}
 
 // Export chains for use elsewhere
 export { chains };

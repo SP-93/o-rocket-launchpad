@@ -54,7 +54,7 @@ const getTokenAddress = (symbol: string): string => {
 };
 
 // Dynamic decimals fetching from contract
-const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethers.providers.Web3Provider): Promise<number> => {
+const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethers.providers.Provider): Promise<number> => {
   try {
     const token = new ethers.Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
     const decimals = await token.decimals();
@@ -72,8 +72,13 @@ export const useSwap = () => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Helper to get ethers provider - PRIORITIZE wagmi wallet client for Web3Modal compatibility
-  const getEthersProvider = useCallback(async (): Promise<ethers.providers.Web3Provider> => {
+  // READ provider - uses direct RPC, no wallet needed (faster & more reliable for quotes)
+  const getReadProvider = useCallback(() => {
+    return new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
+  }, []);
+
+  // WRITE provider - uses wallet for signing transactions
+  const getWriteProvider = useCallback(async (): Promise<ethers.providers.Web3Provider> => {
     // First try wagmi wallet client (works with Web3Modal + WalletConnect)
     try {
       const client = await getWalletClient(wagmiConfig);
@@ -119,7 +124,8 @@ export const useSwap = () => {
     setError(null);
 
     try {
-      const provider = await getEthersProvider();
+      // Use READ provider for quotes (no wallet needed!)
+      const provider = getReadProvider();
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
@@ -338,7 +344,7 @@ export const useSwap = () => {
       setStatus('idle');
       return null;
     }
-  }, [getEthersProvider, address]);
+  }, [getReadProvider, address]);
 
   // Check and approve token
   const checkAndApprove = useCallback(async (
@@ -349,11 +355,11 @@ export const useSwap = () => {
     if (!address) return false;
 
     try {
-      const provider = await getEthersProvider();
+      const provider = await getWriteProvider();
       const signer = provider.getSigner();
       
       const tokenAddress = getTokenAddress(tokenSymbol);
-      const decimals = await getTokenDecimalsFromContract(tokenAddress, provider);
+      const decimals = await getTokenDecimalsFromContract(tokenAddress, getReadProvider());
       const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       const amountWei = ethers.utils.parseUnits(amount, decimals);
@@ -373,7 +379,7 @@ export const useSwap = () => {
       setError('Failed to approve token');
       return false;
     }
-  }, [address, getEthersProvider]);
+  }, [address, getWriteProvider, getReadProvider]);
 
   // Wrap OVER to WOVER with gas estimation and fallback
   const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
@@ -384,7 +390,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = await getEthersProvider();
+      const provider = await getWriteProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -431,7 +437,7 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [address, getEthersProvider]);
+  }, [address, getWriteProvider]);
 
   // Unwrap WOVER to OVER
   const unwrapWover = useCallback(async (amount: string): Promise<boolean> => {
@@ -442,7 +448,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = await getEthersProvider();
+      const provider = await getWriteProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -462,7 +468,7 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [address, getEthersProvider]);
+  }, [address, getWriteProvider]);
 
   // Execute swap
   const executeSwap = useCallback(async (params: SwapParams): Promise<boolean> => {
@@ -482,13 +488,14 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = await getEthersProvider();
+      const provider = await getWriteProvider();
       const signer = provider.getSigner();
+      const readProvider = getReadProvider();
 
       const tokenIn = getTokenAddress(params.tokenIn);
       const tokenOut = getTokenAddress(params.tokenOut);
-      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
-      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, provider);
+      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, readProvider);
+      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, readProvider);
 
       // Step 1: Approve token
       const approved = await checkAndApprove(params.tokenIn, params.amountIn, contracts.router);
@@ -542,14 +549,14 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [isConnected, isCorrectNetwork, address, quote, checkAndApprove, getQuote, getEthersProvider]);
+  }, [isConnected, isCorrectNetwork, address, quote, checkAndApprove, getQuote, getWriteProvider, getReadProvider]);
 
   // Get token balance (supports native OVER and ERC20 tokens with dynamic decimals)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
     if (!address) return '0';
 
     try {
-      const provider = await getEthersProvider();
+      const provider = getReadProvider();
       
       // Handle native OVER balance
       if (tokenSymbol === 'OVER') {
@@ -571,7 +578,7 @@ export const useSwap = () => {
       logger.error('Balance error:', err);
       return '0';
     }
-  }, [address, getEthersProvider]);
+  }, [address, getReadProvider]);
 
   const reset = useCallback(() => {
     setStatus('idle');
