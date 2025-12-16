@@ -118,11 +118,20 @@ const sortTokens = (tokenA: string, tokenB: string): [string, string] => {
 };
 
 export const useLiquidity = () => {
-  const { address, isConnected, isCorrectNetwork } = useWallet();
+  const { address, isConnected, isCorrectNetwork, getProvider } = useWallet();
   const [status, setStatus] = useState<LiquidityStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
+
+  // Helper to get ethers provider from WalletConnect
+  const getEthersProvider = useCallback(() => {
+    const wcProvider = getProvider();
+    if (!wcProvider) {
+      throw new Error('Wallet not connected');
+    }
+    return new ethers.providers.Web3Provider(wcProvider);
+  }, [getProvider]);
 
   // Check and approve token
   const checkAndApprove = useCallback(async (
@@ -133,18 +142,18 @@ export const useLiquidity = () => {
   ): Promise<boolean> => {
     if (!address) return false;
 
-    const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-    const signer = provider.getSigner();
-    const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-
-    const amountWei = ethers.utils.parseUnits(amount, decimals);
-    const allowance = await token.allowance(address, spender);
-
-    if (allowance.gte(amountWei)) {
-      return true;
-    }
-
     try {
+      const provider = getEthersProvider();
+      const signer = provider.getSigner();
+      const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+
+      const amountWei = ethers.utils.parseUnits(amount, decimals);
+      const allowance = await token.allowance(address, spender);
+
+      if (allowance.gte(amountWei)) {
+        return true;
+      }
+
       const tx = await token.approve(spender, ethers.constants.MaxUint256);
       await tx.wait();
       return true;
@@ -153,14 +162,14 @@ export const useLiquidity = () => {
       setError(`Failed to approve token: ${err.reason || err.message}`);
       return false;
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Wrap native OVER to WOVER
   const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
     if (!address) return false;
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -177,7 +186,7 @@ export const useLiquidity = () => {
       setError(`Failed to wrap OVER: ${err.reason || err.message}`);
       return false;
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Add liquidity (mint new position)
   const addLiquidity = useCallback(async (params: AddLiquidityParams): Promise<string | null> => {
@@ -197,7 +206,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
 
       // Check if we need to wrap OVER to WOVER
@@ -344,7 +353,7 @@ export const useLiquidity = () => {
       setStatus('error');
       return null;
     }
-  }, [isConnected, isCorrectNetwork, address, checkAndApprove]);
+  }, [isConnected, isCorrectNetwork, address, checkAndApprove, getEthersProvider, wrapOver]);
 
   // Remove liquidity using multicall (decrease + collect + burn in 1 transaction = 1 signature!)
   const removeLiquidity = useCallback(async (
@@ -367,7 +376,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
       
       const positionManager = new ethers.Contract(
@@ -429,7 +438,7 @@ export const useLiquidity = () => {
       setStatus('error');
       return false;
     }
-  }, [isConnected, isCorrectNetwork, address]);
+  }, [isConnected, isCorrectNetwork, address, getEthersProvider]);
 
   // Collect fees only (without removing liquidity)
   const collectFees = useCallback(async (tokenId: string): Promise<boolean> => {
@@ -449,7 +458,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
       
       const positionManager = new ethers.Contract(
@@ -477,7 +486,7 @@ export const useLiquidity = () => {
       setStatus('error');
       return false;
     }
-  }, [isConnected, isCorrectNetwork, address]);
+  }, [isConnected, isCorrectNetwork, address, getEthersProvider]);
 
   // Fetch user positions
   const fetchPositions = useCallback(async (): Promise<Position[]> => {
@@ -492,7 +501,7 @@ export const useLiquidity = () => {
     }
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const positionManager = new ethers.Contract(
         contracts.positionManager,
         NonfungiblePositionManagerABI.abi,
@@ -541,7 +550,7 @@ export const useLiquidity = () => {
       logger.error('Fetch positions error:', err);
       return [];
     }
-  }, [isConnected, address]);
+  }, [isConnected, address, getEthersProvider]);
 
   // Get token balance (supports both ERC20 and native OVER with dynamic decimals)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
@@ -551,7 +560,7 @@ export const useLiquidity = () => {
     }
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       
       // Handle native OVER balance
       if (tokenSymbol === 'OVER') {
@@ -585,7 +594,7 @@ export const useLiquidity = () => {
       logger.error(`getTokenBalance error for ${tokenSymbol}:`, err?.message || err);
       return '0';
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Get current pool price (adjusted for token decimals)
   const getPoolPrice = useCallback(async (
@@ -597,7 +606,7 @@ export const useLiquidity = () => {
     if (!contracts.factory) return null;
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const factory = new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider);
 
       const token0Address = getTokenAddress(token0Symbol === 'OVER' ? 'WOVER' : token0Symbol);
@@ -639,7 +648,7 @@ export const useLiquidity = () => {
       logger.error('Pool price error:', err);
       return null;
     }
-  }, []);
+  }, [getEthersProvider]);
 
   const reset = useCallback(() => {
     setStatus('idle');

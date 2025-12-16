@@ -63,11 +63,20 @@ const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethe
 };
 
 export const useSwap = () => {
-  const { address, isConnected, isCorrectNetwork } = useWallet();
+  const { address, isConnected, isCorrectNetwork, getProvider } = useWallet();
   const [status, setStatus] = useState<SwapStatus>('idle');
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+
+  // Helper to get ethers provider from WalletConnect
+  const getEthersProvider = useCallback(() => {
+    const wcProvider = getProvider();
+    if (!wcProvider) {
+      throw new Error('Wallet not connected');
+    }
+    return new ethers.providers.Web3Provider(wcProvider);
+  }, [getProvider]);
 
   // Get quote for swap with pool existence validation
   const getQuote = useCallback(async (
@@ -96,7 +105,7 @@ export const useSwap = () => {
     setError(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
@@ -306,7 +315,7 @@ export const useSwap = () => {
       setStatus('idle');
       return null;
     }
-  }, []);
+  }, [getEthersProvider]);
 
   // Check and approve token
   const checkAndApprove = useCallback(async (
@@ -316,23 +325,23 @@ export const useSwap = () => {
   ): Promise<boolean> => {
     if (!address) return false;
 
-    const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-    const signer = provider.getSigner();
-    
-    const tokenAddress = getTokenAddress(tokenSymbol);
-    const decimals = await getTokenDecimalsFromContract(tokenAddress, provider);
-    const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-
-    const amountWei = ethers.utils.parseUnits(amount, decimals);
-    const allowance = await token.allowance(address, spender);
-
-    if (allowance.gte(amountWei)) {
-      return true; // Already approved
-    }
-
-    setStatus('approving');
-    
     try {
+      const provider = getEthersProvider();
+      const signer = provider.getSigner();
+      
+      const tokenAddress = getTokenAddress(tokenSymbol);
+      const decimals = await getTokenDecimalsFromContract(tokenAddress, provider);
+      const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
+
+      const amountWei = ethers.utils.parseUnits(amount, decimals);
+      const allowance = await token.allowance(address, spender);
+
+      if (allowance.gte(amountWei)) {
+        return true; // Already approved
+      }
+
+      setStatus('approving');
+      
       const tx = await token.approve(spender, ethers.constants.MaxUint256);
       await tx.wait();
       return true;
@@ -341,7 +350,7 @@ export const useSwap = () => {
       setError('Failed to approve token');
       return false;
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Wrap OVER to WOVER with gas estimation and fallback
   const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
@@ -352,7 +361,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -399,7 +408,7 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Unwrap WOVER to OVER
   const unwrapWover = useCallback(async (amount: string): Promise<boolean> => {
@@ -410,7 +419,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -430,7 +439,7 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   // Execute swap
   const executeSwap = useCallback(async (params: SwapParams): Promise<boolean> => {
@@ -450,7 +459,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       const signer = provider.getSigner();
 
       const tokenIn = getTokenAddress(params.tokenIn);
@@ -510,14 +519,14 @@ export const useSwap = () => {
       setStatus('error');
       return false;
     }
-  }, [isConnected, isCorrectNetwork, address, quote, checkAndApprove, getQuote]);
+  }, [isConnected, isCorrectNetwork, address, quote, checkAndApprove, getQuote, getEthersProvider]);
 
   // Get token balance (supports native OVER and ERC20 tokens with dynamic decimals)
   const getTokenBalance = useCallback(async (tokenSymbol: string): Promise<string> => {
     if (!address) return '0';
 
     try {
-      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      const provider = getEthersProvider();
       
       // Handle native OVER balance
       if (tokenSymbol === 'OVER') {
@@ -539,7 +548,7 @@ export const useSwap = () => {
       logger.error('Balance error:', err);
       return '0';
     }
-  }, [address]);
+  }, [address, getEthersProvider]);
 
   const reset = useCallback(() => {
     setStatus('idle');
