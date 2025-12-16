@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Info, ChevronDown, Loader2, AlertTriangle, Check } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { TokenIcon } from "@/components/TokenIcon";
@@ -65,6 +66,10 @@ const AddLiquidity = () => {
   const [slippage, setSlippage] = useState(0.5);
   const [deadline, setDeadline] = useState(20);
 
+  // Pool availability per fee tier
+  const [availableFees, setAvailableFees] = useState<Record<number, boolean>>({});
+  const [checkingPools, setCheckingPools] = useState(false);
+
   // Auto-calculate other token amount based on pool price
   const handleAmount0Change = (value: string) => {
     setAmount0(value);
@@ -96,6 +101,30 @@ const AddLiquidity = () => {
     if (urlToken1) setToken1(urlToken1);
     if (urlFee) setSelectedFee(parseInt(urlFee));
   }, [searchParams]);
+
+  // Check pool availability for all fee tiers
+  useEffect(() => {
+    const checkPoolsForAllFees = async () => {
+      if (!token0 || !token1) return;
+      setCheckingPools(true);
+      
+      const results: Record<number, boolean> = {};
+      for (const tier of FEE_TIERS) {
+        const price = await getPoolPrice(token0, token1, tier.value);
+        results[tier.value] = price !== null;
+      }
+      setAvailableFees(results);
+      
+      // Auto-select available fee if current is not available
+      if (!results[selectedFee]) {
+        const availableTier = FEE_TIERS.find(t => results[t.value]);
+        if (availableTier) setSelectedFee(availableTier.value);
+      }
+      setCheckingPools(false);
+    };
+    
+    checkPoolsForAllFees();
+  }, [token0, token1, getPoolPrice]);
 
   // Fetch balances and pool price
   useEffect(() => {
@@ -329,22 +358,53 @@ const AddLiquidity = () => {
                   <div>
                     <label className="text-sm font-medium mb-2 block">Fee Tier</label>
                     <div className="grid grid-cols-3 gap-3">
-                      {FEE_TIERS.map((tier) => (
-                        <Button 
-                          key={tier.value}
-                          variant={selectedFee === tier.value ? "default" : "outline"}
-                          className={`h-20 flex flex-col ${
-                            selectedFee === tier.value 
-                              ? "bg-gradient-to-r from-primary to-accent" 
-                              : "border-primary/30"
-                          }`}
-                          onClick={() => setSelectedFee(tier.value)}
-                        >
-                          <span className="text-xl font-bold mb-1">{tier.label}</span>
-                          <span className="text-xs">{tier.description}</span>
-                        </Button>
-                      ))}
+                      {FEE_TIERS.map((tier) => {
+                        const isAvailable = availableFees[tier.value];
+                        const isSelected = selectedFee === tier.value;
+                        
+                        return (
+                          <Button 
+                            key={tier.value}
+                            variant={isSelected ? "default" : "outline"}
+                            className={`h-20 flex flex-col relative ${
+                              isSelected 
+                                ? "bg-gradient-to-r from-primary to-accent" 
+                                : "border-primary/30"
+                            } ${!isAvailable && "opacity-50 cursor-not-allowed"}`}
+                            onClick={() => isAvailable && setSelectedFee(tier.value)}
+                            disabled={!isAvailable && !checkingPools}
+                          >
+                            <span className="text-xl font-bold mb-1">{tier.label}</span>
+                            <span className="text-xs">{tier.description}</span>
+                            {!checkingPools && !isAvailable && (
+                              <Badge variant="secondary" className="absolute -top-2 -right-2 text-[10px] px-1.5">
+                                No pool
+                              </Badge>
+                            )}
+                          </Button>
+                        );
+                      })}
                     </div>
+                    
+                    {checkingPools && (
+                      <p className="text-muted-foreground text-sm mt-2 flex items-center gap-2">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Checking available pools...
+                      </p>
+                    )}
+                    
+                    {!checkingPools && Object.values(availableFees).filter(Boolean).length === 0 && Object.keys(availableFees).length > 0 && (
+                      <div className="mt-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-destructive" />
+                        <span className="text-sm text-destructive">No pools exist for this token pair. Contact admin to create one first.</span>
+                      </div>
+                    )}
+                    
+                    {!checkingPools && Object.values(availableFees).filter(Boolean).length === 1 && (
+                      <p className="text-yellow-500 text-sm mt-2">
+                        Only {FEE_TIERS.find(t => availableFees[t.value])?.label} fee tier available for this pair
+                      </p>
+                    )}
                   </div>
                 </div>
 
