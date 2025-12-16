@@ -74,6 +74,13 @@ const Swap = () => {
   // Get quote when amount changes (auto-converts OVER to WOVER for quotes)
   useEffect(() => {
     if (activeTab !== "swap") return;
+
+    // If user can't swap anyway, don't request quotes (avoids misleading "liquidity" errors)
+    if (fromAmount && parseFloat(fromAmount) > parseFloat(fromBalance)) {
+      setToAmount("");
+      reset();
+      return;
+    }
     
     const timer = setTimeout(async () => {
       if (fromAmount && parseFloat(fromAmount) > 0) {
@@ -93,10 +100,11 @@ const Swap = () => {
         }
       } else {
         setToAmount("");
+        reset();
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab]);
+  }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab, fromBalance, reset]);
 
   const handleSwitch = () => {
     const tempToken = fromToken;
