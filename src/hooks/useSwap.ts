@@ -109,11 +109,16 @@ export const useSwap = () => {
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
-      
+
+      // Factory.getPool expects token0 < token1 (sorted)
+      const [token0, token1] = tokenIn.toLowerCase() < tokenOut.toLowerCase()
+        ? [tokenIn, tokenOut]
+        : [tokenOut, tokenIn];
+
       // Check if pool exists first
       const factoryAbi = ['function getPool(address, address, uint24) view returns (address)'];
       const factory = new ethers.Contract(contracts.factory, factoryAbi, provider);
-      const poolAddress = await factory.getPool(tokenIn, tokenOut, fee);
+      const poolAddress = await factory.getPool(token0, token1, fee);
       
       if (poolAddress === ethers.constants.AddressZero) {
         // Build list of available pools
@@ -127,7 +132,8 @@ export const useSwap = () => {
         for (const [t0, t1] of tokenPairs) {
           const addr0 = getTokenAddress(t0);
           const addr1 = getTokenAddress(t1);
-          const pool = await factory.getPool(addr0, addr1, fee);
+          const [p0, p1] = addr0.toLowerCase() < addr1.toLowerCase() ? [addr0, addr1] : [addr1, addr0];
+          const pool = await factory.getPool(p0, p1, fee);
           if (pool !== ethers.constants.AddressZero) {
             availablePools.push(`${t0}/${t1}`);
           }
@@ -240,7 +246,10 @@ export const useSwap = () => {
       // Wrap quote call in detailed try-catch
       let result;
       try {
-        result = await quoter.callStatic.quoteExactInputSingle(params);
+        result = await quoter.callStatic.quoteExactInputSingle(
+          params,
+          address ? { from: address } : {}
+        );
         logger.info('Quote SUCCESS:', {
           amountOut: result.amountOut.toString(),
           sqrtPriceX96After: result.sqrtPriceX96After?.toString(),
@@ -315,7 +324,7 @@ export const useSwap = () => {
       setStatus('idle');
       return null;
     }
-  }, [getEthersProvider]);
+  }, [getEthersProvider, address]);
 
   // Check and approve token
   const checkAndApprove = useCallback(async (
