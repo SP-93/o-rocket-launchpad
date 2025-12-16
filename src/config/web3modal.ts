@@ -53,9 +53,12 @@ export const wagmiConfig = createConfig({
   },
 });
 
-// CRITICAL: Auto-reconnect wallet on page load
+// CRITICAL: Auto-reconnect wallet on page load ONLY if user didn't explicitly disconnect
 if (typeof window !== 'undefined') {
-  reconnect(wagmiConfig);
+  const wasDisconnected = localStorage.getItem('orocket_user_disconnected');
+  if (wasDisconnected !== 'true') {
+    reconnect(wagmiConfig);
+  }
 }
 
 // Export chains for use elsewhere
