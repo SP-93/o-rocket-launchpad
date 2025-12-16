@@ -346,7 +346,7 @@ export const useLiquidity = () => {
     }
   }, [isConnected, isCorrectNetwork, address, checkAndApprove]);
 
-  // Remove liquidity (decrease + collect)
+  // Remove liquidity using multicall (decrease + collect + burn in 1 transaction = 1 signature!)
   const removeLiquidity = useCallback(async (
     tokenId: string,
     percentageToRemove: number = 100
@@ -389,42 +389,37 @@ export const useLiquidity = () => {
       const liquidityToRemove = liquidity.mul(percentageToRemove).div(100);
       const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 minutes
 
-      // Step 1: Decrease liquidity
-      const decreaseParams = {
+      // Encode all operations for multicall
+      const decreaseData = positionManager.interface.encodeFunctionData('decreaseLiquidity', [{
         tokenId,
         liquidity: liquidityToRemove,
         amount0Min: 0,
         amount1Min: 0,
         deadline,
-      };
+      }]);
 
-      const decreaseTx = await positionManager.decreaseLiquidity(decreaseParams);
-      setTxHash(decreaseTx.hash);
-      await decreaseTx.wait();
-
-      // Step 2: Collect tokens
-      setStatus('collecting');
-      
-      const collectParams = {
+      const collectData = positionManager.interface.encodeFunctionData('collect', [{
         tokenId,
         recipient: address,
         amount0Max: MAX_UINT128,
         amount1Max: MAX_UINT128,
-      };
+      }]);
 
-      const collectTx = await positionManager.collect(collectParams);
-      await collectTx.wait();
+      // Build multicall array
+      const multicallData = [decreaseData, collectData];
 
-      // Step 3: Burn NFT if all liquidity removed
+      // Only burn if removing 100%
       if (percentageToRemove === 100) {
-        try {
-          const burnTx = await positionManager.burn(tokenId);
-          await burnTx.wait();
-        } catch (burnErr) {
-          // Burn might fail if there are still uncollected fees
-          logger.warn('Could not burn NFT:', burnErr);
-        }
+        const burnData = positionManager.interface.encodeFunctionData('burn', [tokenId]);
+        multicallData.push(burnData);
       }
+
+      logger.info(`Remove liquidity: Using multicall with ${multicallData.length} operations (1 signature)`);
+
+      // Execute ALL in single multicall transaction (1 signature!)
+      const tx = await positionManager.multicall(multicallData);
+      setTxHash(tx.hash);
+      await tx.wait();
 
       setStatus('success');
       return true;
@@ -516,6 +511,12 @@ export const useLiquidity = () => {
 
         // Only include positions with liquidity
         if (!position.liquidity.isZero()) {
+          // Dynamically fetch decimals for each token
+          const decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
+          const decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
+          
+          logger.info(`Position ${tokenId}: token0 decimals=${decimals0}, token1 decimals=${decimals1}`);
+
           userPositions.push({
             tokenId: tokenId.toString(),
             token0: getTokenSymbol(position.token0),
@@ -528,8 +529,8 @@ export const useLiquidity = () => {
             token1Amount: '0',
             feeGrowth0: position.feeGrowthInside0LastX128.toString(),
             feeGrowth1: position.feeGrowthInside1LastX128.toString(),
-            tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, 18),
-            tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, 18),
+            tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
+            tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
           });
         }
       }

@@ -6,7 +6,7 @@ import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, NETWORK_CONFIG } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
-import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools } from '@/contracts/storage';
+import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools, removeDeployedPool } from '@/contracts/storage';
 import { ContractId } from '@/contracts/bytecode';
 import { priceToSqrtPriceX96, formatPrice, validatePrice, getTokenDecimals } from '@/lib/priceUtils';
 import SpaceBackground from '@/components/backgrounds/SpaceBackground';
@@ -15,7 +15,7 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
   Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
-  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown
+  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -841,6 +841,76 @@ const Admin = () => {
                   })}
                 </div>
               </GlowCard>
+
+              {/* Existing Pools Management */}
+              {Object.keys(deployedPools).length > 0 && (
+                <GlowCard className="p-6">
+                  <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                    <Database className="w-5 h-5 text-warning" />
+                    Existing Pools
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Manage pools visible in the platform UI. Note: Hiding a pool only removes it from the UI - the pool remains on the blockchain.
+                  </p>
+
+                  <div className="space-y-3">
+                    {Object.entries(deployedPools).map(([poolName, poolAddress]) => (
+                      <div key={poolName} className="bg-background/50 rounded-xl p-4 border border-border/30 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold">{poolName}</h4>
+                            <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded-full">Active</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs font-mono text-muted-foreground truncate max-w-[200px] md:max-w-none">
+                              {poolAddress}
+                            </code>
+                            <button onClick={() => copyToClipboard(poolAddress!)} className="text-muted-foreground hover:text-primary">
+                              <Copy className="w-3 h-3" />
+                            </button>
+                            <a 
+                              href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/address/${poolAddress}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline text-xs flex items-center gap-1"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </div>
+                        <NeonButton
+                          variant="secondary"
+                          className="text-xs px-3 py-1.5 text-warning border-warning/30 hover:bg-warning/10"
+                          onClick={() => {
+                            if (confirm(`Hide "${poolName}" from UI?\n\nThis will NOT delete the pool from the blockchain - it will only hide it from the platform UI. You can re-add it later by creating the pool again (it will find the existing pool).`)) {
+                              const success = removeDeployedPool(poolName);
+                              if (success) {
+                                setDeployedPools(getDeployedPools());
+                                toast.success(`${poolName} hidden from UI`, {
+                                  description: 'Pool still exists on blockchain',
+                                });
+                              }
+                            }
+                          }}
+                        >
+                          <EyeOff className="w-3 h-3 mr-1" /> Hide from UI
+                        </NeonButton>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
+                    <p className="text-xs text-muted-foreground flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
+                      <span>
+                        <strong className="text-warning">Important:</strong> Uniswap V3 pools cannot be deleted from the blockchain. 
+                        "Hide from UI" only removes the pool from your platform's interface. The pool will continue to exist on-chain 
+                        and can be interacted with directly through the blockchain.
+                      </span>
+                    </p>
+                  </div>
+                </GlowCard>
+              )}
             </TabsContent>
 
             {/* Treasury Tab */}

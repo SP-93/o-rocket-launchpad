@@ -125,6 +125,21 @@ export const saveDeployedPool = (poolName: string, address: string): boolean => 
   return true;
 };
 
+// Remove a deployed pool from storage (hide from UI)
+// Note: This does NOT delete the pool from blockchain - pools are permanent
+export const removeDeployedPool = (poolName: string): boolean => {
+  const pools = getDeployedPools();
+  if (!pools[poolName]) {
+    logger.warn('Pool not found in storage:', poolName);
+    return false;
+  }
+
+  delete pools[poolName];
+  secureStorage.setItem(STORAGE_KEYS.pools, pools);
+  logger.info(`Pool ${poolName} removed from UI storage (still exists on blockchain)`);
+  return true;
+};
+
 // Get deployment history
 export const getDeploymentHistory = (): DeploymentStatus[] => {
   const { data, isValid } = secureStorage.getItem<DeploymentStatus[]>(
