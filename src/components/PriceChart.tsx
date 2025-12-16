@@ -48,20 +48,23 @@ const generatePriceData = (basePrice: number, volatility: number, points: number
   return data;
 };
 
+// Pairs without CEX price source should show no mock data
+const PAIRS_WITHOUT_PRICE_SOURCE = ['WOVER/USDC', 'USDC/WOVER'];
+
 const getPairConfig = (token0: string, token1: string) => {
   const pair = `${token0}/${token1}`;
   
   // OVER price ~$0.005 based on CoinGecko data
-  const configs: Record<string, { basePrice: number; volatility: number; trend: number }> = {
-    'USDT/USDC': { basePrice: 1.0001, volatility: 0.0002, trend: 0.1 },
-    'USDC/USDT': { basePrice: 0.9999, volatility: 0.0002, trend: -0.1 },
-    'WOVER/USDC': { basePrice: 0.005, volatility: 0.05, trend: -4.5 },
-    'WOVER/USDT': { basePrice: 0.005, volatility: 0.05, trend: -4.5 },
-    'USDC/WOVER': { basePrice: 200, volatility: 0.05, trend: 4.5 },
-    'USDT/WOVER': { basePrice: 200, volatility: 0.05, trend: 4.5 },
+  const configs: Record<string, { basePrice: number; volatility: number; trend: number; hasSource: boolean }> = {
+    'USDT/USDC': { basePrice: 1.0001, volatility: 0.0002, trend: 0.1, hasSource: true },
+    'USDC/USDT': { basePrice: 0.9999, volatility: 0.0002, trend: -0.1, hasSource: true },
+    'WOVER/USDC': { basePrice: 0, volatility: 0, trend: 0, hasSource: false },
+    'WOVER/USDT': { basePrice: 0.005, volatility: 0.05, trend: -4.5, hasSource: true },
+    'USDC/WOVER': { basePrice: 0, volatility: 0, trend: 0, hasSource: false },
+    'USDT/WOVER': { basePrice: 200, volatility: 0.05, trend: 4.5, hasSource: true },
   };
   
-  return configs[pair] || { basePrice: 1, volatility: 0.02, trend: 0 };
+  return configs[pair] || { basePrice: 1, volatility: 0.02, trend: 0, hasSource: false };
 };
 
 const formatTime = (timestamp: number, timeframe: string) => {
@@ -102,19 +105,21 @@ export const PriceChart = ({ token0, token1, className = '' }: PriceChartProps) 
   
   const config = useMemo(() => getPairConfig(token0, token1), [token0, token1]);
   
+  // Don't generate mock data for pairs without price source
   const data = useMemo(() => {
+    if (!config.hasSource) return [];
     const tf = timeframes.find(t => t.value === timeframe);
     return generatePriceData(config.basePrice, config.volatility, tf?.points || 24, config.trend);
   }, [timeframe, config, refreshKey]);
   
   const currentPrice = data[data.length - 1]?.price || 0;
   const startPrice = data[0]?.price || 0;
-  const priceChange = ((currentPrice - startPrice) / startPrice) * 100;
+  const priceChange = startPrice > 0 ? ((currentPrice - startPrice) / startPrice) * 100 : 0;
   const isPositive = priceChange >= 0;
   
-  const minPrice = Math.min(...data.map(d => d.price));
-  const maxPrice = Math.max(...data.map(d => d.price));
-  const padding = (maxPrice - minPrice) * 0.1;
+  const minPrice = data.length > 0 ? Math.min(...data.map(d => d.price)) : 0;
+  const maxPrice = data.length > 0 ? Math.max(...data.map(d => d.price)) : 0;
+  const padding = (maxPrice - minPrice) * 0.1 || 0.1;
 
   return (
     <Card className={`glass-card p-4 md:p-6 ${className}`}>
@@ -164,76 +169,95 @@ export const PriceChart = ({ token0, token1, className = '' }: PriceChartProps) 
 
       {/* Chart */}
       <div className="h-64 md:h-80">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <defs>
-              <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop 
-                  offset="0%" 
-                  stopColor={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} 
-                  stopOpacity={0.3} 
-                />
-                <stop 
-                  offset="100%" 
-                  stopColor={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} 
-                  stopOpacity={0} 
-                />
-              </linearGradient>
-            </defs>
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              stroke="hsl(var(--border))" 
-              opacity={0.3}
-              vertical={false}
-            />
-            <XAxis 
-              dataKey="time" 
-              tickFormatter={(value) => formatTime(value, timeframe)}
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={10}
-              tickLine={false}
-              axisLine={false}
-              minTickGap={30}
-            />
-            <YAxis 
-              domain={[minPrice - padding, maxPrice + padding]}
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={10}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) => value.toFixed(4)}
-              width={60}
-            />
-            <Tooltip 
-              content={<CustomTooltip token0={token0} token1={token1} />}
-              cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '5 5' }}
-            />
-            <Area
-              type="monotone"
-              dataKey="price"
-              stroke={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'}
-              strokeWidth={2}
-              fill="url(#priceGradient)"
-              animationDuration={500}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        {!config.hasSource ? (
+          <div className="h-full flex flex-col items-center justify-center text-center">
+            <div className="text-muted-foreground mb-2">
+              <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+            </div>
+            <p className="text-sm text-muted-foreground mb-1">No price data available</p>
+            <p className="text-xs text-muted-foreground/70">Price source coming soon</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop 
+                    offset="0%" 
+                    stopColor={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} 
+                    stopOpacity={0.3} 
+                  />
+                  <stop 
+                    offset="100%" 
+                    stopColor={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'} 
+                    stopOpacity={0} 
+                  />
+                </linearGradient>
+              </defs>
+              <CartesianGrid 
+                strokeDasharray="3 3" 
+                stroke="hsl(var(--border))" 
+                opacity={0.3}
+                vertical={false}
+              />
+              <XAxis 
+                dataKey="time" 
+                tickFormatter={(value) => formatTime(value, timeframe)}
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                minTickGap={30}
+              />
+              <YAxis 
+                domain={[minPrice - padding, maxPrice + padding]}
+                stroke="hsl(var(--muted-foreground))"
+                fontSize={10}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => value.toFixed(4)}
+                width={60}
+              />
+              <Tooltip 
+                content={<CustomTooltip token0={token0} token1={token1} />}
+                cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '5 5' }}
+              />
+              <Area
+                type="monotone"
+                dataKey="price"
+                stroke={isPositive ? 'hsl(var(--success))' : 'hsl(var(--destructive))'}
+                strokeWidth={2}
+                fill="url(#priceGradient)"
+                animationDuration={500}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-border/30">
         <div>
           <p className="text-xs text-muted-foreground mb-1">24h High</p>
-          <p className="text-sm font-semibold text-foreground">{maxPrice.toFixed(4)}</p>
+          <p className="text-sm font-semibold text-foreground">
+            {config.hasSource ? maxPrice.toFixed(4) : '--'}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground mb-1">24h Low</p>
-          <p className="text-sm font-semibold text-foreground">{minPrice.toFixed(4)}</p>
+          <p className="text-sm font-semibold text-foreground">
+            {config.hasSource ? minPrice.toFixed(4) : '--'}
+          </p>
         </div>
         <div>
           <p className="text-xs text-muted-foreground mb-1">24h Volume</p>
           <p className="text-sm font-semibold text-foreground">
-            ${data.reduce((sum, d) => sum + d.volume, 0).toLocaleString()}
+            {config.hasSource 
+              ? `$${data.reduce((sum, d) => sum + d.volume, 0).toLocaleString()}`
+              : '$0.00'
+            }
           </p>
         </div>
       </div>
