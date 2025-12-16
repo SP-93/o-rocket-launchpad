@@ -1,7 +1,9 @@
 // Liquidity Hook - Handles adding and removing liquidity via PositionManager
 import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { useWallet } from './useWallet';
+import { useAccount } from 'wagmi';
+import { getWalletClient } from '@wagmi/core';
+import { wagmiConfig } from '@/config/web3modal';
 import { getDeployedContracts, getDeployedPools } from '@/contracts/storage';
 import { TOKEN_ADDRESSES } from '@/config/admin';
 import NonfungiblePositionManagerABI from '@/contracts/abis/NonfungiblePositionManager.json';
@@ -118,20 +120,29 @@ const sortTokens = (tokenA: string, tokenB: string): [string, string] => {
 };
 
 export const useLiquidity = () => {
-  const { address, isConnected, isCorrectNetwork, getProvider } = useWallet();
+  const { address, isConnected, chainId } = useAccount();
+  const isCorrectNetwork = chainId === 54176;
   const [status, setStatus] = useState<LiquidityStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
 
-  // Helper to get ethers provider from WalletConnect
-  const getEthersProvider = useCallback(() => {
-    const wcProvider = getProvider();
-    if (!wcProvider) {
+  // Helper to get ethers provider - uses injected provider (MetaMask) or wagmi wallet client
+  const getEthersProvider = useCallback(async (): Promise<ethers.providers.Web3Provider> => {
+    // First try window.ethereum (injected wallets like MetaMask)
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      return new ethers.providers.Web3Provider((window as any).ethereum, 'any');
+    }
+    
+    // Fallback to wagmi wallet client
+    const client = await getWalletClient(wagmiConfig);
+    if (!client) {
       throw new Error('Wallet not connected');
     }
-    return new ethers.providers.Web3Provider(wcProvider);
-  }, [getProvider]);
+    
+    // Create provider from wallet client
+    return new ethers.providers.Web3Provider(client as any, 'any');
+  }, []);
 
   // Check and approve token
   const checkAndApprove = useCallback(async (
@@ -143,7 +154,7 @@ export const useLiquidity = () => {
     if (!address) return false;
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
@@ -169,7 +180,7 @@ export const useLiquidity = () => {
     if (!address) return false;
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -206,7 +217,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
 
       // Check if we need to wrap OVER to WOVER
@@ -376,7 +387,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       
       const positionManager = new ethers.Contract(
@@ -458,7 +469,7 @@ export const useLiquidity = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       
       const positionManager = new ethers.Contract(
@@ -501,7 +512,7 @@ export const useLiquidity = () => {
     }
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const positionManager = new ethers.Contract(
         contracts.positionManager,
         NonfungiblePositionManagerABI.abi,
@@ -560,7 +571,7 @@ export const useLiquidity = () => {
     }
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       
       // Handle native OVER balance
       if (tokenSymbol === 'OVER') {
@@ -606,7 +617,7 @@ export const useLiquidity = () => {
     if (!contracts.factory) return null;
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const factory = new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider);
 
       const token0Address = getTokenAddress(token0Symbol === 'OVER' ? 'WOVER' : token0Symbol);
