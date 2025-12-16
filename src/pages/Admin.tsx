@@ -15,8 +15,9 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
   Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
-  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff
+  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff, ShieldCheck
 } from 'lucide-react';
+import PoolVerification from '@/components/admin/PoolVerification';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -362,6 +363,9 @@ const Admin = () => {
               </TabsTrigger>
               <TabsTrigger value="treasury" className="flex items-center gap-2">
                 <Wallet className="w-4 h-4" /> Treasury
+              </TabsTrigger>
+              <TabsTrigger value="verify" className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" /> Verify Pools
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex items-center gap-2">
                 <Settings className="w-4 h-4" /> Settings
@@ -1004,6 +1008,11 @@ const Admin = () => {
                   </div>
                 </div>
               </GlowCard>
+            </TabsContent>
+
+            {/* Pool Verification Tab */}
+            <TabsContent value="verify" className="space-y-6">
+              <PoolVerification />
             </TabsContent>
           </Tabs>
         </div>
