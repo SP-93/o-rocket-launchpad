@@ -43,7 +43,7 @@ export const MAINNET_CONTRACTS = {
 
 // DEPLOYED POOL ADDRESSES - OverProtocol Mainnet
 export const MAINNET_POOLS: Record<string, string> = {
-  'WOVER/USDT-3000': '0x65d22Adf0DA92c31528dC38f3ff87ed221c01e77',
+  'WOVER/USDT': '0x65d22Adf0DA92c31528dC38f3ff87ed221c01e77',
 };
 
 // Legacy export (deprecated - use MAINNET_CONTRACTS)
