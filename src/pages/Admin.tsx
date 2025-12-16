@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useContractDeployment } from '@/hooks/useContractDeployment';
@@ -6,7 +6,7 @@ import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, NETWORK_CONFIG } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
-import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools, removeDeployedPool } from '@/contracts/storage';
+import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, importDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools, removeDeployedPool } from '@/contracts/storage';
 import { ContractId } from '@/contracts/bytecode';
 import { priceToSqrtPriceX96, formatPrice, validatePrice, getTokenDecimals } from '@/lib/priceUtils';
 import SpaceBackground from '@/components/backgrounds/SpaceBackground';
@@ -15,7 +15,8 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
   Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
-  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff, ShieldCheck
+  Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff, ShieldCheck,
+  Upload, Smartphone, Monitor, Clipboard
 } from 'lucide-react';
 import PoolVerification from '@/components/admin/PoolVerification';
 import { toast } from 'sonner';
@@ -42,6 +43,12 @@ const Admin = () => {
     'WOVER/USDT': '0.0081',
   });
   const [useCustomPrice, setUseCustomPrice] = useState<Record<string, boolean>>({});
+  const [importText, setImportText] = useState('');
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Detect mobile device
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   // Load saved deployment state on mount
   useEffect(() => {
@@ -188,6 +195,58 @@ const Admin = () => {
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Exported deployment data');
+  };
+
+  // Handle import from file
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      processImport(text);
+    };
+    reader.readAsText(file);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Handle import from pasted text
+  const handleTextImport = () => {
+    if (!importText.trim()) {
+      toast.error('Please paste JSON data');
+      return;
+    }
+    processImport(importText);
+    setImportText('');
+    setShowImportDialog(false);
+  };
+
+  // Process import data
+  const processImport = (jsonData: string) => {
+    const result = importDeploymentData(jsonData);
+    if (result.success) {
+      setDeployedContracts(getDeployedContracts());
+      setDeployedPools(getDeployedPools());
+      loadSavedState();
+      toast.success('Data imported successfully!', {
+        description: 'Contract addresses and pools synced',
+      });
+    } else {
+      toast.error('Import failed', {
+        description: result.error,
+      });
+    }
+  };
+
+  // Copy current page URL for sharing
+  const copyPageUrl = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('URL copied to clipboard');
   };
 
   const truncateAddress = (addr: string) => {
@@ -947,6 +1006,26 @@ const Admin = () => {
 
             {/* Settings Tab */}
             <TabsContent value="settings" className="space-y-6">
+              {/* Mobile Sync Warning */}
+              {isMobile && (
+                <GlowCard className="p-4" glowColor="pink">
+                  <div className="flex items-start gap-3">
+                    <Smartphone className="w-5 h-5 text-warning mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h3 className="font-semibold text-warning mb-1">Mobile Device Detected</h3>
+                      <p className="text-sm text-muted-foreground mb-3">
+                        Contract deployment is best done on desktop. To sync data from desktop:
+                      </p>
+                      <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside mb-3">
+                        <li>On desktop: Go to Settings → Export Data</li>
+                        <li>Transfer the JSON file to your phone</li>
+                        <li>Here: Use Import Data below to sync</li>
+                      </ol>
+                    </div>
+                  </div>
+                </GlowCard>
+              )}
+
               <GlowCard className="p-6">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                   <Settings className="w-5 h-5 text-primary" />
@@ -954,6 +1033,84 @@ const Admin = () => {
                 </h2>
                 
                 <div className="space-y-4">
+                  {/* Data Sync Section */}
+                  <div className="bg-primary/5 rounded-xl p-4 border border-primary/30">
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-primary" />
+                      Data Sync
+                    </h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Sync contract addresses between devices. Export from desktop, import on mobile.
+                    </p>
+                    
+                    {/* Hidden file input */}
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".json,application/json"
+                      onChange={handleFileImport}
+                      className="hidden"
+                    />
+                    
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <NeonButton variant="secondary" className="text-sm px-3 py-2" onClick={handleExportData}>
+                        <Download className="w-4 h-4 mr-1" /> Export Data
+                      </NeonButton>
+                      <NeonButton 
+                        variant="primary" 
+                        className="text-sm px-3 py-2" 
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="w-4 h-4 mr-1" /> Import File
+                      </NeonButton>
+                      <NeonButton 
+                        variant="secondary" 
+                        className="text-sm px-3 py-2" 
+                        onClick={() => setShowImportDialog(!showImportDialog)}
+                      >
+                        <Clipboard className="w-4 h-4 mr-1" /> Paste JSON
+                      </NeonButton>
+                    </div>
+
+                    {/* Paste JSON Dialog */}
+                    {showImportDialog && (
+                      <div className="mt-4 p-4 bg-background/50 rounded-lg border border-border/30">
+                        <label className="text-sm font-medium mb-2 block">Paste exported JSON data:</label>
+                        <textarea
+                          value={importText}
+                          onChange={(e) => setImportText(e.target.value)}
+                          placeholder='{"contracts": {...}, "pools": {...}}'
+                          className="w-full h-32 bg-background border border-border rounded-lg px-3 py-2 text-sm font-mono resize-none"
+                        />
+                        <div className="flex gap-2 mt-3">
+                          <NeonButton variant="primary" className="text-sm px-4 py-2" onClick={handleTextImport}>
+                            <CheckCircle className="w-4 h-4 mr-1" /> Import
+                          </NeonButton>
+                          <NeonButton 
+                            variant="secondary" 
+                            className="text-sm px-4 py-2" 
+                            onClick={() => {
+                              setShowImportDialog(false);
+                              setImportText('');
+                            }}
+                          >
+                            Cancel
+                          </NeonButton>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Device info */}
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border/30 mt-4">
+                      <span className="flex items-center gap-1">
+                        {isMobile ? <Smartphone className="w-3 h-3" /> : <Monitor className="w-3 h-3" />}
+                        {isMobile ? 'Mobile' : 'Desktop'} Device
+                      </span>
+                      <span>•</span>
+                      <span>Data stored locally in browser</span>
+                    </div>
+                  </div>
+
                   <div className="bg-background/50 rounded-xl p-4 border border-primary/20">
                     <h3 className="font-semibold mb-2">Fee Distribution</h3>
                     <p className="text-sm text-muted-foreground mb-4">
@@ -982,19 +1139,14 @@ const Admin = () => {
                   </div>
 
                   {/* Data Management */}
-                  <div className="bg-background/50 rounded-xl p-4 border border-primary/20">
-                    <h3 className="font-semibold mb-2">Data Management</h3>
+                  <div className="bg-background/50 rounded-xl p-4 border border-destructive/20">
+                    <h3 className="font-semibold mb-2 text-destructive">Danger Zone</h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Manage locally stored contract addresses and deployment data.
+                      Clear all locally stored data. This will not affect deployed contracts on blockchain.
                     </p>
-                    <div className="flex gap-2">
-                      <NeonButton variant="secondary" className="text-sm px-3 py-2" onClick={handleExportData}>
-                        <Download className="w-4 h-4 mr-1" /> Export Data
-                      </NeonButton>
-                      <NeonButton variant="secondary" className="text-sm px-3 py-2 text-destructive border-destructive/30" onClick={handleClearData}>
-                        <Trash2 className="w-4 h-4 mr-1" /> Clear All Data
-                      </NeonButton>
-                    </div>
+                    <NeonButton variant="secondary" className="text-sm px-3 py-2 text-destructive border-destructive/30" onClick={handleClearData}>
+                      <Trash2 className="w-4 h-4 mr-1" /> Clear All Local Data
+                    </NeonButton>
                   </div>
 
                   <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4">
