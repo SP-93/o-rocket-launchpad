@@ -1,5 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { getMetaMaskDeepLink, getOverWalletDeepLink } from './useMobileDetect';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import logger from '@/lib/logger';
 
 interface WalletState {
@@ -8,18 +7,14 @@ interface WalletState {
   chainId: number | null;
   isConnected: boolean;
   isCorrectNetwork: boolean;
-  walletType: 'metamask' | 'overwallet' | 'walletconnect' | null;
 }
 
 interface WalletContextType extends WalletState {
-  connect: (walletType: 'metamask' | 'overwallet') => Promise<void>;
-  connectWalletConnect: () => Promise<void>;
+  connect: () => Promise<void>;
   disconnect: () => void;
   switchNetwork: () => Promise<void>;
   isConnecting: boolean;
   error: string | null;
-  isMobile: boolean;
-  openInWalletBrowser: (walletType: 'metamask' | 'overwallet') => void;
 }
 
 const OVER_PROTOCOL_MAINNET = {
@@ -35,23 +30,20 @@ const OVER_PROTOCOL_MAINNET = {
   blockExplorerUrls: ['https://scan.over.network'],
 };
 
+const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
 const WalletContext = createContext<WalletContextType | null>(null);
 
-// Helper to normalize chainId (can come as hex string, decimal string, or number)
+// Helper to normalize chainId
 const normalizeChainId = (chainId: string | number | undefined | null): number => {
   if (chainId === undefined || chainId === null) return 0;
-  
   if (typeof chainId === 'number') return chainId;
-  
   if (typeof chainId === 'string') {
-    // Handle hex format (0x...)
     if (chainId.startsWith('0x') || chainId.startsWith('0X')) {
       return parseInt(chainId, 16);
     }
-    // Handle decimal string
     return parseInt(chainId, 10);
   }
-  
   return 0;
 };
 
@@ -62,113 +54,125 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     chainId: null,
     isConnected: false,
     isCorrectNetwork: false,
-    walletType: null,
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const providerRef = useRef<any>(null);
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Detect mobile device
-  useEffect(() => {
-    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
-    const mobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
-    setIsMobile(mobile);
-  }, []);
-
-  // Open dApp in wallet's in-app browser
-  const openInWalletBrowser = useCallback((walletType: 'metamask' | 'overwallet') => {
-    if (walletType === 'metamask') {
-      window.location.href = getMetaMaskDeepLink();
-    } else {
-      window.location.href = getOverWalletDeepLink();
+  // Reset inactivity timer
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
     }
-  }, []);
+    if (state.isConnected) {
+      inactivityTimerRef.current = setTimeout(() => {
+        logger.log('Auto-disconnect due to inactivity');
+        disconnectWallet();
+      }, INACTIVITY_TIMEOUT);
+    }
+  }, [state.isConnected]);
 
-  const getProvider = (walletType: 'metamask' | 'overwallet') => {
-    if (typeof window === 'undefined') return null;
-    
-    const ethereum = (window as any).ethereum;
-    if (!ethereum) return null;
-
-    if (walletType === 'overwallet') {
-      // Check for OverWallet specific provider
-      if (ethereum.isOverWallet) return ethereum;
-      if (ethereum.providers) {
-        return ethereum.providers.find((p: any) => p.isOverWallet);
+  // Disconnect function
+  const disconnectWallet = useCallback(async () => {
+    // Disconnect WalletConnect provider
+    if (providerRef.current) {
+      try {
+        await providerRef.current.disconnect();
+      } catch (e) {
+        logger.log('Provider disconnect error:', e);
       }
+      providerRef.current = null;
     }
-    
-    // MetaMask or default
-    if (ethereum.isMetaMask) return ethereum;
-    if (ethereum.providers) {
-      return ethereum.providers.find((p: any) => p.isMetaMask);
-    }
-    
-    return ethereum;
-  };
 
-  const updateBalance = useCallback(async (address: string, provider: any) => {
+    // Clear all WalletConnect session data
+    const wcKeys = Object.keys(localStorage).filter(key => 
+      key.startsWith('wc@') || key.startsWith('walletconnect') || key === 'walletConnected'
+    );
+    wcKeys.forEach(key => localStorage.removeItem(key));
+
+    // Clear inactivity timer
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+      inactivityTimerRef.current = null;
+    }
+
+    // Reset state
+    setState({
+      address: null,
+      balance: '0',
+      chainId: null,
+      isConnected: false,
+      isCorrectNetwork: false,
+    });
+    setError(null);
+    
+    logger.log('Wallet disconnected');
+  }, []);
+
+  // Setup inactivity listeners
+  useEffect(() => {
+    if (!state.isConnected) return;
+
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+    
+    const handleActivity = () => resetInactivityTimer();
+    
+    events.forEach(event => window.addEventListener(event, handleActivity, { passive: true }));
+    resetInactivityTimer();
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handleActivity));
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, [state.isConnected, resetInactivityTimer]);
+
+  // Initialize provider and setup listeners
+  const initProvider = useCallback(async (provider: any, address: string) => {
+    providerRef.current = provider;
+
+    // Get balance
     try {
       const balance = await provider.request({
         method: 'eth_getBalance',
         params: [address, 'latest'],
-      });
+      }) as string;
       const balanceInEther = parseInt(balance, 16) / 1e18;
       setState(prev => ({ ...prev, balance: balanceInEther.toFixed(4) }));
     } catch (err) {
       logger.error('Failed to get balance:', err);
     }
-  }, []);
 
-  const connect = useCallback(async (walletType: 'metamask' | 'overwallet') => {
-    setIsConnecting(true);
-    setError(null);
+    // Listen for events
+    provider.on('disconnect', () => {
+      disconnectWallet();
+    });
 
-    try {
-      const provider = getProvider(walletType);
-      
-      if (!provider) {
-        const walletName = walletType === 'metamask' ? 'MetaMask' : 'OverWallet';
-        throw new Error(`${walletName} not detected. Please install it first.`);
+    provider.on('accountsChanged', (accounts: string[]) => {
+      if (accounts.length === 0) {
+        disconnectWallet();
+      } else {
+        setState(prev => ({ ...prev, address: accounts[0] }));
       }
+    });
 
-      const accounts = await provider.request({
-        method: 'eth_requestAccounts',
-      });
-
-      const chainId = await provider.request({
-        method: 'eth_chainId',
-      });
-
-      const address = accounts[0];
+    provider.on('chainChanged', (chainId: string | number) => {
       const chainIdNum = normalizeChainId(chainId);
-      const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
-
-      logger.log('Connected:', { address, chainId, chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId, isCorrectNetwork });
-
-      setState({
-        address,
-        balance: '0',
+      setState(prev => ({
+        ...prev,
         chainId: chainIdNum,
-        isConnected: true,
-        isCorrectNetwork,
-        walletType,
-      });
+        isCorrectNetwork: chainIdNum === OVER_PROTOCOL_MAINNET.chainId,
+      }));
+    });
 
-      await updateBalance(address, provider);
+    // Save connection
+    localStorage.setItem('walletConnected', 'true');
+  }, [disconnectWallet]);
 
-      // Store connection info
-      localStorage.setItem('walletConnected', walletType);
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect wallet');
-      throw err;
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [updateBalance]);
-
-  // WalletConnect connection
-  const connectWalletConnect = useCallback(async () => {
+  // Connect with WalletConnect
+  const connect = useCallback(async () => {
     setIsConnecting(true);
     setError(null);
 
@@ -176,9 +180,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
       
       const provider = await EthereumProvider.init({
-        projectId: '9755572ea82a112d30546e15634811ca', // WalletConnect Cloud Project ID
+        projectId: '9755572ea82a112d30546e15634811ca',
         chains: [OVER_PROTOCOL_MAINNET.chainId],
-        optionalChains: [1, 137], // Ethereum, Polygon as fallbacks
+        optionalChains: [1, 137],
         showQrModal: true,
         metadata: {
           name: "O'Rocket DEX",
@@ -197,124 +201,111 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const chainId = provider.chainId;
 
       if (!accounts || accounts.length === 0) {
-        throw new Error('No accounts returned from WalletConnect');
+        throw new Error('No accounts returned');
       }
 
       const address = accounts[0];
       const chainIdNum = normalizeChainId(chainId);
       const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
 
-      logger.log('WalletConnect connected:', { address, chainId, chainIdNum, isCorrectNetwork });
-
-      // Get balance
-      const balance = await provider.request({
-        method: 'eth_getBalance',
-        params: [address, 'latest'],
-      }) as string;
-      const balanceInEther = parseInt(balance, 16) / 1e18;
+      logger.log('Connected:', { address, chainIdNum, isCorrectNetwork });
 
       setState({
         address,
-        balance: balanceInEther.toFixed(4),
+        balance: '0',
         chainId: chainIdNum,
         isConnected: true,
         isCorrectNetwork,
-        walletType: 'walletconnect',
       });
 
-      localStorage.setItem('walletConnected', 'walletconnect');
-
-      // Listen for disconnect
-      provider.on('disconnect', () => {
-        setState({
-          address: null,
-          balance: '0',
-          chainId: null,
-          isConnected: false,
-          isCorrectNetwork: false,
-          walletType: null,
-        });
-        localStorage.removeItem('walletConnected');
-      });
+      await initProvider(provider, address);
 
     } catch (err: any) {
-      logger.error('WalletConnect error:', err);
-      setError(err.message || 'Failed to connect with WalletConnect');
+      logger.error('Connection error:', err);
+      setError(err.message || 'Failed to connect');
       throw err;
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [initProvider]);
 
-  const disconnect = useCallback(async () => {
-    const currentWalletType = state.walletType;
-    
-    // If WalletConnect, try to disconnect the session
-    if (currentWalletType === 'walletconnect') {
-      try {
-        // Clear WalletConnect session from storage
-        const wcKeys = Object.keys(localStorage).filter(key => 
-          key.startsWith('wc@') || key.startsWith('walletconnect')
-        );
-        wcKeys.forEach(key => localStorage.removeItem(key));
-      } catch (e) {
-        logger.error('WalletConnect cleanup error:', e);
-      }
-    }
+  // Auto-reconnect existing session on mount
+  useEffect(() => {
+    const savedWallet = localStorage.getItem('walletConnected');
+    if (!savedWallet) return;
 
-    // Try to revoke permissions for MetaMask/OverWallet (if supported)
-    if (currentWalletType === 'metamask' || currentWalletType === 'overwallet') {
+    const reconnect = async () => {
       try {
-        const provider = getProvider(currentWalletType);
-        if (provider) {
-          await provider.request({
-            method: 'wallet_revokePermissions',
-            params: [{ eth_accounts: {} }]
-          });
+        const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
+        
+        const provider = await EthereumProvider.init({
+          projectId: '9755572ea82a112d30546e15634811ca',
+          chains: [OVER_PROTOCOL_MAINNET.chainId],
+          optionalChains: [1, 137],
+          showQrModal: false, // Don't show QR on reconnect
+          metadata: {
+            name: "O'Rocket DEX",
+            description: "Professional DeFi Platform on OverProtocol",
+            url: window.location.origin,
+            icons: [`${window.location.origin}/favicon.ico`],
+          },
+          rpcMap: {
+            [OVER_PROTOCOL_MAINNET.chainId]: OVER_PROTOCOL_MAINNET.rpcUrls[0],
+          },
+        });
+
+        // Check if there's an existing session
+        if (provider.session) {
+          const accounts = provider.accounts;
+          const chainId = provider.chainId;
+
+          if (accounts && accounts.length > 0) {
+            const address = accounts[0];
+            const chainIdNum = normalizeChainId(chainId);
+            const isCorrectNetwork = chainIdNum === OVER_PROTOCOL_MAINNET.chainId;
+
+            logger.log('Reconnected existing session:', { address, chainIdNum });
+
+            setState({
+              address,
+              balance: '0',
+              chainId: chainIdNum,
+              isConnected: true,
+              isCorrectNetwork,
+            });
+
+            await initProvider(provider, address);
+            return;
+          }
         }
-      } catch (e) {
-        // wallet_revokePermissions not supported by all wallets - that's ok
-        logger.log('Permission revoke not supported:', e);
+
+        // No valid session found
+        localStorage.removeItem('walletConnected');
+      } catch (err) {
+        logger.log('Auto-reconnect failed:', err);
+        localStorage.removeItem('walletConnected');
       }
-    }
+    };
 
-    // Clear state WITHOUT page reload
-    setState({
-      address: null,
-      balance: '0',
-      chainId: null,
-      isConnected: false,
-      isCorrectNetwork: false,
-      walletType: null,
-    });
-    localStorage.removeItem('walletConnected');
-    setError(null);
-    
-    logger.log('Wallet disconnected successfully');
-  }, [state.walletType]);
+    reconnect();
+  }, [initProvider]);
 
+  // Switch network
   const switchNetwork = useCallback(async () => {
-    if (!state.walletType) return;
-
-    // For WalletConnect, we need different handling
-    if (state.walletType === 'walletconnect') {
+    if (!providerRef.current) {
       setError('Please switch network in your wallet app');
       return;
     }
 
-    const provider = getProvider(state.walletType);
-    if (!provider) return;
-
     try {
-      await provider.request({
+      await providerRef.current.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: OVER_PROTOCOL_MAINNET.chainIdHex }],
       });
     } catch (switchError: any) {
-      // Chain not added, try to add it
       if (switchError.code === 4902) {
         try {
-          await provider.request({
+          await providerRef.current.request({
             method: 'wallet_addEthereumChain',
             params: [{
               chainId: OVER_PROTOCOL_MAINNET.chainIdHex,
@@ -327,101 +318,20 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         } catch (addError) {
           setError('Failed to add OverProtocol network');
         }
-      }
-    }
-  }, [state.walletType]);
-
-  // Listen for account and chain changes
-  useEffect(() => {
-    if (!state.walletType || state.walletType === 'walletconnect') return;
-
-    const provider = getProvider(state.walletType);
-    if (!provider) return;
-
-    const handleAccountsChanged = (accounts: string[]) => {
-      if (accounts.length === 0) {
-        disconnect();
       } else {
-        setState(prev => ({ ...prev, address: accounts[0] }));
-        updateBalance(accounts[0], provider);
+        setError('Please switch network in your wallet app');
       }
-    };
-
-    const handleChainChanged = (chainId: string | number) => {
-      const chainIdNum = normalizeChainId(chainId);
-      logger.log('Chain changed:', { raw: chainId, normalized: chainIdNum, expected: OVER_PROTOCOL_MAINNET.chainId });
-      setState(prev => ({
-        ...prev,
-        chainId: chainIdNum,
-        isCorrectNetwork: chainIdNum === OVER_PROTOCOL_MAINNET.chainId,
-      }));
-    };
-
-    provider.on('accountsChanged', handleAccountsChanged);
-    provider.on('chainChanged', handleChainChanged);
-
-    return () => {
-      provider.removeListener('accountsChanged', handleAccountsChanged);
-      provider.removeListener('chainChanged', handleChainChanged);
-    };
-  }, [state.walletType, disconnect, updateBalance]);
-
-  // Auto-reconnect on mount with retry mechanism for wallet browsers
-  useEffect(() => {
-    const savedWallet = localStorage.getItem('walletConnected') as 'metamask' | 'overwallet' | 'walletconnect' | null;
-    if (!savedWallet) return;
-
-    if (savedWallet === 'walletconnect') {
-      // Don't auto-reconnect WalletConnect - requires user interaction
-      localStorage.removeItem('walletConnected');
-      return;
     }
-
-    // Retry mechanism for wallet browsers where provider may not be immediately available
-    let attempts = 0;
-    const maxAttempts = 5; // Increased from 3
-    const retryDelay = 800; // Increased from 500ms
-
-    const tryConnect = async () => {
-      attempts++;
-      
-      // Check if provider exists before attempting connection
-      const provider = getProvider(savedWallet);
-      if (!provider && attempts < maxAttempts) {
-        logger.log(`Provider not ready on attempt ${attempts}, retrying...`);
-        setTimeout(tryConnect, retryDelay);
-        return;
-      }
-      
-      try {
-        await connect(savedWallet);
-        logger.log('Auto-reconnect successful on attempt', attempts);
-      } catch (err) {
-        if (attempts < maxAttempts) {
-          logger.log(`Auto-reconnect attempt ${attempts} failed, retrying...`);
-          setTimeout(tryConnect, retryDelay);
-        } else {
-          logger.log('Auto-reconnect failed after', maxAttempts, 'attempts');
-          localStorage.removeItem('walletConnected');
-        }
-      }
-    };
-
-    // Initial delay to let provider initialize (especially in wallet browsers)
-    setTimeout(tryConnect, 500); // Increased from 300
   }, []);
 
   return (
     <WalletContext.Provider value={{
       ...state,
       connect,
-      connectWalletConnect,
-      disconnect,
+      disconnect: disconnectWallet,
       switchNetwork,
       isConnecting,
       error,
-      isMobile,
-      openInWalletBrowser,
     }}>
       {children}
     </WalletContext.Provider>
