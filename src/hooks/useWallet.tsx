@@ -247,10 +247,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const disconnect = useCallback(async () => {
+    const currentWalletType = state.walletType;
+    
     // If WalletConnect, try to disconnect the session
-    if (state.walletType === 'walletconnect') {
+    if (currentWalletType === 'walletconnect') {
       try {
-        const { EthereumProvider } = await import('@walletconnect/ethereum-provider');
         // Clear WalletConnect session from storage
         const wcKeys = Object.keys(localStorage).filter(key => 
           key.startsWith('wc@') || key.startsWith('walletconnect')
@@ -261,7 +262,23 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    // Clear state
+    // Try to revoke permissions for MetaMask/OverWallet (if supported)
+    if (currentWalletType === 'metamask' || currentWalletType === 'overwallet') {
+      try {
+        const provider = getProvider(currentWalletType);
+        if (provider) {
+          await provider.request({
+            method: 'wallet_revokePermissions',
+            params: [{ eth_accounts: {} }]
+          });
+        }
+      } catch (e) {
+        // wallet_revokePermissions not supported by all wallets - that's ok
+        logger.log('Permission revoke not supported:', e);
+      }
+    }
+
+    // Clear state WITHOUT page reload
     setState({
       address: null,
       balance: '0',
@@ -272,9 +289,8 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     });
     localStorage.removeItem('walletConnected');
     setError(null);
-
-    // Force page reload to clear any cached provider state
-    window.location.reload();
+    
+    logger.log('Wallet disconnected successfully');
   }, [state.walletType]);
 
   const switchNetwork = useCallback(async () => {
@@ -363,11 +379,20 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
     // Retry mechanism for wallet browsers where provider may not be immediately available
     let attempts = 0;
-    const maxAttempts = 3;
-    const retryDelay = 500; // ms
+    const maxAttempts = 5; // Increased from 3
+    const retryDelay = 800; // Increased from 500ms
 
     const tryConnect = async () => {
       attempts++;
+      
+      // Check if provider exists before attempting connection
+      const provider = getProvider(savedWallet);
+      if (!provider && attempts < maxAttempts) {
+        logger.log(`Provider not ready on attempt ${attempts}, retrying...`);
+        setTimeout(tryConnect, retryDelay);
+        return;
+      }
+      
       try {
         await connect(savedWallet);
         logger.log('Auto-reconnect successful on attempt', attempts);
@@ -383,7 +408,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     };
 
     // Initial delay to let provider initialize (especially in wallet browsers)
-    setTimeout(tryConnect, 300);
+    setTimeout(tryConnect, 500); // Increased from 300
   }, []);
 
   return (
