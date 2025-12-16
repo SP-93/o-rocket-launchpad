@@ -68,14 +68,15 @@ let storageValidationFailed = false;
 // Get storage validation status
 export const isStorageValid = (): boolean => !storageValidationFailed;
 
-// Merge hardcoded and localStorage contracts (localStorage takes priority)
+// Merge hardcoded and localStorage contracts (HARDCODED takes priority for security)
+// This prevents localStorage tampering from overriding deployed contract addresses
 const mergeContracts = (hardcoded: DeployedContracts, stored: DeployedContracts): DeployedContracts => ({
-  factory: stored.factory || hardcoded.factory,
-  router: stored.router || hardcoded.router,
-  nftDescriptorLibrary: stored.nftDescriptorLibrary || hardcoded.nftDescriptorLibrary,
-  nftDescriptor: stored.nftDescriptor || hardcoded.nftDescriptor,
-  positionManager: stored.positionManager || hardcoded.positionManager,
-  quoter: stored.quoter || hardcoded.quoter,
+  factory: hardcoded.factory || stored.factory,
+  router: hardcoded.router || stored.router,
+  nftDescriptorLibrary: hardcoded.nftDescriptorLibrary || stored.nftDescriptorLibrary,
+  nftDescriptor: hardcoded.nftDescriptor || stored.nftDescriptor,
+  positionManager: hardcoded.positionManager || stored.positionManager,
+  quoter: hardcoded.quoter || stored.quoter,
 });
 
 // Get deployed contract addresses with validation
@@ -102,7 +103,7 @@ export const getDeployedContracts = (): DeployedContracts => {
     return hardcoded;
   }
 
-  // Merge: localStorage overrides hardcoded, but hardcoded fills gaps
+  // Merge: hardcoded takes priority, localStorage only fills gaps
   return mergeContracts(hardcoded, data);
 };
 
@@ -147,8 +148,8 @@ export const getDeployedPools = (): DeployedPools => {
     }
   }
 
-  // Merge: localStorage overrides hardcoded
-  return { ...hardcoded, ...data };
+  // Merge: hardcoded takes priority, localStorage fills gaps
+  return { ...data, ...hardcoded };
 };
 
 // Save a deployed pool address with validation
