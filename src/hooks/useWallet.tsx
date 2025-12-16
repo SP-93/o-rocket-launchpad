@@ -52,6 +52,8 @@ export const useWallet = () => {
   // Connect - opens Web3Modal
   const connect = useCallback(async () => {
     try {
+      // Clear disconnect flag when user connects
+      localStorage.removeItem('orocket_user_disconnected');
       await open();
     } catch (err: any) {
       logger.error('Connection error:', err);
@@ -61,12 +63,14 @@ export const useWallet = () => {
 
   // Disconnect
   const disconnect = useCallback(() => {
+    // Set flag to prevent auto-reconnect
+    localStorage.setItem('orocket_user_disconnected', 'true');
     wagmiDisconnect();
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
       inactivityTimerRef.current = null;
     }
-    logger.log('Wallet disconnected');
+    logger.log('Wallet disconnected - auto-reconnect disabled');
   }, [wagmiDisconnect]);
 
   // Switch network

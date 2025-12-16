@@ -64,6 +64,50 @@ const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethe
   }
 };
 
+// Helper to decode Error(string) revert reasons from 0x08c379a0 data
+const decodeRevertReason = (errorData: string): string | null => {
+  if (!errorData || typeof errorData !== 'string') return null;
+  
+  // 0x08c379a0 is the signature for Error(string)
+  if (errorData.startsWith('0x08c379a0')) {
+    try {
+      // Remove the 0x08c379a0 prefix (10 chars) to get just the encoded string
+      const content = '0x' + errorData.substring(10);
+      const decoded = ethers.utils.defaultAbiCoder.decode(['string'], content);
+      return decoded[0];
+    } catch (decodeErr) {
+      logger.warn('Failed to decode revert reason:', decodeErr);
+      return null;
+    }
+  }
+  
+  // 0x4e487b71 is Panic(uint256) - arithmetic errors
+  if (errorData.startsWith('0x4e487b71')) {
+    try {
+      const content = '0x' + errorData.substring(10);
+      const decoded = ethers.utils.defaultAbiCoder.decode(['uint256'], content);
+      const panicCode = decoded[0].toNumber();
+      const panicMessages: Record<number, string> = {
+        0x00: 'Generic panic',
+        0x01: 'Assertion failed',
+        0x11: 'Arithmetic overflow/underflow',
+        0x12: 'Division by zero',
+        0x21: 'Invalid enum value',
+        0x22: 'Storage byte array encoding',
+        0x31: 'Empty array pop',
+        0x32: 'Array out of bounds',
+        0x41: 'Memory allocation failure',
+        0x51: 'Zero-initialized function pointer',
+      };
+      return panicMessages[panicCode] || `Panic code: ${panicCode}`;
+    } catch {
+      return 'Panic error (decode failed)';
+    }
+  }
+  
+  return null;
+};
+
 export const useSwap = () => {
   const { address, isConnected, chainId } = useAccount();
   const isCorrectNetwork = chainId === 54176;
@@ -205,6 +249,29 @@ export const useSwap = () => {
         return null;
       }
 
+      // === CRITICAL: Check QuoterV2.WETH9() address ===
+      let quoterWeth9: string;
+      try {
+        quoterWeth9 = await quoter.WETH9();
+        logger.info('QuoterV2 WETH9 validation:', {
+          quoterWeth9,
+          expectedWeth9: TOKEN_ADDRESSES.WOVER,
+          match: quoterWeth9.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase(),
+        });
+
+        if (quoterWeth9.toLowerCase() !== TOKEN_ADDRESSES.WOVER.toLowerCase()) {
+          logger.error('CRITICAL: QuoterV2 WETH9 mismatch!', {
+            quoterWeth9,
+            expectedWover: TOKEN_ADDRESSES.WOVER,
+          });
+          setError(`QuoterV2 uses wrong WETH9 address! Expected WOVER (${TOKEN_ADDRESSES.WOVER.slice(0, 10)}...) but got ${quoterWeth9.slice(0, 10)}... - Contract may need redeployment.`);
+          setStatus('idle');
+          return null;
+        }
+      } catch (weth9Err) {
+        logger.warn('Could not verify QuoterV2.WETH9() - proceeding anyway:', weth9Err);
+      }
+
       // Verify pool data from slot0
       const poolAbi = [
         'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
@@ -215,14 +282,17 @@ export const useSwap = () => {
       ];
       const pool = new ethers.Contract(poolAddress, poolAbi, provider);
       
+      let poolLiquidity: ethers.BigNumber | null = null;
       try {
-        const [slot0, poolToken0, poolToken1, poolFee, poolLiquidity] = await Promise.all([
+        const [slot0, poolToken0, poolToken1, poolFee, liquidity] = await Promise.all([
           pool.slot0(),
           pool.token0(),
           pool.token1(),
           pool.fee(),
           pool.liquidity(),
         ]);
+        
+        poolLiquidity = liquidity;
         
         logger.info('Pool slot0 data:', {
           sqrtPriceX96: slot0.sqrtPriceX96.toString(),
@@ -233,8 +303,25 @@ export const useSwap = () => {
           token0: poolToken0,
           token1: poolToken1,
           fee: poolFee,
-          liquidity: poolLiquidity.toString(),
+          liquidity: liquidity.toString(),
         });
+        
+        // Verify token order matches expectation
+        const tokenInIsToken0 = tokenIn.toLowerCase() === poolToken0.toLowerCase();
+        const tokenInIsToken1 = tokenIn.toLowerCase() === poolToken1.toLowerCase();
+        logger.info('Token direction:', {
+          tokenInIsToken0,
+          tokenInIsToken1,
+          swapDirection: tokenInIsToken0 ? 'token0 → token1' : 'token1 → token0',
+        });
+        
+        // Check for zero or very low liquidity
+        if (liquidity.isZero()) {
+          logger.error('Pool has ZERO active liquidity at current tick!');
+          setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has no active liquidity at current price. The pool may exist but liquidity is out of range.`);
+          setStatus('idle');
+          return null;
+        }
       } catch (poolErr) {
         logger.error('Failed to read pool data:', poolErr);
       }
@@ -322,6 +409,24 @@ export const useSwap = () => {
       const errorReason = err.reason || '';
       const errorData = err.data || '';
       
+      // === CRITICAL: Try to decode the error data ===
+      const decodedReason = decodeRevertReason(errorData);
+      if (decodedReason) {
+        logger.error('DECODED REVERT REASON:', decodedReason);
+        
+        // Check for specific decoded messages
+        const decodedLower = decodedReason.toLowerCase();
+        if (decodedLower.includes('spl') || decodedLower.includes('insufficient')) {
+          setError(`Insufficient liquidity: ${decodedReason}`);
+        } else if (decodedLower.includes('stf') || decodedLower.includes('transfer failed')) {
+          setError(`Token transfer failed: ${decodedReason}`);
+        } else {
+          setError(`Swap error: ${decodedReason}`);
+        }
+        setStatus('idle');
+        return null;
+      }
+      
       // Improved error detection with more specific conditions
       const isLiquidityError = 
         errorMessage.includes('spl') ||
@@ -346,7 +451,9 @@ export const useSwap = () => {
         // Most likely cause: swap amount exceeds available liquidity
         setError(`Cannot quote this amount - pool may have insufficient liquidity. Try a smaller amount (e.g., 0.1 instead of 1).`);
       } else if (isRpcError) {
-        setError(`RPC error - please try again in a few seconds.`);
+        // Show decoded error if available, otherwise generic RPC error
+        const hexData = errorData ? ` (error data: ${errorData.slice(0, 42)}...)` : '';
+        setError(`RPC error${hexData}. Check console for decoded details.`);
       } else {
         // Show actual error message
         const actualError = err.reason || err.errorName || err.message || String(err) || 'Unknown error';
