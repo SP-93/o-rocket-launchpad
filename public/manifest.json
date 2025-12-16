@@ -1,0 +1,26 @@
+{
+  "name": "O'Rocket - DeFi on OverProtocol",
+  "short_name": "O'Rocket",
+  "description": "Launch Your Liquidity to the Moon. Next-gen DeFi powered by OverProtocol.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#0EA5E9",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "business"],
+  "lang": "en"
+}

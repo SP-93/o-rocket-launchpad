@@ -1,7 +1,9 @@
 // Contract Address Storage
 // Manages deployed contract addresses using localStorage with security validation
+// Falls back to hardcoded addresses from config for all users
 
 import { secureStorage, validateContractAddresses, isValidAddress } from '@/lib/storageValidation';
+import { MAINNET_CONTRACTS, MAINNET_POOLS } from '@/config/admin';
 import logger from '@/lib/logger';
 
 export interface DeployedContracts {
@@ -32,6 +34,25 @@ const STORAGE_KEYS = {
   deploymentHistory: 'orocket_deployment_history',
 };
 
+// Get hardcoded contracts from config (available to all users)
+const getHardcodedContracts = (): DeployedContracts => ({
+  factory: MAINNET_CONTRACTS.factory || null,
+  router: MAINNET_CONTRACTS.router || null,
+  nftDescriptorLibrary: MAINNET_CONTRACTS.nftDescriptorLibrary || null,
+  nftDescriptor: MAINNET_CONTRACTS.nftDescriptor || null,
+  positionManager: MAINNET_CONTRACTS.positionManager || null,
+  quoter: MAINNET_CONTRACTS.quoter || null,
+});
+
+// Get hardcoded pools from config (available to all users)
+const getHardcodedPools = (): DeployedPools => {
+  const pools: DeployedPools = {};
+  for (const [key, value] of Object.entries(MAINNET_POOLS)) {
+    if (value) pools[key] = value;
+  }
+  return pools;
+};
+
 const DEFAULT_CONTRACTS: DeployedContracts = {
   factory: null,
   router: null,
@@ -47,28 +68,42 @@ let storageValidationFailed = false;
 // Get storage validation status
 export const isStorageValid = (): boolean => !storageValidationFailed;
 
+// Merge hardcoded and localStorage contracts (localStorage takes priority)
+const mergeContracts = (hardcoded: DeployedContracts, stored: DeployedContracts): DeployedContracts => ({
+  factory: stored.factory || hardcoded.factory,
+  router: stored.router || hardcoded.router,
+  nftDescriptorLibrary: stored.nftDescriptorLibrary || hardcoded.nftDescriptorLibrary,
+  nftDescriptor: stored.nftDescriptor || hardcoded.nftDescriptor,
+  positionManager: stored.positionManager || hardcoded.positionManager,
+  quoter: stored.quoter || hardcoded.quoter,
+});
+
 // Get deployed contract addresses with validation
+// Priority: localStorage > hardcoded config
 export const getDeployedContracts = (): DeployedContracts => {
+  const hardcoded = getHardcodedContracts();
+  
   const { data, isValid } = secureStorage.getItem<DeployedContracts>(
     STORAGE_KEYS.contracts,
     DEFAULT_CONTRACTS
   );
 
   if (!isValid) {
-    logger.warn('Contract storage validation failed - data may have been tampered with');
+    logger.warn('Contract storage validation failed - using hardcoded addresses');
     storageValidationFailed = true;
-    return DEFAULT_CONTRACTS;
+    return hardcoded;
   }
 
   // Additional address format validation
   const addressValidation = validateContractAddresses(data as unknown as Record<string, string | null>);
   if (!addressValidation.isValid) {
-    logger.warn('Invalid contract addresses detected:', addressValidation.invalidAddresses);
+    logger.warn('Invalid contract addresses detected, using hardcoded:', addressValidation.invalidAddresses);
     storageValidationFailed = true;
-    return DEFAULT_CONTRACTS;
+    return hardcoded;
   }
 
-  return data;
+  // Merge: localStorage overrides hardcoded, but hardcoded fills gaps
+  return mergeContracts(hardcoded, data);
 };
 
 // Save a deployed contract address with validation
@@ -90,15 +125,18 @@ export const saveDeployedContract = (
 };
 
 // Get deployed pool addresses with validation
+// Priority: localStorage > hardcoded config
 export const getDeployedPools = (): DeployedPools => {
+  const hardcoded = getHardcodedPools();
+  
   const { data, isValid } = secureStorage.getItem<DeployedPools>(
     STORAGE_KEYS.pools,
     {}
   );
 
   if (!isValid) {
-    logger.warn('Pool storage validation failed - data may have been tampered with');
-    return {};
+    logger.warn('Pool storage validation failed - using hardcoded pools');
+    return hardcoded;
   }
 
   // Validate each pool address
@@ -109,7 +147,8 @@ export const getDeployedPools = (): DeployedPools => {
     }
   }
 
-  return data;
+  // Merge: localStorage overrides hardcoded
+  return { ...hardcoded, ...data };
 };
 
 // Save a deployed pool address with validation
