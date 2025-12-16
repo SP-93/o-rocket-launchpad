@@ -40,7 +40,7 @@ const getEthersProvider = (): ethers.providers.Web3Provider | null => {
 };
 
 export const useContractDeployment = () => {
-  const { address, isConnected, walletType } = useWallet();
+  const { address, isConnected } = useWallet();
   const [deploymentState, setDeploymentState] = useState<DeploymentState>({});
   const [isDeploying, setIsDeploying] = useState(false);
 

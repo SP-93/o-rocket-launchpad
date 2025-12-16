@@ -10,7 +10,7 @@ import logger from "@/lib/logger";
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
-  const { address, balance, isConnected, isCorrectNetwork, isMobile } = useWallet();
+  const { address, isConnected, isCorrectNetwork } = useWallet();
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -23,7 +23,7 @@ const Navigation = () => {
     { to: "/pools", label: "Pools" },
     { to: "/positions", label: "Positions" },
     { to: "/info", label: "Info" },
-    { to: "/install", label: "Install App", icon: Download, highlight: isMobile },
+    { to: "/install", label: "Install App", icon: Download },
   ];
 
   return (
@@ -36,17 +36,12 @@ const Navigation = () => {
               <span className="gradient-text">O'ROCKET</span>
             </NavLink>
 
-            {/* Desktop Navigation */}
             <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  className={`transition-colors font-medium flex items-center gap-1 ${
-                    link.highlight 
-                      ? 'text-primary hover:text-primary/80' 
-                      : 'text-muted-foreground hover:text-primary'
-                  }`}
+                  className="transition-colors font-medium flex items-center gap-1 text-muted-foreground hover:text-primary"
                   activeClassName="text-primary font-semibold"
                 >
                   {link.icon && <link.icon className="w-4 h-4" />}
@@ -123,11 +118,7 @@ const Navigation = () => {
             <NavLink
               key={link.to}
               to={link.to}
-              className={`text-lg transition-colors font-medium py-3 px-4 rounded-lg flex items-center gap-2 ${
-                link.highlight 
-                  ? 'text-primary hover:text-primary/80 hover:bg-primary/10 bg-primary/5' 
-                  : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
-              }`}
+              className="text-lg transition-colors font-medium py-3 px-4 rounded-lg flex items-center gap-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
               activeClassName="text-primary font-semibold bg-primary/10"
               onClick={() => setMobileMenuOpen(false)}
             >
