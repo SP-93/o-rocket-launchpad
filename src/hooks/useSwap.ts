@@ -135,6 +135,76 @@ export const useSwap = () => {
 
       const quoter = new ethers.Contract(contracts.quoter, QuoterV2ABI.abi, provider);
       
+      // === DIAGNOSTIC LOGGING START ===
+      logger.info('=== QUOTE DIAGNOSTIC START ===');
+      logger.info('Contract addresses:', {
+        quoter: contracts.quoter,
+        factory: contracts.factory,
+        router: contracts.router,
+      });
+      logger.info('Token info:', {
+        tokenIn,
+        tokenOut,
+        tokenInSymbol,
+        tokenOutSymbol,
+      });
+      logger.info('Pool found:', {
+        poolAddress,
+        fee,
+      });
+
+      // Check if QuoterV2 points to correct Factory
+      const quoterFactory = await quoter.factory();
+      logger.info('QuoterV2 Factory validation:', {
+        quoterPointsTo: quoterFactory,
+        ourFactory: contracts.factory,
+        match: quoterFactory.toLowerCase() === contracts.factory.toLowerCase(),
+      });
+
+      // Validate Factory match - this is critical!
+      if (quoterFactory.toLowerCase() !== contracts.factory.toLowerCase()) {
+        const errorMsg = `QuoterV2 uses different Factory! QuoterV2 → ${quoterFactory.slice(0, 10)}... but our Factory is ${contracts.factory.slice(0, 10)}...`;
+        logger.error(errorMsg);
+        setError(errorMsg);
+        setStatus('idle');
+        return null;
+      }
+
+      // Verify pool data from slot0
+      const poolAbi = [
+        'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
+        'function token0() view returns (address)',
+        'function token1() view returns (address)',
+        'function fee() view returns (uint24)',
+        'function liquidity() view returns (uint128)',
+      ];
+      const pool = new ethers.Contract(poolAddress, poolAbi, provider);
+      
+      try {
+        const [slot0, poolToken0, poolToken1, poolFee, poolLiquidity] = await Promise.all([
+          pool.slot0(),
+          pool.token0(),
+          pool.token1(),
+          pool.fee(),
+          pool.liquidity(),
+        ]);
+        
+        logger.info('Pool slot0 data:', {
+          sqrtPriceX96: slot0.sqrtPriceX96.toString(),
+          tick: slot0.tick,
+          unlocked: slot0.unlocked,
+        });
+        logger.info('Pool tokens and fee:', {
+          token0: poolToken0,
+          token1: poolToken1,
+          fee: poolFee,
+          liquidity: poolLiquidity.toString(),
+        });
+      } catch (poolErr) {
+        logger.error('Failed to read pool data:', poolErr);
+      }
+      // === DIAGNOSTIC LOGGING END ===
+
       // Get decimals dynamically
       const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
       const decimalsOut = await getTokenDecimalsFromContract(tokenOut, provider);
@@ -150,7 +220,37 @@ export const useSwap = () => {
         sqrtPriceLimitX96: 0,
       };
 
-      const result = await quoter.callStatic.quoteExactInputSingle(params);
+      logger.info('Calling quoteExactInputSingle with params:', {
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        amountIn: params.amountIn.toString(),
+        fee: params.fee,
+        sqrtPriceLimitX96: params.sqrtPriceLimitX96,
+      });
+
+      // Wrap quote call in detailed try-catch
+      let result;
+      try {
+        result = await quoter.callStatic.quoteExactInputSingle(params);
+        logger.info('Quote SUCCESS:', {
+          amountOut: result.amountOut.toString(),
+          sqrtPriceX96After: result.sqrtPriceX96After?.toString(),
+          initializedTicksCrossed: result.initializedTicksCrossed?.toString(),
+          gasEstimate: result.gasEstimate?.toString(),
+        });
+      } catch (quoteErr: any) {
+        logger.error('quoteExactInputSingle FAILED:', {
+          error: quoteErr,
+          errorString: String(quoteErr),
+          reason: quoteErr.reason,
+          code: quoteErr.code,
+          data: quoteErr.data,
+          errorArgs: quoteErr.errorArgs,
+          errorName: quoteErr.errorName,
+        });
+        throw quoteErr; // Re-throw for outer catch
+      }
+
       const amountOut = ethers.utils.formatUnits(result.amountOut, decimalsOut);
 
       // Calculate price impact (simplified)
@@ -165,41 +265,42 @@ export const useSwap = () => {
 
       setQuote(swapQuote);
       setStatus('idle');
+      logger.info('=== QUOTE DIAGNOSTIC END - SUCCESS ===');
       return swapQuote;
     } catch (err: any) {
       // Detailed error logging for debugging
-      logger.error('Quote error details:', {
+      logger.error('=== QUOTE DIAGNOSTIC END - FAILED ===');
+      logger.error('Quote error full details:', {
         message: err.message,
         reason: err.reason,
         code: err.code,
         data: err.data,
         errorArgs: err.errorArgs,
         errorName: err.errorName,
+        stack: err.stack?.slice(0, 500),
       });
       
       const errorMessage = (err.message || err.reason || '').toLowerCase();
       const errorReason = err.reason || '';
       
       // Be very specific about what constitutes a liquidity error
-      // Only these specific errors indicate low/no liquidity:
       const isLiquidityError = 
-        errorMessage.includes('spl') ||  // sqrtPriceLimitX96
+        errorMessage.includes('spl') ||
         errorMessage.includes('no liquidity') ||
-        errorMessage.includes('stf') ||  // SafeTransfer Failed
+        errorMessage.includes('stf') ||
         errorReason.toLowerCase().includes('spl');
       
-      // CALL_EXCEPTION could be many things - check if it has error data
+      // CALL_EXCEPTION could be many things
       const isGenericCallException = err.code === 'CALL_EXCEPTION' && !err.reason && !err.errorName;
       
       if (isLiquidityError) {
         setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has low liquidity. Try a smaller amount or different pair.`);
       } else if (isGenericCallException) {
-        // For generic call exceptions, show more details
         const hexData = err.data ? ` (data: ${err.data.slice(0, 20)}...)` : '';
-        setError(`Quote reverted${hexData}. Pool may have insufficient liquidity for this amount.`);
+        setError(`Quote reverted${hexData}. Check console for diagnostic details.`);
       } else {
-        // Show actual error message
-        const actualError = err.reason || err.errorName || err.message || 'Unknown error';
+        // Show actual error message with full details
+        const actualError = err.reason || err.errorName || err.message || String(err) || 'Unknown error';
         setError(`Quote failed: ${actualError}`);
       }
       setStatus('idle');
