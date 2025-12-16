@@ -13,6 +13,7 @@ interface WalletContextType extends WalletState {
   connect: () => Promise<void>;
   disconnect: () => void;
   switchNetwork: () => Promise<void>;
+  getProvider: () => any | null;
   isConnecting: boolean;
   error: string | null;
 }
@@ -324,12 +325,18 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  // Get provider for external use
+  const getProvider = useCallback(() => {
+    return providerRef.current;
+  }, []);
+
   return (
     <WalletContext.Provider value={{
       ...state,
       connect,
       disconnect: disconnectWallet,
       switchNetwork,
+      getProvider,
       isConnecting,
       error,
     }}>
