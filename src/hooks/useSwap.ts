@@ -1,7 +1,9 @@
 // Swap Hook - Handles token swaps via SwapRouter
 import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { useWallet } from './useWallet';
+import { useAccount } from 'wagmi';
+import { getWalletClient } from '@wagmi/core';
+import { wagmiConfig } from '@/config/web3modal';
 import { getDeployedContracts } from '@/contracts/storage';
 import { TOKEN_ADDRESSES } from '@/config/admin';
 import SwapRouterABI from '@/contracts/abis/SwapRouter.json';
@@ -63,20 +65,29 @@ const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethe
 };
 
 export const useSwap = () => {
-  const { address, isConnected, isCorrectNetwork, getProvider } = useWallet();
+  const { address, isConnected, chainId } = useAccount();
+  const isCorrectNetwork = chainId === 54176;
   const [status, setStatus] = useState<SwapStatus>('idle');
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Helper to get ethers provider from WalletConnect
-  const getEthersProvider = useCallback(() => {
-    const wcProvider = getProvider();
-    if (!wcProvider) {
+  // Helper to get ethers provider - uses injected provider (MetaMask) or wagmi wallet client
+  const getEthersProvider = useCallback(async (): Promise<ethers.providers.Web3Provider> => {
+    // First try window.ethereum (injected wallets like MetaMask)
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      return new ethers.providers.Web3Provider((window as any).ethereum, 'any');
+    }
+    
+    // Fallback to wagmi wallet client
+    const client = await getWalletClient(wagmiConfig);
+    if (!client) {
       throw new Error('Wallet not connected');
     }
-    return new ethers.providers.Web3Provider(wcProvider);
-  }, [getProvider]);
+    
+    // Create provider from wallet client
+    return new ethers.providers.Web3Provider(client as any, 'any');
+  }, []);
 
   // Get quote for swap with pool existence validation
   const getQuote = useCallback(async (
@@ -105,7 +116,7 @@ export const useSwap = () => {
     setError(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
 
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
@@ -335,7 +346,7 @@ export const useSwap = () => {
     if (!address) return false;
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       
       const tokenAddress = getTokenAddress(tokenSymbol);
@@ -370,7 +381,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -428,7 +439,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
       const wover = new ethers.Contract(TOKEN_ADDRESSES.WOVER, WOVER_ABI, signer);
       
@@ -468,7 +479,7 @@ export const useSwap = () => {
     setTxHash(null);
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       const signer = provider.getSigner();
 
       const tokenIn = getTokenAddress(params.tokenIn);
@@ -535,7 +546,7 @@ export const useSwap = () => {
     if (!address) return '0';
 
     try {
-      const provider = getEthersProvider();
+      const provider = await getEthersProvider();
       
       // Handle native OVER balance
       if (tokenSymbol === 'OVER') {

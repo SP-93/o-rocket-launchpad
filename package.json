@@ -43,6 +43,7 @@
     "@uniswap/v3-core": "^1.0.1",
     "@uniswap/v3-periphery": "^1.4.4",
     "@walletconnect/ethereum-provider": "^2.23.0",
+    "@web3modal/wagmi": "^5.1.11",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -64,7 +65,9 @@
     "tailwindcss-animate": "^1.0.7",
     "terser": "^5.44.1",
     "vaul": "^0.9.9",
+    "viem": "^2.21.54",
     "vite-plugin-pwa": "^1.2.0",
+    "wagmi": "^2.14.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
