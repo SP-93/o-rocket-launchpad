@@ -5,12 +5,22 @@ import { Rocket, Wallet, Menu, X, ChevronDown, Shield, Download } from "lucide-r
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
 import { isAdmin } from "@/config/admin";
+import { useWeb3Modal } from '@web3modal/wagmi/react';
 import logger from "@/lib/logger";
 
 const Navigation = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
   const { address, isConnected, isCorrectNetwork } = useWallet();
+  const { open: openWeb3Modal } = useWeb3Modal();
+  
+  const handleConnectClick = () => {
+    if (isConnected) {
+      setWalletModalOpen(true); // Show wallet info modal
+    } else {
+      openWeb3Modal(); // Directly open Web3Modal
+    }
+  };
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
@@ -64,7 +74,7 @@ const Navigation = () => {
             <div className="flex items-center gap-3">
               {isConnected && address ? (
                 <Button 
-                  onClick={() => setWalletModalOpen(true)}
+                  onClick={handleConnectClick}
                   className={`text-sm md:text-base ${isCorrectNetwork ? 'btn-primary' : 'bg-warning/20 border-warning/50 text-warning hover:bg-warning/30'}`}
                 >
                   <div className="flex items-center gap-2">
@@ -76,7 +86,7 @@ const Navigation = () => {
                 </Button>
               ) : (
                 <Button 
-                  onClick={() => setWalletModalOpen(true)}
+                  onClick={handleConnectClick}
                   className="btn-primary text-sm md:text-base"
                 >
                   <Wallet className="w-4 h-4 mr-2" />
