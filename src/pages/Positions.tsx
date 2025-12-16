@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { TrendingUp, Plus, Loader2, Trash2, Wallet, RefreshCw, ExternalLink } from "lucide-react";
+import { TrendingUp, Plus, Loader2, Trash2, Wallet, RefreshCw, ExternalLink, CirclePlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
@@ -20,6 +20,33 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+// Convert tick to human-readable price
+// Formula: price = 1.0001^tick * decimalAdjustment
+const tickToPrice = (tick: number, token0Symbol: string, token1Symbol: string): string => {
+  // Get decimals for tokens
+  const getDecimals = (symbol: string): number => {
+    if (symbol === 'USDT' || symbol === 'USDC') return 6;
+    return 18;
+  };
+  
+  const decimals0 = getDecimals(token0Symbol);
+  const decimals1 = getDecimals(token1Symbol);
+  const decimalAdjustment = Math.pow(10, decimals0 - decimals1);
+  
+  const rawPrice = Math.pow(1.0001, tick);
+  const adjustedPrice = rawPrice * decimalAdjustment;
+  
+  // Format based on size
+  if (adjustedPrice < 0.0001) {
+    return adjustedPrice.toExponential(2);
+  } else if (adjustedPrice < 1) {
+    return adjustedPrice.toFixed(6);
+  } else if (adjustedPrice > 1000000) {
+    return adjustedPrice.toExponential(2);
+  }
+  return adjustedPrice.toFixed(4);
+};
 
 const Positions = () => {
   const navigate = useNavigate();
@@ -78,6 +105,16 @@ const Positions = () => {
     setIsLoading(true);
     await fetchPositions();
     setIsLoading(false);
+  };
+
+  const handleAddMore = (position: Position) => {
+    // Navigate to add liquidity with pre-filled token info
+    const params = new URLSearchParams({
+      token0: position.token0,
+      token1: position.token1,
+      fee: position.fee.toString(),
+    });
+    navigate(`/add-liquidity?${params.toString()}`);
   };
 
   const getFeeLabel = (fee: number): string => {
@@ -232,27 +269,42 @@ const Positions = () => {
                     {/* Position Details */}
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Liquidity</p>
-                        <p className="font-semibold">{parseFloat(position.liquidity).toLocaleString()}</p>
+                        <p className="text-muted-foreground">Status</p>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full bg-success/20 text-success border border-success/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                          Active
+                        </span>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Unclaimed Fees</p>
                         <p className="font-semibold text-success">
-                          {parseFloat(position.tokensOwed0).toFixed(4)} {position.token0}
+                          {parseFloat(position.tokensOwed0).toFixed(6)} {position.token0}
                           <br />
-                          {parseFloat(position.tokensOwed1).toFixed(4)} {position.token1}
+                          {parseFloat(position.tokensOwed1).toFixed(6)} {position.token1}
                         </p>
                       </div>
                       <div className="col-span-2 md:col-span-1">
                         <p className="text-muted-foreground">Price Range</p>
                         <p className="font-semibold text-xs">
-                          Tick: {position.tickLower} ↔ {position.tickUpper}
+                          {tickToPrice(position.tickLower, position.token0, position.token1)} ↔ {tickToPrice(position.tickUpper, position.token0, position.token1)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {position.token1} per {position.token0}
                         </p>
                       </div>
                     </div>
 
                     {/* Actions */}
                     <div className="flex gap-2 flex-wrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddMore(position)}
+                        className="flex-1 md:flex-none"
+                      >
+                        <CirclePlus className="w-4 h-4 mr-1" />
+                        Add More
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
