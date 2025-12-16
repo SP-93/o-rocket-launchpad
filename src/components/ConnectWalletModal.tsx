@@ -186,9 +186,6 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             {isConnecting && <Loader2 className="w-5 h-5 animate-spin text-primary" />}
           </button>
 
-          <p className="text-xs text-muted-foreground text-center">
-            Supports MetaMask, Trust Wallet, and other WalletConnect wallets
-          </p>
         </div>
       </DialogContent>
     </Dialog>
