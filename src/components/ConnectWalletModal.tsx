@@ -7,8 +7,9 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { useWallet } from '@/hooks/useWallet';
-import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone, Loader2 } from 'lucide-react';
+import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Smartphone, Loader2, Star, QrCode, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { getWalletStoreLinks, detectOS, openWalletWithFallback } from '@/hooks/useMobileDetect';
 
 interface ConnectWalletModalProps {
   open: boolean;
@@ -17,34 +18,37 @@ interface ConnectWalletModalProps {
 
 const wallets = [
   {
-    id: 'metamask' as const,
-    name: 'MetaMask',
-    icon: '/metamask-icon.svg',
-    iconFallback: '🦊',
-    description: 'Connect using MetaMask',
-    mobileDescription: 'Open in MetaMask browser',
-    color: 'from-orange-500/20 to-orange-600/20',
-    borderColor: 'border-orange-500/30 hover:border-orange-500/50',
-  },
-  {
-    id: 'overwallet' as const,
-    name: 'OverWallet',
-    icon: '/overwallet-icon.svg',
-    iconFallback: '🌐',
-    description: 'Native wallet for OverProtocol',
-    mobileDescription: 'Open in OverWallet app',
-    color: 'from-blue-500/20 to-blue-600/20',
-    borderColor: 'border-blue-500/30 hover:border-blue-500/50',
-  },
-  {
     id: 'walletconnect' as const,
     name: 'WalletConnect',
     icon: '/walletconnect-icon.svg',
     iconFallback: '🔗',
     description: 'Scan QR code with mobile wallet',
-    mobileDescription: 'Connect via WalletConnect',
+    mobileDescription: 'Recommended for mobile',
     color: 'from-purple-500/20 to-purple-600/20',
     borderColor: 'border-purple-500/30 hover:border-purple-500/50',
+    recommended: true,
+  },
+  {
+    id: 'metamask' as const,
+    name: 'MetaMask',
+    icon: '/metamask-icon.svg',
+    iconFallback: '🦊',
+    description: 'Connect using MetaMask',
+    mobileDescription: 'Open in MetaMask app',
+    color: 'from-orange-500/20 to-orange-600/20',
+    borderColor: 'border-orange-500/30 hover:border-orange-500/50',
+    recommended: false,
+  },
+  {
+    id: 'overwallet' as const,
+    name: 'Over Flex Wallet',
+    icon: '/overwallet-icon.svg',
+    iconFallback: '🌐',
+    description: 'Native wallet for OverProtocol',
+    mobileDescription: 'Open in Over Flex app',
+    color: 'from-blue-500/20 to-blue-600/20',
+    borderColor: 'border-blue-500/30 hover:border-blue-500/50',
+    recommended: false,
   },
 ];
 
@@ -62,13 +66,13 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     switchNetwork,
     error,
     isMobile,
-    openInWalletBrowser,
   } = useWallet();
   
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
+  const [showStoreLinks, setShowStoreLinks] = useState(false);
 
   const handleConnect = async (walletId: 'metamask' | 'overwallet' | 'walletconnect') => {
-    // WalletConnect uses different flow
+    // WalletConnect uses different flow - most reliable for mobile
     if (walletId === 'walletconnect') {
       setConnectingWallet(walletId);
       try {
@@ -87,8 +91,18 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     if (isMobile) {
       const ethereum = (window as any).ethereum;
       if (!ethereum) {
-        // No ethereum provider - redirect to wallet app
-        openInWalletBrowser(walletId);
+        // No ethereum provider - try deep link with fallback
+        setConnectingWallet(walletId);
+        
+        openWalletWithFallback(walletId, () => {
+          // If deep link fails, show store links
+          setShowStoreLinks(true);
+          setConnectingWallet(null);
+          toast.info('Wallet app not found. Please install it first.');
+        });
+        
+        // Reset connecting state after a delay (user might have left the page)
+        setTimeout(() => setConnectingWallet(null), 5000);
         return;
       }
     }
@@ -99,9 +113,12 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
       toast.success('Wallet connected successfully!');
       onOpenChange(false);
     } catch (err: any) {
-      // On mobile, if connection fails, offer to open wallet app
+      // On mobile, if connection fails, offer deep link
       if (isMobile && err.message?.includes('not detected')) {
-        openInWalletBrowser(walletId);
+        openWalletWithFallback(walletId, () => {
+          setShowStoreLinks(true);
+          toast.info('Wallet app not found. Please install it first.');
+        });
         return;
       }
       toast.error(err.message || 'Failed to connect wallet');
@@ -129,7 +146,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
   const getWalletDisplayName = () => {
     if (walletType === 'metamask') return 'MetaMask';
-    if (walletType === 'overwallet') return 'OverWallet';
+    if (walletType === 'overwallet') return 'Over Flex Wallet';
     if (walletType === 'walletconnect') return 'WalletConnect';
     return 'Wallet';
   };
@@ -140,6 +157,9 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     if (walletType === 'walletconnect') return '🔗';
     return '💼';
   };
+
+  const storeLinks = getWalletStoreLinks();
+  const os = detectOS();
 
   // Connected state view
   if (isConnected && address) {
@@ -246,7 +266,10 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
   // Connect wallet view
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => {
+      onOpenChange(open);
+      if (!open) setShowStoreLinks(false);
+    }}>
       <DialogContent className="glass-card border-primary/30 bg-card/95 backdrop-blur-xl max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold gradient-text flex items-center gap-2">
@@ -260,15 +283,19 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             Connect to O'Rocket on OverProtocol Mainnet
           </p>
 
-          {/* Mobile notice */}
+          {/* Mobile notice - recommend WalletConnect */}
           {isMobile && !(window as any).ethereum && (
-            <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 mb-4 flex items-start gap-2">
-              <Smartphone className="w-5 h-5 text-primary mt-0.5" />
-              <div>
-                <p className="text-sm font-medium text-foreground">Mobile Device</p>
-                <p className="text-xs text-muted-foreground">
-                  Click a wallet option to open in its app
-                </p>
+            <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <Smartphone className="w-5 h-5 text-primary mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Mobile Device Detected</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    <QrCode className="w-3 h-3 inline mr-1" />
+                    Use <strong>WalletConnect</strong> for the most reliable connection.
+                    Open your wallet app and scan the QR code.
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -276,6 +303,37 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
           {error && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3 mb-4">
               <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+
+          {/* Store Links - shown when wallet app not found */}
+          {showStoreLinks && (
+            <div className="bg-warning/10 border border-warning/30 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 text-warning mb-2">
+                <Download className="w-5 h-5" />
+                <span className="font-semibold">Install Wallet App</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                Wallet app not found. Install one of these wallets:
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 text-xs"
+                  onClick={() => window.open(storeLinks.metamask, '_blank')}
+                >
+                  🦊 MetaMask
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 text-xs"
+                  onClick={() => window.open(storeLinks.overwallet, '_blank')}
+                >
+                  🌐 Over Flex
+                </Button>
+              </div>
             </div>
           )}
 
@@ -289,15 +347,24 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                 className={`w-full p-4 rounded-xl border bg-gradient-to-r ${wallet.color} ${wallet.borderColor}
                            transition-all duration-300 flex items-center gap-4 group 
                            disabled:opacity-50 disabled:cursor-not-allowed
-                           hover:scale-[1.02] active:scale-[0.98]`}
+                           hover:scale-[1.02] active:scale-[0.98]
+                           ${wallet.recommended && isMobile ? 'ring-2 ring-primary/50' : ''}`}
               >
                 <div className="w-10 h-10 rounded-xl bg-background/80 flex items-center justify-center text-2xl shadow-lg">
                   {wallet.iconFallback}
                 </div>
                 <div className="text-left flex-1">
-                  <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                    {wallet.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                      {wallet.name}
+                    </p>
+                    {wallet.recommended && isMobile && (
+                      <span className="flex items-center gap-1 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                        <Star className="w-3 h-3" />
+                        Best for mobile
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {isMobile && !(window as any).ethereum 
                       ? wallet.mobileDescription 
@@ -306,6 +373,8 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                 </div>
                 {connectingWallet === wallet.id ? (
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                ) : wallet.id === 'walletconnect' ? (
+                  <QrCode className="w-4 h-4 text-muted-foreground" />
                 ) : isMobile && !(window as any).ethereum ? (
                   <ExternalLink className="w-4 h-4 text-muted-foreground" />
                 ) : null}
@@ -313,6 +382,21 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             ))}
           </div>
 
+          {/* Copy URL hint for manual approach */}
+          {isMobile && !(window as any).ethereum && (
+            <div className="text-center pt-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  toast.success('URL copied! Paste in your wallet browser');
+                }}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <Copy className="w-3 h-3 inline mr-1" />
+                Or copy URL and open in wallet browser
+              </button>
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground text-center pt-2">
             By connecting, you agree to our Terms of Service
