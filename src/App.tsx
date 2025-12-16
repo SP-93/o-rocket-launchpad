@@ -12,6 +12,7 @@ import AddLiquidity from "./pages/AddLiquidity";
 import Positions from "./pages/Positions";
 import Info from "./pages/Info";
 import Admin from "./pages/Admin";
+import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/positions" element={<Positions />} />
             <Route path="/info" element={<Info />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/install" element={<Install />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

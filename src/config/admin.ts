@@ -27,7 +27,27 @@ export const PROTOCOL_FEE_CONFIG = {
   protocolShare: 25, // 25% goes to protocol treasury
 };
 
-// Contract addresses on OverProtocol Mainnet (to be filled after deployment)
+// ============================================================
+// DEPLOYED CONTRACT ADDRESSES - OverProtocol Mainnet
+// These are used by ALL users automatically (no manual import needed)
+// Admin should update these after deploying contracts
+// ============================================================
+export const MAINNET_CONTRACTS = {
+  factory: '', // Paste factory address after deployment
+  router: '', // Paste router address after deployment
+  nftDescriptorLibrary: '', // Paste NFTDescriptor library address
+  nftDescriptor: '', // Paste NFTDescriptor address
+  positionManager: '', // Paste position manager address
+  quoter: '', // Paste quoter address
+};
+
+// DEPLOYED POOL ADDRESSES - OverProtocol Mainnet
+export const MAINNET_POOLS: Record<string, string> = {
+  // Format: 'TOKEN0/TOKEN1-FEE': 'pool_address'
+  // Example: 'WOVER/USDT-3000': '0x...'
+};
+
+// Legacy export (deprecated - use MAINNET_CONTRACTS)
 export const CONTRACT_ADDRESSES = {
   factory: null as string | null,
   router: null as string | null,

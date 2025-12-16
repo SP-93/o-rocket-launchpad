@@ -23,7 +23,8 @@ const wallets = [
     icon: '/walletconnect-icon.svg',
     iconFallback: '🔗',
     description: 'Scan QR code with mobile wallet',
-    mobileDescription: 'Recommended for mobile',
+    mobileDescription: 'Stay here, confirm in wallet app ✓',
+    mobileTip: 'Best option - you stay in this browser',
     color: 'from-purple-500/20 to-purple-600/20',
     borderColor: 'border-purple-500/30 hover:border-purple-500/50',
     recommended: true,
@@ -34,7 +35,8 @@ const wallets = [
     icon: '/metamask-icon.svg',
     iconFallback: '🦊',
     description: 'Connect using MetaMask',
-    mobileDescription: 'Open in MetaMask app',
+    mobileDescription: 'Opens MetaMask browser',
+    mobileTip: 'Will open in MetaMask app',
     color: 'from-orange-500/20 to-orange-600/20',
     borderColor: 'border-orange-500/30 hover:border-orange-500/50',
     recommended: false,
@@ -45,7 +47,8 @@ const wallets = [
     icon: '/overwallet-icon.svg',
     iconFallback: '🌐',
     description: 'Native wallet for OverProtocol',
-    mobileDescription: 'Open in Over Flex app',
+    mobileDescription: 'Opens Over Flex browser',
+    mobileTip: 'Will open in Over Flex app',
     color: 'from-blue-500/20 to-blue-600/20',
     borderColor: 'border-blue-500/30 hover:border-blue-500/50',
     recommended: false,
@@ -283,18 +286,23 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
             Connect to O'Rocket on OverProtocol Mainnet
           </p>
 
-          {/* Mobile notice - recommend WalletConnect */}
-          {isMobile && !(window as any).ethereum && (
+          {/* Mobile notice - explain behavior differences */}
+          {isMobile && (
             <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 mb-4">
               <div className="flex items-start gap-2">
                 <Smartphone className="w-5 h-5 text-primary mt-0.5" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">Mobile Device Detected</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    <QrCode className="w-3 h-3 inline mr-1" />
-                    Use <strong>WalletConnect</strong> for the most reliable connection.
-                    Open your wallet app and scan the QR code.
-                  </p>
+                  <p className="text-sm font-medium text-foreground mb-2">📱 Mobile Connection Options</p>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <p className="flex items-center gap-1">
+                      <Check className="w-3 h-3 text-success" />
+                      <strong>WalletConnect</strong>: Stay in this browser, confirm in wallet app
+                    </p>
+                    <p className="flex items-center gap-1">
+                      <ExternalLink className="w-3 h-3 text-warning" />
+                      <strong>MetaMask/OverWallet</strong>: Opens wallet's built-in browser
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -359,17 +367,20 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
                       {wallet.name}
                     </p>
                     {wallet.recommended && isMobile && (
-                      <span className="flex items-center gap-1 text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
-                        <Star className="w-3 h-3" />
-                        Best for mobile
+                      <span className="flex items-center gap-1 text-xs bg-success/20 text-success px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3" />
+                        Recommended
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {isMobile && !(window as any).ethereum 
-                      ? wallet.mobileDescription 
-                      : wallet.description}
+                    {isMobile ? wallet.mobileDescription : wallet.description}
                   </p>
+                  {isMobile && wallet.mobileTip && !wallet.recommended && (
+                    <p className="text-xs text-warning/80 mt-0.5">
+                      ⚠️ {wallet.mobileTip}
+                    </p>
+                  )}
                 </div>
                 {connectingWallet === wallet.id ? (
                   <Loader2 className="w-5 h-5 animate-spin text-primary" />
