@@ -72,21 +72,24 @@ export const useSwap = () => {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Helper to get ethers provider - uses injected provider (MetaMask) or wagmi wallet client
+  // Helper to get ethers provider - PRIORITIZE wagmi wallet client for Web3Modal compatibility
   const getEthersProvider = useCallback(async (): Promise<ethers.providers.Web3Provider> => {
-    // First try window.ethereum (injected wallets like MetaMask)
+    // First try wagmi wallet client (works with Web3Modal + WalletConnect)
+    try {
+      const client = await getWalletClient(wagmiConfig);
+      if (client) {
+        return new ethers.providers.Web3Provider(client as any, 'any');
+      }
+    } catch (e) {
+      logger.warn('wagmi wallet client not available:', e);
+    }
+    
+    // Fallback to window.ethereum (direct injected wallets)
     if (typeof window !== 'undefined' && (window as any).ethereum) {
       return new ethers.providers.Web3Provider((window as any).ethereum, 'any');
     }
     
-    // Fallback to wagmi wallet client
-    const client = await getWalletClient(wagmiConfig);
-    if (!client) {
-      throw new Error('Wallet not connected');
-    }
-    
-    // Create provider from wallet client
-    return new ethers.providers.Web3Provider(client as any, 'any');
+    throw new Error('No wallet provider available. Please connect your wallet.');
   }, []);
 
   // Get quote for swap with pool existence validation
