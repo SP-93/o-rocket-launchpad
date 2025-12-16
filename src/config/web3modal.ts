@@ -38,7 +38,7 @@ const chains = [overProtocol] as const;
 export const wagmiConfig = createConfig({
   chains,
   connectors: [
-    injected({ shimDisconnect: true }),
+    injected({ shimDisconnect: false }), // Disabled to prevent auto-reconnect after disconnect
     walletConnect({ 
       projectId, 
       metadata,

@@ -263,13 +263,13 @@ export const useSwap = () => {
         sqrtPriceLimitX96: params.sqrtPriceLimitX96,
       });
 
-      // Wrap quote call in detailed try-catch
+      // Wrap quote call in detailed try-catch with explicit gas limit
       let result;
       try {
-        result = await quoter.callStatic.quoteExactInputSingle(
-          params,
-          address ? { from: address } : {}
-        );
+        // CRITICAL: Add explicit gasLimit - OverProtocol RPC requires this for callStatic
+        result = await quoter.callStatic.quoteExactInputSingle(params, {
+          gasLimit: 500000,
+        });
         logger.info('Quote SUCCESS:', {
           amountOut: result.amountOut.toString(),
           sqrtPriceX96After: result.sqrtPriceX96After?.toString(),
@@ -320,24 +320,35 @@ export const useSwap = () => {
       
       const errorMessage = (err.message || err.reason || '').toLowerCase();
       const errorReason = err.reason || '';
+      const errorData = err.data || '';
       
-      // Be very specific about what constitutes a liquidity error
+      // Improved error detection with more specific conditions
       const isLiquidityError = 
         errorMessage.includes('spl') ||
         errorMessage.includes('no liquidity') ||
         errorMessage.includes('stf') ||
         errorReason.toLowerCase().includes('spl');
       
+      // Empty revert data (0x) often means insufficient liquidity or amount too large
+      const isEmptyRevert = errorData === '0x' || 
+        errorMessage.includes('transaction reverted without a reason') ||
+        errorMessage.includes('missing revert data');
+      
+      // RPC specific errors
+      const isRpcError = err.code === -32603 || errorMessage.includes('-32603');
+      
       // CALL_EXCEPTION could be many things
       const isGenericCallException = err.code === 'CALL_EXCEPTION' && !err.reason && !err.errorName;
       
       if (isLiquidityError) {
-        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has low liquidity. Try a smaller amount or different pair.`);
-      } else if (isGenericCallException) {
-        const hexData = err.data ? ` (data: ${err.data.slice(0, 20)}...)` : '';
-        setError(`Quote reverted${hexData}. Check console for diagnostic details.`);
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has insufficient liquidity. Try a smaller amount.`);
+      } else if (isEmptyRevert || isGenericCallException) {
+        // Most likely cause: swap amount exceeds available liquidity
+        setError(`Cannot quote this amount - pool may have insufficient liquidity. Try a smaller amount (e.g., 0.1 instead of 1).`);
+      } else if (isRpcError) {
+        setError(`RPC error - please try again in a few seconds.`);
       } else {
-        // Show actual error message with full details
+        // Show actual error message
         const actualError = err.reason || err.errorName || err.message || String(err) || 'Unknown error';
         setError(`Quote failed: ${actualError}`);
       }
