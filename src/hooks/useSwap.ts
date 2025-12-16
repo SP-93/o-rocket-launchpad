@@ -175,9 +175,38 @@ export const useSwap = () => {
       // Check for pool not existing or no liquidity
       if (errorMessage.includes('SPL') || errorMessage.includes('pool') || 
           errorMessage.includes('liquidity') || errorMessage.includes('0x')) {
-        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has no liquidity. Try WOVER/USDT if available.`);
+        // Check which pools have liquidity for better suggestions
+        const availablePools: string[] = [];
+        try {
+          const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+          const factoryAbi = ['function getPool(address, address, uint24) view returns (address)'];
+          const factory = new ethers.Contract(contracts.factory!, factoryAbi, provider);
+          const poolAbi = ['function liquidity() view returns (uint128)'];
+          
+          const tokenPairs = [['WOVER', 'USDT'], ['WOVER', 'USDC'], ['USDT', 'USDC']];
+          for (const [t0, t1] of tokenPairs) {
+            const addr0 = getTokenAddress(t0);
+            const addr1 = getTokenAddress(t1);
+            const poolAddr = await factory.getPool(addr0, addr1, 3000);
+            if (poolAddr !== ethers.constants.AddressZero) {
+              const pool = new ethers.Contract(poolAddr, poolAbi, provider);
+              const liq = await pool.liquidity();
+              if (liq.gt(0)) {
+                availablePools.push(`${t0}/${t1}`);
+              }
+            }
+          }
+        } catch {
+          // Fallback if check fails
+        }
+        
+        const suggestion = availablePools.length > 0 
+          ? `Pools with liquidity: ${availablePools.join(', ')}`
+          : 'Try adding liquidity first or use a different pair';
+          
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has insufficient liquidity. ${suggestion}`);
       } else {
-        setError('Failed to get quote. Pool may not exist or have no liquidity.');
+        setError('Failed to get quote. Pool may not exist or have insufficient liquidity.');
       }
       setStatus('idle');
       return null;
