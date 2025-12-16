@@ -1,9 +1,9 @@
 const FloatingObjects = () => {
   return (
     <div className="fixed inset-0 z-[3] pointer-events-none overflow-hidden">
-      {/* Saturn with Rings */}
+      {/* Saturn with Rings - scaled for mobile */}
       <div className="absolute top-[8%] right-[8%] animate-float-slow" style={{ animationDuration: '25s' }}>
-        <div className="relative">
+        <div className="relative scale-50 sm:scale-75 md:scale-100 origin-center">
           {/* Saturn body */}
           <div className="w-24 h-24 rounded-full bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 shadow-[0_0_60px_rgba(245,158,11,0.4)]">
             {/* Planet bands */}
@@ -18,47 +18,47 @@ const FloatingObjects = () => {
         </div>
       </div>
 
-      {/* Earth-like Planet */}
+      {/* Earth-like Planet - scaled for mobile */}
       <div className="absolute bottom-[15%] left-[5%] animate-float" style={{ animationDuration: '20s' }}>
-        <div className="relative w-16 h-16">
+        <div className="relative w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16">
           <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-400 via-blue-600 to-blue-800 shadow-[0_0_40px_rgba(59,130,246,0.5)]">
             {/* Continent shapes */}
-            <div className="absolute top-[20%] left-[30%] w-5 h-4 bg-green-500/60 rounded-full blur-[1px] transform rotate-12" />
-            <div className="absolute top-[50%] left-[50%] w-4 h-3 bg-green-600/50 rounded-full blur-[1px]" />
-            <div className="absolute top-[35%] right-[20%] w-3 h-2 bg-green-500/40 rounded-full blur-[1px]" />
+            <div className="absolute top-[20%] left-[30%] w-3 h-2 sm:w-4 sm:h-3 md:w-5 md:h-4 bg-green-500/60 rounded-full blur-[1px] transform rotate-12" />
+            <div className="absolute top-[50%] left-[50%] w-2 h-2 sm:w-3 sm:h-2 md:w-4 md:h-3 bg-green-600/50 rounded-full blur-[1px]" />
+            <div className="absolute top-[35%] right-[20%] w-2 h-1 sm:w-2 sm:h-2 md:w-3 md:h-2 bg-green-500/40 rounded-full blur-[1px]" />
           </div>
           {/* Atmosphere glow */}
           <div className="absolute inset-0 rounded-full bg-blue-400/20 blur-md scale-110" />
         </div>
       </div>
 
-      {/* Mars */}
+      {/* Mars - scaled for mobile */}
       <div className="absolute top-[45%] right-[3%] animate-float-slow" style={{ animationDuration: '18s', animationDelay: '5s' }}>
-        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-400 via-red-600 to-red-900 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
+        <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-red-400 via-red-600 to-red-900 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
           {/* Mars surface details */}
-          <div className="absolute top-[40%] left-[30%] w-3 h-2 bg-red-800/50 rounded-full" />
-          <div className="absolute top-[60%] left-[50%] w-2 h-2 bg-red-900/40 rounded-full" />
+          <div className="absolute top-[40%] left-[30%] w-2 h-1 sm:w-2 sm:h-2 md:w-3 md:h-2 bg-red-800/50 rounded-full" />
+          <div className="absolute top-[60%] left-[50%] w-1 h-1 sm:w-2 sm:h-2 bg-red-900/40 rounded-full" />
         </div>
       </div>
 
-      {/* Neptune/Ice Giant */}
-      <div className="absolute top-[65%] left-[80%] animate-float" style={{ animationDuration: '22s', animationDelay: '3s' }}>
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-cyan-300 via-blue-500 to-indigo-700 shadow-[0_0_25px_rgba(6,182,212,0.5)]">
+      {/* Neptune/Ice Giant - hidden on mobile, scaled on tablet */}
+      <div className="hidden sm:block absolute top-[65%] left-[80%] animate-float" style={{ animationDuration: '22s', animationDelay: '3s' }}>
+        <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-cyan-300 via-blue-500 to-indigo-700 shadow-[0_0_25px_rgba(6,182,212,0.5)]">
           <div className="absolute top-[30%] left-0 right-0 h-1 bg-cyan-200/30 rounded-full" />
         </div>
       </div>
 
-      {/* Moon */}
-      <div className="absolute top-[25%] left-[15%] w-20 h-20 rounded-full bg-gradient-to-br from-gray-200 via-gray-300 to-gray-500 shadow-[0_0_50px_rgba(255,255,255,0.2)] animate-float-slow" style={{ animationDuration: '30s' }}>
+      {/* Moon - scaled for mobile */}
+      <div className="absolute top-[25%] left-[15%] w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-gray-200 via-gray-300 to-gray-500 shadow-[0_0_50px_rgba(255,255,255,0.2)] animate-float-slow" style={{ animationDuration: '30s' }}>
         {/* Moon craters */}
-        <div className="absolute top-[20%] left-[30%] w-3 h-3 rounded-full bg-gray-500/40" />
-        <div className="absolute top-[55%] left-[45%] w-4 h-4 rounded-full bg-gray-500/30" />
-        <div className="absolute top-[35%] left-[65%] w-2 h-2 rounded-full bg-gray-500/35" />
-        <div className="absolute top-[70%] left-[25%] w-2 h-2 rounded-full bg-gray-500/25" />
+        <div className="absolute top-[20%] left-[30%] w-2 h-2 sm:w-2 sm:h-2 md:w-3 md:h-3 rounded-full bg-gray-500/40" />
+        <div className="absolute top-[55%] left-[45%] w-2 h-2 sm:w-3 sm:h-3 md:w-4 md:h-4 rounded-full bg-gray-500/30" />
+        <div className="absolute top-[35%] left-[65%] w-1 h-1 sm:w-2 sm:h-2 rounded-full bg-gray-500/35" />
+        <div className="absolute top-[70%] left-[25%] w-1 h-1 sm:w-2 sm:h-2 rounded-full bg-gray-500/25" />
       </div>
 
-      {/* Modern Spaceship */}
-      <div className="absolute top-[30%] animate-fly-through" style={{ animationDuration: '25s', animationDelay: '2s' }}>
+      {/* Modern Spaceship - hidden on mobile */}
+      <div className="hidden md:block absolute top-[30%] animate-fly-through" style={{ animationDuration: '25s', animationDelay: '2s' }}>
         <svg width="70" height="35" viewBox="0 0 70 35" className="drop-shadow-[0_0_20px_rgba(59,130,246,0.8)]">
           {/* Main body */}
           <ellipse cx="35" cy="17" rx="30" ry="10" fill="url(#shipBodyGradient)" />
@@ -91,8 +91,8 @@ const FloatingObjects = () => {
         </div>
       </div>
 
-      {/* UFO with beam */}
-      <div className="absolute top-[55%] animate-zigzag" style={{ animationDuration: '30s', animationDelay: '8s' }}>
+      {/* UFO with beam - hidden on mobile */}
+      <div className="hidden md:block absolute top-[55%] animate-zigzag" style={{ animationDuration: '30s', animationDelay: '8s' }}>
         <div className="relative">
           <svg width="60" height="45" viewBox="0 0 60 45" className="drop-shadow-[0_0_15px_rgba(139,92,246,0.7)]">
             {/* UFO dome */}
@@ -129,24 +129,24 @@ const FloatingObjects = () => {
         </div>
       </div>
 
-      {/* Comet with detailed tail */}
-      <div className="absolute animate-comet" style={{ animationDuration: '15s', animationDelay: '5s' }}>
+      {/* Comet with detailed tail - hidden on mobile */}
+      <div className="hidden sm:block absolute animate-comet" style={{ animationDuration: '15s', animationDelay: '5s' }}>
         <div className="relative">
           {/* Comet core */}
-          <div className="w-5 h-5 bg-gradient-radial from-white via-cyan-200 to-blue-400 rounded-full shadow-[0_0_30px_rgba(255,255,255,0.8)]" />
+          <div className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 bg-gradient-radial from-white via-cyan-200 to-blue-400 rounded-full shadow-[0_0_30px_rgba(255,255,255,0.8)]" />
           {/* Comet tail layers */}
           <div className="absolute top-1/2 left-1/2 transform -translate-y-1/2">
-            <div className="w-[180px] h-[4px] bg-gradient-to-r from-white/90 via-cyan-300/60 to-transparent blur-sm" />
-            <div className="w-[140px] h-[3px] bg-gradient-to-r from-cyan-200/70 via-blue-400/40 to-transparent blur-sm -mt-1" />
-            <div className="w-[100px] h-[2px] bg-gradient-to-r from-blue-300/50 via-purple-400/30 to-transparent blur-sm -mt-1" />
+            <div className="w-[100px] sm:w-[140px] md:w-[180px] h-[3px] md:h-[4px] bg-gradient-to-r from-white/90 via-cyan-300/60 to-transparent blur-sm" />
+            <div className="w-[70px] sm:w-[100px] md:w-[140px] h-[2px] md:h-[3px] bg-gradient-to-r from-cyan-200/70 via-blue-400/40 to-transparent blur-sm -mt-1" />
+            <div className="w-[50px] sm:w-[70px] md:w-[100px] h-[1px] md:h-[2px] bg-gradient-to-r from-blue-300/50 via-purple-400/30 to-transparent blur-sm -mt-1" />
           </div>
         </div>
       </div>
 
-      {/* Small asteroid belt particles */}
-      <div className="absolute top-[75%] left-[25%] w-3 h-3 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 animate-float opacity-60" style={{ animationDuration: '12s' }} />
-      <div className="absolute top-[78%] left-[30%] w-2 h-2 rounded-full bg-gradient-to-br from-gray-500 to-gray-700 animate-float opacity-50" style={{ animationDuration: '10s', animationDelay: '2s' }} />
-      <div className="absolute top-[72%] left-[35%] w-2 h-1 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 animate-float opacity-40" style={{ animationDuration: '14s', animationDelay: '4s' }} />
+      {/* Small asteroid belt particles - reduced on mobile */}
+      <div className="hidden sm:block absolute top-[75%] left-[25%] w-2 h-2 md:w-3 md:h-3 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 animate-float opacity-60" style={{ animationDuration: '12s' }} />
+      <div className="hidden md:block absolute top-[78%] left-[30%] w-2 h-2 rounded-full bg-gradient-to-br from-gray-500 to-gray-700 animate-float opacity-50" style={{ animationDuration: '10s', animationDelay: '2s' }} />
+      <div className="hidden md:block absolute top-[72%] left-[35%] w-2 h-1 rounded-full bg-gradient-to-br from-gray-400 to-gray-600 animate-float opacity-40" style={{ animationDuration: '14s', animationDelay: '4s' }} />
       
       {/* Distant stars/galaxies */}
       <div className="absolute top-[15%] left-[45%] w-1 h-1 bg-blue-300 rounded-full animate-twinkle shadow-[0_0_10px_rgba(147,197,253,0.8)]" />

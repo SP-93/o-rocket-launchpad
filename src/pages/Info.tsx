@@ -69,9 +69,9 @@ const Info = () => {
       <div className="min-h-screen pt-24 md:pt-32 pb-20 px-4">
         <div className="container mx-auto">
           {/* Header */}
-          <div className="text-center mb-8 md:mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 gradient-text">Protocol Analytics</h1>
-            <p className="text-lg md:text-xl text-muted-foreground">
+          <div className="text-center mb-6 sm:mb-8 md:mb-12">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 gradient-text">Protocol Analytics</h1>
+            <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-2">
               Real-time statistics and insights for O'Rocket DEX
             </p>
           </div>
