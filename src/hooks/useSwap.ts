@@ -173,54 +173,34 @@ export const useSwap = () => {
         reason: err.reason,
         code: err.code,
         data: err.data,
+        errorArgs: err.errorArgs,
+        errorName: err.errorName,
       });
       
       const errorMessage = (err.message || err.reason || '').toLowerCase();
+      const errorReason = err.reason || '';
       
-      // Only show "insufficient liquidity" for specific liquidity-related errors
+      // Be very specific about what constitutes a liquidity error
+      // Only these specific errors indicate low/no liquidity:
       const isLiquidityError = 
-        errorMessage.includes('spl') || 
+        errorMessage.includes('spl') ||  // sqrtPriceLimitX96
         errorMessage.includes('no liquidity') ||
-        errorMessage.includes('stf') || // SafeTransfer Failed
-        err.code === 'CALL_EXCEPTION';
+        errorMessage.includes('stf') ||  // SafeTransfer Failed
+        errorReason.toLowerCase().includes('spl');
+      
+      // CALL_EXCEPTION could be many things - check if it has error data
+      const isGenericCallException = err.code === 'CALL_EXCEPTION' && !err.reason && !err.errorName;
       
       if (isLiquidityError) {
-        // Check which pools are initialized using slot0()
-        const availablePools: string[] = [];
-        try {
-          const provider = new ethers.providers.Web3Provider((window as any).ethereum);
-          const factoryAbi = ['function getPool(address, address, uint24) view returns (address)'];
-          const factory = new ethers.Contract(contracts.factory!, factoryAbi, provider);
-          const poolAbi = [
-            'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)'
-          ];
-          
-          const tokenPairs = [['WOVER', 'USDT'], ['WOVER', 'USDC'], ['USDT', 'USDC']];
-          for (const [t0, t1] of tokenPairs) {
-            const addr0 = getTokenAddress(t0);
-            const addr1 = getTokenAddress(t1);
-            const poolAddr = await factory.getPool(addr0, addr1, 3000);
-            if (poolAddr !== ethers.constants.AddressZero) {
-              const pool = new ethers.Contract(poolAddr, poolAbi, provider);
-              const slot0 = await pool.slot0();
-              // Pool is initialized if sqrtPriceX96 > 0
-              if (slot0.sqrtPriceX96.gt(0)) {
-                availablePools.push(`${t0}/${t1}`);
-              }
-            }
-          }
-        } catch {
-          // Fallback if check fails
-        }
-        
-        const suggestion = availablePools.length > 0 
-          ? `Pools with liquidity: ${availablePools.join(', ')}`
-          : 'Try adding liquidity first or use a different pair';
-          
-        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has insufficient liquidity. ${suggestion}`);
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has low liquidity. Try a smaller amount or different pair.`);
+      } else if (isGenericCallException) {
+        // For generic call exceptions, show more details
+        const hexData = err.data ? ` (data: ${err.data.slice(0, 20)}...)` : '';
+        setError(`Quote reverted${hexData}. Pool may have insufficient liquidity for this amount.`);
       } else {
-        // Show actual error message for debugging
-        setError(`Quote failed: ${err.reason || err.message || 'Unknown error'}`);
+        // Show actual error message
+        const actualError = err.reason || err.errorName || err.message || 'Unknown error';
+        setError(`Quote failed: ${actualError}`);
       }
       setStatus('idle');
       return null;
