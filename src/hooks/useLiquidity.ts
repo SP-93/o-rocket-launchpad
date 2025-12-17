@@ -507,123 +507,191 @@ export const useLiquidity = () => {
     }
   }, [isConnected, isCorrectNetwork, address, getWriteProvider]);
 
-  // Fetch user positions with enhanced diagnostics
+  // Debug info state for UI display
+  const [debugInfo, setDebugInfo] = useState<{
+    positionManagerAddress: string;
+    factoryFromPM: string;
+    weth9FromPM: string;
+    expectedFactory: string;
+    expectedWeth9: string;
+    factoryMatch: boolean;
+    weth9Match: boolean;
+    balanceOf: number;
+    error: string | null;
+  } | null>(null);
+
+  // Fetch user positions with PRODUCTION DEBUG LOGGING
   const fetchPositions = useCallback(async (): Promise<Position[]> => {
+    // PRODUCTION DEBUG - direct console.log (bypasses logger dev mode check)
+    console.log('=== FETCH POSITIONS DEBUG START ===');
+    console.log('isConnected:', isConnected);
+    console.log('address:', address);
+    
     if (!isConnected || !address) {
-      logger.info('fetchPositions: Not connected or no address');
+      console.log('❌ Not connected or no address - returning empty');
       setPositions([]);
+      setDebugInfo(null);
       return [];
     }
 
     const contracts = getDeployedContracts();
-    logger.info('fetchPositions: Contract addresses:', {
+    console.log('Contract addresses:', {
       positionManager: contracts.positionManager,
       factory: contracts.factory,
       quoter: contracts.quoter,
     });
 
     if (!contracts.positionManager) {
-      logger.error('fetchPositions: No PositionManager address configured!');
+      console.error('❌ No PositionManager address configured!');
+      setDebugInfo({
+        positionManagerAddress: 'NOT CONFIGURED',
+        factoryFromPM: '',
+        weth9FromPM: '',
+        expectedFactory: contracts.factory || '',
+        expectedWeth9: TOKEN_ADDRESSES.WOVER,
+        factoryMatch: false,
+        weth9Match: false,
+        balanceOf: 0,
+        error: 'PositionManager not configured',
+      });
       return [];
     }
 
+    const provider = getReadProvider();
+    const positionManager = new ethers.Contract(
+      contracts.positionManager,
+      NonfungiblePositionManagerABI.abi,
+      provider
+    );
+
+    // Initialize debug info
+    const debug: typeof debugInfo = {
+      positionManagerAddress: contracts.positionManager,
+      factoryFromPM: '',
+      weth9FromPM: '',
+      expectedFactory: contracts.factory || '',
+      expectedWeth9: TOKEN_ADDRESSES.WOVER,
+      factoryMatch: false,
+      weth9Match: false,
+      balanceOf: 0,
+      error: null,
+    };
+
+    // ========== STEP 1: Check PositionManager.factory() ==========
+    console.log('--- Step 1: Checking PositionManager.factory() ---');
     try {
-      const provider = getReadProvider();
-      const positionManager = new ethers.Contract(
-        contracts.positionManager,
-        NonfungiblePositionManagerABI.abi,
-        provider
-      );
+      const pmFactory = await positionManager.factory();
+      debug.factoryFromPM = pmFactory;
+      debug.factoryMatch = pmFactory.toLowerCase() === contracts.factory?.toLowerCase();
+      console.log('PositionManager.factory():', pmFactory);
+      console.log('Expected factory:', contracts.factory);
+      console.log('Match:', debug.factoryMatch ? '✅ YES' : '❌ NO MISMATCH!');
+    } catch (err: any) {
+      console.error('❌ Failed to call PositionManager.factory():', err.message);
+      debug.error = `factory() failed: ${err.message}`;
+    }
 
-      // ========== CRITICAL DIAGNOSTICS ==========
-      logger.info('========== POSITIONMANAGER DIAGNOSTICS ==========');
-      
-      try {
-        // Check PositionManager.factory()
-        const pmFactory = await positionManager.factory();
-        const factoryMatch = pmFactory.toLowerCase() === contracts.factory?.toLowerCase();
-        logger.info('PositionManager.factory():', {
-          actual: pmFactory,
-          expected: contracts.factory,
-          MATCH: factoryMatch ? '✅ YES' : '❌ NO - MISMATCH!',
-        });
+    // ========== STEP 2: Check PositionManager.WETH9() ==========
+    console.log('--- Step 2: Checking PositionManager.WETH9() ---');
+    try {
+      const pmWeth9 = await positionManager.WETH9();
+      debug.weth9FromPM = pmWeth9;
+      debug.weth9Match = pmWeth9.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase();
+      console.log('PositionManager.WETH9():', pmWeth9);
+      console.log('Expected WETH9 (WOVER):', TOKEN_ADDRESSES.WOVER);
+      console.log('Match:', debug.weth9Match ? '✅ YES' : '❌ NO MISMATCH!');
+    } catch (err: any) {
+      console.error('❌ Failed to call PositionManager.WETH9():', err.message);
+      debug.error = (debug.error || '') + ` | WETH9() failed: ${err.message}`;
+    }
 
-        // Check PositionManager.WETH9()
-        const pmWeth9 = await positionManager.WETH9();
-        const weth9Match = pmWeth9.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase();
-        logger.info('PositionManager.WETH9():', {
-          actual: pmWeth9,
-          expected: TOKEN_ADDRESSES.WOVER,
-          MATCH: weth9Match ? '✅ YES' : '❌ NO - MISMATCH!',
-        });
-
-        if (!factoryMatch) {
-          logger.error('🚨 CRITICAL: PositionManager uses WRONG Factory! NFTs minted here won\'t work with our pools!');
-        }
-        if (!weth9Match) {
-          logger.error('🚨 CRITICAL: PositionManager uses WRONG WETH9! Native token wrapping may fail!');
-        }
-      } catch (diagErr) {
-        logger.error('Failed to read PositionManager config:', diagErr);
-      }
-      
-      logger.info('=================================================');
-
-      // Get number of positions
+    // ========== STEP 3: Get balanceOf ==========
+    console.log('--- Step 3: Checking balanceOf() ---');
+    let positionCount = 0;
+    try {
       const balance = await positionManager.balanceOf(address);
-      const positionCount = balance.toNumber();
-      
-      logger.info(`fetchPositions: User ${address} has ${positionCount} NFT positions on this PositionManager`);
+      positionCount = balance.toNumber();
+      debug.balanceOf = positionCount;
+      console.log(`balanceOf(${address}):`, positionCount);
+    } catch (err: any) {
+      console.error('❌ Failed to call balanceOf():', err.message);
+      debug.error = (debug.error || '') + ` | balanceOf() failed: ${err.message}`;
+      setDebugInfo(debug);
+      return [];
+    }
 
-      if (positionCount === 0) {
-        logger.info('fetchPositions: No positions found. If user has NFTs in MetaMask, they may be from a DIFFERENT PositionManager contract!');
-        logger.info('Check: Are the NFTs from O\'Rocket\'s PositionManager or another DEX (Izumi, etc)?');
+    if (positionCount === 0) {
+      console.log('⚠️ User has 0 NFT positions on THIS PositionManager');
+      console.log('If user sees NFTs in MetaMask, they may be from a DIFFERENT contract (Izumi, etc)');
+      setDebugInfo(debug);
+      setPositions([]);
+      return [];
+    }
+
+    // ========== STEP 4: Fetch each position ==========
+    console.log(`--- Step 4: Fetching ${positionCount} positions ---`);
+    const userPositions: Position[] = [];
+
+    for (let i = 0; i < positionCount; i++) {
+      console.log(`--- Position ${i + 1}/${positionCount} ---`);
+      
+      // Get tokenId
+      let tokenId: ethers.BigNumber;
+      try {
+        tokenId = await positionManager.tokenOfOwnerByIndex(address, i);
+        console.log(`tokenOfOwnerByIndex(${i}):`, tokenId.toString());
+      } catch (err: any) {
+        console.error(`❌ tokenOfOwnerByIndex(${i}) failed:`, err.message);
+        continue;
       }
 
-      const userPositions: Position[] = [];
-
-      for (let i = 0; i < positionCount; i++) {
-        const tokenId = await positionManager.tokenOfOwnerByIndex(address, i);
-        const position = await positionManager.positions(tokenId);
-
-        logger.info(`Position #${tokenId.toString()}:`, {
+      // Get position details
+      let position: any;
+      try {
+        position = await positionManager.positions(tokenId);
+        console.log(`Position #${tokenId}:`, {
           token0: position.token0,
           token1: position.token1,
           fee: position.fee,
+          liquidity: position.liquidity.toString(),
           tickLower: position.tickLower,
           tickUpper: position.tickUpper,
-          liquidity: position.liquidity.toString(),
-          hasLiquidity: !position.liquidity.isZero(),
         });
-
-        // Include ALL positions for debugging (even zero liquidity)
-        const decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
-        const decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
-
-        userPositions.push({
-          tokenId: tokenId.toString(),
-          token0: getTokenSymbol(position.token0),
-          token1: getTokenSymbol(position.token1),
-          fee: position.fee,
-          tickLower: position.tickLower,
-          tickUpper: position.tickUpper,
-          liquidity: position.liquidity.toString(),
-          token0Amount: '0',
-          token1Amount: '0',
-          feeGrowth0: position.feeGrowthInside0LastX128.toString(),
-          feeGrowth1: position.feeGrowthInside1LastX128.toString(),
-          tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
-          tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
-        });
+      } catch (err: any) {
+        console.error(`❌ positions(${tokenId}) failed:`, err.message);
+        continue;
       }
 
-      logger.info(`fetchPositions: Returning ${userPositions.length} positions`);
-      setPositions(userPositions);
-      return userPositions;
-    } catch (err: any) {
-      logger.error('fetchPositions error:', err);
-      return [];
+      // Get decimals
+      let decimals0 = 18, decimals1 = 18;
+      try {
+        decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
+        decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
+      } catch (err: any) {
+        console.warn('Failed to get decimals, using defaults:', err.message);
+      }
+
+      userPositions.push({
+        tokenId: tokenId.toString(),
+        token0: getTokenSymbol(position.token0),
+        token1: getTokenSymbol(position.token1),
+        fee: position.fee,
+        tickLower: position.tickLower,
+        tickUpper: position.tickUpper,
+        liquidity: position.liquidity.toString(),
+        token0Amount: '0',
+        token1Amount: '0',
+        feeGrowth0: position.feeGrowthInside0LastX128.toString(),
+        feeGrowth1: position.feeGrowthInside1LastX128.toString(),
+        tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
+        tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
+      });
     }
+
+    console.log(`=== FETCH POSITIONS COMPLETE: ${userPositions.length} positions ===`);
+    setDebugInfo(debug);
+    setPositions(userPositions);
+    return userPositions;
   }, [isConnected, address, getReadProvider]);
 
   // Get token balance (supports both ERC20 and native OVER with dynamic decimals)
@@ -735,6 +803,7 @@ export const useLiquidity = () => {
     error,
     txHash,
     positions,
+    debugInfo,
     addLiquidity,
     removeLiquidity,
     collectFees,

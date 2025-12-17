@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { TrendingUp, Plus, Loader2, Trash2, Wallet, RefreshCw, ExternalLink, CirclePlus } from "lucide-react";
+import { TrendingUp, Plus, Loader2, Trash2, Wallet, RefreshCw, ExternalLink, CirclePlus, Bug, CheckCircle, XCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
@@ -51,12 +51,13 @@ const tickToPrice = (tick: number, token0Symbol: string, token1Symbol: string): 
 const Positions = () => {
   const navigate = useNavigate();
   const { isConnected, isCorrectNetwork, address, switchNetwork } = useWallet();
-  const { positions, status, error, fetchPositions, removeLiquidity, collectFees, txHash } = useLiquidity();
+  const { positions, status, error, fetchPositions, removeLiquidity, collectFees, txHash, debugInfo } = useLiquidity();
   
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [showDebug, setShowDebug] = useState(false);
 
   // Fetch positions on mount and when wallet connects
   useEffect(() => {
@@ -225,6 +226,81 @@ const Positions = () => {
               <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-4" />
               <p className="text-muted-foreground">Loading your positions...</p>
             </GlowCard>
+          )}
+
+          {/* Debug Info Section */}
+          {debugInfo && (
+            <div className="mb-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDebug(!showDebug)}
+                className="mb-2"
+              >
+                <Bug className="w-4 h-4 mr-2" />
+                {showDebug ? 'Hide' : 'Show'} Debug Info
+              </Button>
+              
+              {showDebug && (
+                <Card className="glass-card p-4 text-xs font-mono">
+                  <h3 className="text-sm font-bold mb-3 text-primary">PositionManager Diagnostics</h3>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground w-32">Connected:</span>
+                      <span className="text-foreground break-all">{address}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground w-32">PM Address:</span>
+                      <span className="text-foreground break-all">{debugInfo.positionManagerAddress}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {debugInfo.factoryMatch ? (
+                        <CheckCircle className="w-4 h-4 text-success" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-destructive" />
+                      )}
+                      <span className="text-muted-foreground">PM.factory():</span>
+                      <span className={debugInfo.factoryMatch ? 'text-success' : 'text-destructive'}>
+                        {debugInfo.factoryFromPM || 'N/A'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {debugInfo.weth9Match ? (
+                        <CheckCircle className="w-4 h-4 text-success" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-destructive" />
+                      )}
+                      <span className="text-muted-foreground">PM.WETH9():</span>
+                      <span className={debugInfo.weth9Match ? 'text-success' : 'text-destructive'}>
+                        {debugInfo.weth9FromPM || 'N/A'}
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground w-32">balanceOf:</span>
+                      <span className="text-foreground font-bold text-lg">{debugInfo.balanceOf}</span>
+                      <span className="text-muted-foreground">NFT positions</span>
+                    </div>
+                    
+                    {debugInfo.error && (
+                      <div className="mt-2 p-2 bg-destructive/10 border border-destructive/20 rounded">
+                        <span className="text-destructive">{debugInfo.error}</span>
+                      </div>
+                    )}
+                    
+                    {!debugInfo.factoryMatch && (
+                      <div className="mt-2 p-2 bg-warning/10 border border-warning/20 rounded">
+                        <span className="text-warning">⚠️ Factory mismatch! NFTs may be from different DEX.</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )}
+            </div>
           )}
 
           {/* Empty State */}
