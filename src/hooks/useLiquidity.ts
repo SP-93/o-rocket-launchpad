@@ -507,15 +507,23 @@ export const useLiquidity = () => {
     }
   }, [isConnected, isCorrectNetwork, address, getWriteProvider]);
 
-  // Fetch user positions
+  // Fetch user positions with enhanced diagnostics
   const fetchPositions = useCallback(async (): Promise<Position[]> => {
     if (!isConnected || !address) {
+      logger.info('fetchPositions: Not connected or no address');
       setPositions([]);
       return [];
     }
 
     const contracts = getDeployedContracts();
+    logger.info('fetchPositions: Contract addresses:', {
+      positionManager: contracts.positionManager,
+      factory: contracts.factory,
+      quoter: contracts.quoter,
+    });
+
     if (!contracts.positionManager) {
+      logger.error('fetchPositions: No PositionManager address configured!');
       return [];
     }
 
@@ -527,9 +535,50 @@ export const useLiquidity = () => {
         provider
       );
 
+      // ========== CRITICAL DIAGNOSTICS ==========
+      logger.info('========== POSITIONMANAGER DIAGNOSTICS ==========');
+      
+      try {
+        // Check PositionManager.factory()
+        const pmFactory = await positionManager.factory();
+        const factoryMatch = pmFactory.toLowerCase() === contracts.factory?.toLowerCase();
+        logger.info('PositionManager.factory():', {
+          actual: pmFactory,
+          expected: contracts.factory,
+          MATCH: factoryMatch ? '✅ YES' : '❌ NO - MISMATCH!',
+        });
+
+        // Check PositionManager.WETH9()
+        const pmWeth9 = await positionManager.WETH9();
+        const weth9Match = pmWeth9.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase();
+        logger.info('PositionManager.WETH9():', {
+          actual: pmWeth9,
+          expected: TOKEN_ADDRESSES.WOVER,
+          MATCH: weth9Match ? '✅ YES' : '❌ NO - MISMATCH!',
+        });
+
+        if (!factoryMatch) {
+          logger.error('🚨 CRITICAL: PositionManager uses WRONG Factory! NFTs minted here won\'t work with our pools!');
+        }
+        if (!weth9Match) {
+          logger.error('🚨 CRITICAL: PositionManager uses WRONG WETH9! Native token wrapping may fail!');
+        }
+      } catch (diagErr) {
+        logger.error('Failed to read PositionManager config:', diagErr);
+      }
+      
+      logger.info('=================================================');
+
       // Get number of positions
       const balance = await positionManager.balanceOf(address);
       const positionCount = balance.toNumber();
+      
+      logger.info(`fetchPositions: User ${address} has ${positionCount} NFT positions on this PositionManager`);
+
+      if (positionCount === 0) {
+        logger.info('fetchPositions: No positions found. If user has NFTs in MetaMask, they may be from a DIFFERENT PositionManager contract!');
+        logger.info('Check: Are the NFTs from O\'Rocket\'s PositionManager or another DEX (Izumi, etc)?');
+      }
 
       const userPositions: Position[] = [];
 
@@ -537,36 +586,42 @@ export const useLiquidity = () => {
         const tokenId = await positionManager.tokenOfOwnerByIndex(address, i);
         const position = await positionManager.positions(tokenId);
 
-        // Only include positions with liquidity
-        if (!position.liquidity.isZero()) {
-          // Dynamically fetch decimals for each token
-          const decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
-          const decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
-          
-          logger.info(`Position ${tokenId}: token0 decimals=${decimals0}, token1 decimals=${decimals1}`);
+        logger.info(`Position #${tokenId.toString()}:`, {
+          token0: position.token0,
+          token1: position.token1,
+          fee: position.fee,
+          tickLower: position.tickLower,
+          tickUpper: position.tickUpper,
+          liquidity: position.liquidity.toString(),
+          hasLiquidity: !position.liquidity.isZero(),
+        });
 
-          userPositions.push({
-            tokenId: tokenId.toString(),
-            token0: getTokenSymbol(position.token0),
-            token1: getTokenSymbol(position.token1),
-            fee: position.fee,
-            tickLower: position.tickLower,
-            tickUpper: position.tickUpper,
-            liquidity: position.liquidity.toString(),
-            token0Amount: '0', // Would need pool state to calculate
-            token1Amount: '0',
-            feeGrowth0: position.feeGrowthInside0LastX128.toString(),
-            feeGrowth1: position.feeGrowthInside1LastX128.toString(),
-            tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
-            tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
-          });
-        }
+        // Include ALL positions for debugging (even zero liquidity)
+        const decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
+        const decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
+
+        userPositions.push({
+          tokenId: tokenId.toString(),
+          token0: getTokenSymbol(position.token0),
+          token1: getTokenSymbol(position.token1),
+          fee: position.fee,
+          tickLower: position.tickLower,
+          tickUpper: position.tickUpper,
+          liquidity: position.liquidity.toString(),
+          token0Amount: '0',
+          token1Amount: '0',
+          feeGrowth0: position.feeGrowthInside0LastX128.toString(),
+          feeGrowth1: position.feeGrowthInside1LastX128.toString(),
+          tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
+          tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
+        });
       }
 
+      logger.info(`fetchPositions: Returning ${userPositions.length} positions`);
       setPositions(userPositions);
       return userPositions;
     } catch (err: any) {
-      logger.error('Fetch positions error:', err);
+      logger.error('fetchPositions error:', err);
       return [];
     }
   }, [isConnected, address, getReadProvider]);
