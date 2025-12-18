@@ -256,6 +256,8 @@ const Swap = () => {
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
+    if (status === "wrapping") return "Wrapping OVER...";
+    if (status === "unwrapping") return "Unwrapping WOVER...";
     if (status === "quoting") return "Getting Quote...";
     if (status === "approving") return "Approving Token...";
     if (status === "swapping") return "Swapping...";
@@ -280,7 +282,8 @@ const Swap = () => {
   const isButtonDisabled = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
-    if (status === "quoting" || status === "approving" || status === "swapping") return true;
+    if (status === "quoting" || status === "approving" || status === "swapping" || 
+        status === "wrapping" || status === "unwrapping") return true;
     if (!fromAmount || parseFloat(fromAmount) === 0) return true;
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return true;
     return false;
