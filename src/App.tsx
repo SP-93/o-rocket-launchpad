@@ -14,6 +14,15 @@ import Info from "./pages/Info";
 import Admin from "./pages/Admin";
 import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
+import { initializeSecurity } from "./lib/securityInit";
+
+// Initialize security checks on app load
+if (typeof window !== 'undefined') {
+  const securityStatus = initializeSecurity();
+  if (!securityStatus.isSecure && import.meta.env.DEV) {
+    console.warn('Security issues detected:', securityStatus.issues);
+  }
+}
 
 const queryClient = new QueryClient();
 
