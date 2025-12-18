@@ -85,6 +85,7 @@ const Positions = () => {
       token0: position.token0,
       token1: position.token1,
       fee: position.fee.toString(),
+      tokenId: position.tokenId, // Pass tokenId to increase existing position
     });
     navigate(`/add-liquidity?${params.toString()}`);
   };
