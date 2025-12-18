@@ -8,6 +8,7 @@ import GlowCard from "@/components/ui/GlowCard";
 import { TokenPairIcon } from "@/components/TokenIcon";
 import { useLiquidity } from "@/hooks/useLiquidity";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
+import { PoolDetailsModal } from "@/components/PoolDetailsModal";
 
 interface PoolTVLData {
   token0Balance: string;
@@ -16,12 +17,25 @@ interface PoolTVLData {
   loading: boolean;
 }
 
+interface Pool {
+  pair: string;
+  token0: string;
+  token1: string;
+  fee: string;
+  feeValue: number;
+  type: string;
+  description: string;
+}
+
 const Pools = () => {
   const navigate = useNavigate();
-  const { getPoolTVL } = useLiquidity();
+  const { getPoolTVL, getPoolPrice } = useLiquidity();
   const { price: overPrice, loading: priceLoading } = useCoinGeckoPrice();
   const [poolTVLs, setPoolTVLs] = useState<Record<string, PoolTVLData>>({});
+  const [poolPrices, setPoolPrices] = useState<Record<string, number>>({});
   const [isLoadingTVL, setIsLoadingTVL] = useState(true);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
 
   const pools = [
     {
@@ -53,32 +67,39 @@ const Pools = () => {
     },
   ];
 
-  // Fetch TVL for all pools
+  // Fetch TVL and prices for all pools
   useEffect(() => {
-    const fetchAllTVL = async () => {
+    const fetchAllPoolData = async () => {
       if (priceLoading) return;
       
       setIsLoadingTVL(true);
       const tvlData: Record<string, PoolTVLData> = {};
+      const priceData: Record<string, number> = {};
 
       await Promise.all(
         pools.map(async (pool) => {
-          const tvl = await getPoolTVL(pool.token0, pool.token1, pool.feeValue, overPrice);
+          const [tvl, price] = await Promise.all([
+            getPoolTVL(pool.token0, pool.token1, pool.feeValue, overPrice),
+            getPoolPrice(pool.token0, pool.token1, pool.feeValue),
+          ]);
+          
           tvlData[pool.pair] = {
             token0Balance: tvl?.token0Balance || "0",
             token1Balance: tvl?.token1Balance || "0",
             tvlUSD: tvl?.tvlUSD || 0,
             loading: false,
           };
+          priceData[pool.pair] = price || 0;
         })
       );
 
       setPoolTVLs(tvlData);
+      setPoolPrices(priceData);
       setIsLoadingTVL(false);
     };
 
-    fetchAllTVL();
-  }, [overPrice, priceLoading, getPoolTVL]);
+    fetchAllPoolData();
+  }, [overPrice, priceLoading, getPoolTVL, getPoolPrice]);
 
   // Calculate total TVL
   const totalTVL = Object.values(poolTVLs).reduce((sum, tvl) => sum + tvl.tvlUSD, 0);
@@ -86,6 +107,11 @@ const Pools = () => {
 
   const handleAddLiquidity = (token0: string, token1: string, fee: number) => {
     navigate(`/add-liquidity?token0=${token0}&token1=${token1}&fee=${fee}`);
+  };
+
+  const handleOpenDetails = (pool: Pool) => {
+    setSelectedPool(pool);
+    setDetailsModalOpen(true);
   };
 
   const formatTVL = (tvl: number): string => {
@@ -208,7 +234,11 @@ const Pools = () => {
                     >
                       Add Liquidity
                     </Button>
-                    <Button variant="outline" className="flex-1 border-primary/30 text-sm">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 border-primary/30 text-sm"
+                      onClick={() => handleOpenDetails(pool)}
+                    >
                       Details
                     </Button>
                   </div>
@@ -218,6 +248,15 @@ const Pools = () => {
           </div>
         </div>
       </div>
+
+      {/* Pool Details Modal */}
+      <PoolDetailsModal
+        open={detailsModalOpen}
+        onOpenChange={setDetailsModalOpen}
+        pool={selectedPool}
+        tvlData={selectedPool ? poolTVLs[selectedPool.pair] : null}
+        currentPrice={selectedPool ? poolPrices[selectedPool.pair] : undefined}
+      />
     </SpaceBackground>
   );
 };

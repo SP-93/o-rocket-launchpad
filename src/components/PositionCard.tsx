@@ -1,15 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Position } from "@/hooks/useLiquidity";
-import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity } from "lucide-react";
+import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign } from "lucide-react";
 
 interface PositionCardProps {
   position: Position;
   onAddMore: (position: Position) => void;
-  onCollect: (tokenId: string) => void;
+  onCollect: (position: Position) => void;
   onRemove: (position: Position) => void;
   isCollecting: boolean;
   isRemoving: boolean;
+  overPriceUSD?: number;
 }
 
 // Convert tick to human-readable price
@@ -64,6 +65,7 @@ export const PositionCard = ({
   onRemove,
   isCollecting,
   isRemoving,
+  overPriceUSD = 0,
 }: PositionCardProps) => {
   const isActive = hasActiveLiquidity(position.liquidity);
   const fullRange = isFullRange(position.tickLower, position.tickUpper);
@@ -71,6 +73,22 @@ export const PositionCard = ({
   const hasUnclaimedFees = 
     parseFloat(position.tokensOwed0) > 0.000001 || 
     parseFloat(position.tokensOwed1) > 0.000001;
+
+  // Calculate USD value of unclaimed tokens
+  const calculateUSDValue = (): number => {
+    const getTokenValue = (symbol: string, amount: string): number => {
+      const parsedAmount = parseFloat(amount);
+      if (symbol === 'USDT' || symbol === 'USDC') return parsedAmount;
+      if (symbol === 'WOVER' || symbol === 'OVER') return parsedAmount * overPriceUSD;
+      return 0;
+    };
+    
+    const token0Value = getTokenValue(position.token0, position.tokensOwed0);
+    const token1Value = getTokenValue(position.token1, position.tokensOwed1);
+    return token0Value + token1Value;
+  };
+
+  const positionUSDValue = calculateUSDValue();
 
   return (
     <div className="relative group">
@@ -137,7 +155,7 @@ export const PositionCard = ({
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Price Range */}
             <div className="glass-card rounded-xl p-4 bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
@@ -175,7 +193,7 @@ export const PositionCard = ({
             <div className="glass-card rounded-xl p-4 bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
                 <Wallet className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Unclaimed Fees</span>
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">Unclaimed Tokens</span>
               </div>
               {hasUnclaimedFees ? (
                 <div className="space-y-1">
@@ -187,7 +205,24 @@ export const PositionCard = ({
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No fees to collect</p>
+                <p className="text-sm text-muted-foreground">No tokens to collect</p>
+              )}
+            </div>
+
+            {/* Position USD Value */}
+            <div className="glass-card rounded-xl p-4 bg-muted/30">
+              <div className="flex items-center gap-2 mb-2">
+                <DollarSign className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">Position Value</span>
+              </div>
+              {overPriceUSD > 0 && positionUSDValue > 0 ? (
+                <p className="text-lg font-bold text-primary">
+                  ${positionUSDValue.toFixed(2)}
+                </p>
+              ) : positionUSDValue === 0 ? (
+                <p className="text-sm text-muted-foreground">$0.00</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">--</p>
               )}
             </div>
 
@@ -226,7 +261,7 @@ export const PositionCard = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onCollect(position.tokenId)}
+              onClick={() => onCollect(position)}
               disabled={isCollecting || !hasUnclaimedFees}
               className={`flex-1 md:flex-none ${hasUnclaimedFees ? 'hover:border-success/50 hover:bg-success/5' : ''}`}
             >
