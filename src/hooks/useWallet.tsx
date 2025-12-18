@@ -73,12 +73,32 @@ export const useWallet = () => {
     logger.log('Wallet disconnected - auto-reconnect disabled');
   }, [wagmiDisconnect]);
 
-  // Switch network
+  // Switch network - improved for mobile wallets
   const switchNetwork = useCallback(async () => {
     try {
-      switchChain({ chainId: overProtocol.id });
+      // Try wagmi switchChain first
+      await switchChain({ chainId: overProtocol.id });
     } catch (err: any) {
       logger.error('Switch network error:', err);
+      
+      // If switchChain fails, try adding the network via wallet_addEthereumChain
+      if (typeof window !== 'undefined' && (window as any).ethereum) {
+        try {
+          await (window as any).ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: `0x${overProtocol.id.toString(16)}`,
+              chainName: overProtocol.name,
+              nativeCurrency: overProtocol.nativeCurrency,
+              rpcUrls: [overProtocol.rpcUrls.default.http[0]],
+              blockExplorerUrls: [overProtocol.blockExplorers.default.url],
+            }],
+          });
+          return;
+        } catch (addError: any) {
+          logger.error('Add network error:', addError);
+        }
+      }
       throw err;
     }
   }, [switchChain]);
