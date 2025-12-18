@@ -40,12 +40,17 @@ export interface Position {
   tokenId: string;
   token0: string;
   token1: string;
+  token0Address: string;
+  token1Address: string;
   fee: number;
   tickLower: number;
   tickUpper: number;
+  currentTick: number;
   liquidity: string;
   token0Amount: string;
   token1Amount: string;
+  decimals0: number;
+  decimals1: number;
   feeGrowth0: string;
   feeGrowth1: string;
   tokensOwed0: string;
@@ -125,6 +130,53 @@ const sortTokens = (tokenA: string, tokenB: string): [string, string] => {
   return tokenA.toLowerCase() < tokenB.toLowerCase() 
     ? [tokenA, tokenB] 
     : [tokenB, tokenA];
+};
+
+// Calculate token amounts from liquidity using Uniswap V3 math
+const tickToSqrtPrice = (tick: number): number => {
+  return Math.sqrt(Math.pow(1.0001, tick));
+};
+
+const calculateTokenAmountsFromLiquidity = (
+  liquidity: string,
+  currentTick: number,
+  tickLower: number,
+  tickUpper: number,
+  decimals0: number,
+  decimals1: number
+): { amount0: number; amount1: number } => {
+  const L = parseFloat(liquidity);
+  
+  if (L === 0 || isNaN(L)) {
+    return { amount0: 0, amount1: 0 };
+  }
+
+  const sqrtPriceCurrent = tickToSqrtPrice(currentTick);
+  const sqrtPriceLower = tickToSqrtPrice(tickLower);
+  const sqrtPriceUpper = tickToSqrtPrice(tickUpper);
+
+  let amount0Raw = 0;
+  let amount1Raw = 0;
+
+  if (currentTick < tickLower) {
+    // Price below range - all in token0
+    amount0Raw = L * (1 / sqrtPriceLower - 1 / sqrtPriceUpper);
+    amount1Raw = 0;
+  } else if (currentTick >= tickUpper) {
+    // Price above range - all in token1
+    amount0Raw = 0;
+    amount1Raw = L * (sqrtPriceUpper - sqrtPriceLower);
+  } else {
+    // Price in range - mix of both tokens
+    amount0Raw = L * (1 / sqrtPriceCurrent - 1 / sqrtPriceUpper);
+    amount1Raw = L * (sqrtPriceCurrent - sqrtPriceLower);
+  }
+
+  // Adjust for decimals - amounts are in smallest units
+  const amount0 = amount0Raw / Math.pow(10, decimals0);
+  const amount1 = amount1Raw / Math.pow(10, decimals1);
+
+  return { amount0, amount1 };
 };
 
 export const useLiquidity = () => {
@@ -697,6 +749,9 @@ export const useLiquidity = () => {
     // Fetch each position
     const userPositions: Position[] = [];
 
+    // Get factory to look up pools
+    const factory = contracts.factory ? new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider) : null;
+
     for (let i = 0; i < positionCount; i++) {
       // Get tokenId
       let tokenId: ethers.BigNumber;
@@ -725,16 +780,51 @@ export const useLiquidity = () => {
         // Use defaults
       }
 
+      // Get current tick from pool to calculate token amounts
+      let currentTick = 0;
+      let amount0 = '0';
+      let amount1 = '0';
+      
+      if (factory && position.liquidity.gt(0)) {
+        try {
+          const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);
+          if (poolAddress !== ethers.constants.AddressZero) {
+            const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
+            const slot0 = await pool.slot0();
+            currentTick = slot0.tick;
+            
+            // Calculate token amounts using Uniswap V3 math
+            const { amount0: calc0, amount1: calc1 } = calculateTokenAmountsFromLiquidity(
+              position.liquidity.toString(),
+              currentTick,
+              position.tickLower,
+              position.tickUpper,
+              decimals0,
+              decimals1
+            );
+            amount0 = calc0.toString();
+            amount1 = calc1.toString();
+          }
+        } catch (err) {
+          logger.warn(`Failed to get current tick for position ${tokenId}:`, err);
+        }
+      }
+
       userPositions.push({
         tokenId: tokenId.toString(),
         token0: getTokenSymbol(position.token0),
         token1: getTokenSymbol(position.token1),
+        token0Address: position.token0,
+        token1Address: position.token1,
         fee: position.fee,
         tickLower: position.tickLower,
         tickUpper: position.tickUpper,
+        currentTick,
         liquidity: position.liquidity.toString(),
-        token0Amount: '0',
-        token1Amount: '0',
+        token0Amount: amount0,
+        token1Amount: amount1,
+        decimals0,
+        decimals1,
         feeGrowth0: position.feeGrowthInside0LastX128.toString(),
         feeGrowth1: position.feeGrowthInside1LastX128.toString(),
         tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
