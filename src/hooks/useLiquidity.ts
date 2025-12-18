@@ -695,6 +695,80 @@ export const useLiquidity = () => {
     }
   }, [getReadProvider]);
 
+  // Get Pool TVL (Total Value Locked) in USD
+  const getPoolTVL = useCallback(async (
+    token0Symbol: string,
+    token1Symbol: string,
+    fee: number = 3000,
+    overPriceUSD: number = 0
+  ): Promise<{
+    token0Balance: string;
+    token1Balance: string;
+    tvlUSD: number;
+    poolAddress: string;
+  } | null> => {
+    const contracts = getDeployedContracts();
+    if (!contracts.factory) return null;
+
+    try {
+      const provider = getReadProvider();
+      const factory = new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider);
+
+      const token0Address = getTokenAddress(token0Symbol === 'OVER' ? 'WOVER' : token0Symbol);
+      const token1Address = getTokenAddress(token1Symbol === 'OVER' ? 'WOVER' : token1Symbol);
+      const [sortedToken0, sortedToken1] = sortTokens(token0Address, token1Address);
+
+      const poolAddress = await factory.getPool(sortedToken0, sortedToken1, fee);
+      
+      if (poolAddress === ethers.constants.AddressZero) {
+        return null;
+      }
+
+      // Get token balances in pool
+      const token0Contract = new ethers.Contract(sortedToken0, ERC20_ABI, provider);
+      const token1Contract = new ethers.Contract(sortedToken1, ERC20_ABI, provider);
+
+      const [balance0, balance1, decimals0, decimals1] = await Promise.all([
+        token0Contract.balanceOf(poolAddress),
+        token1Contract.balanceOf(poolAddress),
+        getTokenDecimalsFromContract(sortedToken0, provider),
+        getTokenDecimalsFromContract(sortedToken1, provider),
+      ]);
+
+      const formattedBalance0 = parseFloat(ethers.utils.formatUnits(balance0, decimals0));
+      const formattedBalance1 = parseFloat(ethers.utils.formatUnits(balance1, decimals1));
+
+      // Get token symbols for sorted addresses
+      const sortedSymbol0 = getTokenSymbol(sortedToken0);
+      const sortedSymbol1 = getTokenSymbol(sortedToken1);
+
+      // Calculate USD value
+      // USDT/USDC = $1.00, WOVER = CoinGecko price
+      const getTokenPriceUSD = (symbol: string): number => {
+        if (symbol === 'USDT' || symbol === 'USDC') return 1;
+        if (symbol === 'WOVER') return overPriceUSD;
+        return 0;
+      };
+
+      const value0USD = formattedBalance0 * getTokenPriceUSD(sortedSymbol0);
+      const value1USD = formattedBalance1 * getTokenPriceUSD(sortedSymbol1);
+      const tvlUSD = value0USD + value1USD;
+
+      // Return in original token order
+      const tokensSwapped = sortedToken0 !== token0Address;
+      
+      return {
+        token0Balance: tokensSwapped ? formattedBalance1.toFixed(4) : formattedBalance0.toFixed(4),
+        token1Balance: tokensSwapped ? formattedBalance0.toFixed(4) : formattedBalance1.toFixed(4),
+        tvlUSD,
+        poolAddress,
+      };
+    } catch (err) {
+      logger.error('Pool TVL error:', err);
+      return null;
+    }
+  }, [getReadProvider]);
+
   const reset = useCallback(() => {
     setStatus('idle');
     setError(null);
@@ -712,6 +786,7 @@ export const useLiquidity = () => {
     fetchPositions,
     getTokenBalance,
     getPoolPrice,
+    getPoolTVL,
     reset,
   };
 };
