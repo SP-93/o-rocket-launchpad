@@ -55,6 +55,10 @@ export interface Position {
   feeGrowth1: string;
   tokensOwed0: string;
   tokensOwed1: string;
+  // APR calculation data
+  createdAt?: number; // Timestamp when position was created (from blockchain)
+  totalFeesEarned0?: string; // Historical total fees earned (current unclaimed)
+  totalFeesEarned1?: string;
 }
 
 export interface AddLiquidityParams {

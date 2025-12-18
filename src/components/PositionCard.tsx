@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Position } from "@/hooks/useLiquidity";
-import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign, Coins } from "lucide-react";
+import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign, Coins, Percent } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PositionCardProps {
   position: Position;
@@ -100,7 +101,60 @@ export const PositionCard = ({
     return { totalValue, liquidityValue, unclaimedValue };
   };
 
+  // Calculate APR/APY based on earned fees vs deposited value
+  const calculateAPR = (): { apr: number; apy: number; daysActive: number } | null => {
+    const getTokenPrice = (symbol: string): number => {
+      if (symbol === 'USDT' || symbol === 'USDC') return 1;
+      if (symbol === 'WOVER' || symbol === 'OVER') return overPriceUSD;
+      return 0;
+    };
+    
+    if (overPriceUSD <= 0) return null;
+    
+    const price0 = getTokenPrice(position.token0);
+    const price1 = getTokenPrice(position.token1);
+    
+    // Calculate liquidity value (principal)
+    const amount0 = parseFloat(position.token0Amount) || 0;
+    const amount1 = parseFloat(position.token1Amount) || 0;
+    const liquidityValue = (amount0 * price0) + (amount1 * price1);
+    
+    if (liquidityValue <= 0) return null;
+    
+    // Calculate fees earned (currently unclaimed fees as proxy)
+    const fees0 = parseFloat(position.tokensOwed0) || 0;
+    const fees1 = parseFloat(position.tokensOwed1) || 0;
+    const feesValue = (fees0 * price0) + (fees1 * price1);
+    
+    // Estimate days active (use createdAt if available, else estimate from fee accumulation)
+    // Without on-chain timestamp, we estimate based on typical fee accumulation
+    // For now, we'll use a conservative estimate of 7 days if fees exist, otherwise show "new"
+    let daysActive = 7; // Default assumption
+    
+    if (position.createdAt) {
+      const now = Date.now() / 1000;
+      daysActive = Math.max(1, Math.floor((now - position.createdAt) / 86400));
+    } else if (feesValue < 0.001) {
+      // Very new position with minimal fees
+      daysActive = 1;
+    }
+    
+    // APR = (Fees / Principal) * (365 / Days) * 100
+    const apr = (feesValue / liquidityValue) * (365 / daysActive) * 100;
+    
+    // APY = (1 + APR/365)^365 - 1 (daily compounding)
+    const dailyRate = apr / 365 / 100;
+    const apy = (Math.pow(1 + dailyRate, 365) - 1) * 100;
+    
+    return { 
+      apr: Math.min(apr, 9999), // Cap at 9999% for display
+      apy: Math.min(apy, 9999),
+      daysActive 
+    };
+  };
+
   const { totalValue: positionUSDValue, liquidityValue, unclaimedValue } = calculateUSDValue();
+  const aprData = calculateAPR();
 
   return (
     <div className="relative group">
@@ -167,7 +221,7 @@ export const PositionCard = ({
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {/* Price Range */}
             <div className="glass-card rounded-xl p-4 bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
@@ -243,6 +297,50 @@ export const PositionCard = ({
                     </p>
                   )}
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">--</p>
+              )}
+            </div>
+
+            {/* APR/APY */}
+            <div className="glass-card rounded-xl p-4 bg-muted/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Percent className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">APR / APY</span>
+              </div>
+              {aprData ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="space-y-1 cursor-help">
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-lg font-bold text-primary">
+                            {aprData.apr < 0.01 ? '<0.01' : aprData.apr.toFixed(2)}%
+                          </p>
+                          <span className="text-xs text-muted-foreground">APR</span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-sm font-semibold text-success">
+                            {aprData.apy < 0.01 ? '<0.01' : aprData.apy.toFixed(2)}%
+                          </p>
+                          <span className="text-xs text-muted-foreground">APY</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">
+                          ~{aprData.daysActive} {aprData.daysActive === 1 ? 'day' : 'days'} active
+                        </p>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs">
+                      <div className="space-y-1 text-xs">
+                        <p><strong>APR:</strong> Annual Percentage Rate (simple)</p>
+                        <p><strong>APY:</strong> Annual Percentage Yield (compounded daily)</p>
+                        <p className="text-muted-foreground pt-1">
+                          Based on ${unclaimedValue.toFixed(4)} fees earned on ${liquidityValue.toFixed(2)} principal over ~{aprData.daysActive} days.
+                        </p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               ) : (
                 <p className="text-sm text-muted-foreground">--</p>
               )}
