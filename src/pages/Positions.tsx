@@ -8,6 +8,7 @@ import { ConnectWalletModal } from "@/components/ConnectWalletModal";
 import { PositionCard } from "@/components/PositionCard";
 import { useWallet } from "@/hooks/useWallet";
 import { useLiquidity, Position } from "@/hooks/useLiquidity";
+import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -24,11 +25,14 @@ const Positions = () => {
   const navigate = useNavigate();
   const { isConnected, isCorrectNetwork, address, switchNetwork } = useWallet();
   const { positions, status, error, fetchPositions, removeLiquidity, collectFees, txHash } = useLiquidity();
+  const { price: overPriceUSD } = useCoinGeckoPrice();
   
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [collectDialogOpen, setCollectDialogOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [positionToCollect, setPositionToCollect] = useState<Position | null>(null);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
 
   // Fetch positions on mount and when wallet connects
@@ -63,8 +67,16 @@ const Positions = () => {
     setSelectedPosition(null);
   };
 
-  const handleCollectFees = async (tokenId: string) => {
-    const success = await collectFees(tokenId);
+  const handleCollectClick = (position: Position) => {
+    setPositionToCollect(position);
+    setCollectDialogOpen(true);
+  };
+
+  const handleConfirmCollect = async () => {
+    if (!positionToCollect) return;
+    
+    setCollectDialogOpen(false);
+    const success = await collectFees(positionToCollect.tokenId);
     
     if (success) {
       toast.success("Fees collected successfully!");
@@ -72,6 +84,7 @@ const Positions = () => {
     } else if (error) {
       toast.error("Failed to collect fees", { description: error });
     }
+    setPositionToCollect(null);
   };
 
   const handleRefresh = async () => {
@@ -257,10 +270,11 @@ const Positions = () => {
                   key={position.tokenId}
                   position={position}
                   onAddMore={handleAddMore}
-                  onCollect={handleCollectFees}
+                  onCollect={handleCollectClick}
                   onRemove={handleRemoveClick}
                   isCollecting={status === 'collecting'}
                   isRemoving={status === 'removing' && selectedPosition?.tokenId === position.tokenId}
+                  overPriceUSD={overPriceUSD}
                 />
               ))}
             </div>
@@ -285,6 +299,63 @@ const Positions = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Remove Liquidity
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Collect Confirmation Dialog */}
+      <AlertDialog open={collectDialogOpen} onOpenChange={setCollectDialogOpen}>
+        <AlertDialogContent className="glass-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Collect Tokens</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                {positionToCollect && (
+                  <>
+                    {/* Warning for empty liquidity */}
+                    {positionToCollect.liquidity === '0' && (
+                      <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+                        <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-destructive">Warning: Position has no liquidity!</p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            This will withdraw your deposited tokens, not just fees. Make sure this is what you want.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Amounts to collect */}
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">You will receive:</p>
+                      <div className="glass-card rounded-lg p-3 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-foreground">{positionToCollect.token0}</span>
+                          <span className="font-mono font-semibold text-primary">
+                            {parseFloat(positionToCollect.tokensOwed0).toFixed(6)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-foreground">{positionToCollect.token1}</span>
+                          <span className="font-mono font-semibold text-primary">
+                            {parseFloat(positionToCollect.tokensOwed1).toFixed(6)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmCollect}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Collect Tokens
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
