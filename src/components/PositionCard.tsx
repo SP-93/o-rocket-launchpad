@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Position } from "@/hooks/useLiquidity";
-import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign } from "lucide-react";
+import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign, Coins } from "lucide-react";
 
 interface PositionCardProps {
   position: Position;
@@ -167,7 +167,7 @@ export const PositionCard = ({
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {/* Price Range */}
             <div className="glass-card rounded-xl p-4 bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
@@ -248,22 +248,58 @@ export const PositionCard = ({
               )}
             </div>
 
-            {/* Liquidity Status */}
+            {/* Your Holdings - Token Breakdown */}
             <div className="glass-card rounded-xl p-4 bg-muted/30">
               <div className="flex items-center gap-2 mb-2">
-                <Activity className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Liquidity</span>
+                <Coins className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">Your Holdings</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-success' : 'bg-muted-foreground'}`} />
-                <span className={`text-sm font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
-                  {isActive ? 'Active' : 'Empty'}
-                </span>
-              </div>
-              {!isActive && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Position has no liquidity
-                </p>
+              {isActive || parseFloat(position.token0Amount) > 0 || parseFloat(position.token1Amount) > 0 ? (
+                <div className="space-y-1.5">
+                  {/* Token 0 Amount */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <TokenIcon symbol={position.token0} size="sm" />
+                      <span className="text-sm font-semibold text-foreground">
+                        {parseFloat(position.token0Amount).toLocaleString(undefined, { 
+                          minimumFractionDigits: 2, 
+                          maximumFractionDigits: 6 
+                        })}
+                      </span>
+                    </div>
+                    {overPriceUSD > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        ${(parseFloat(position.token0Amount) * (position.token0 === 'WOVER' ? overPriceUSD : 1)).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  {/* Token 1 Amount */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <TokenIcon symbol={position.token1} size="sm" />
+                      <span className="text-sm font-semibold text-foreground">
+                        {parseFloat(position.token1Amount).toLocaleString(undefined, { 
+                          minimumFractionDigits: 2, 
+                          maximumFractionDigits: 6 
+                        })}
+                      </span>
+                    </div>
+                    {overPriceUSD > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        ${(parseFloat(position.token1Amount) * (position.token1 === 'WOVER' ? overPriceUSD : 1)).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  {/* Status indicator */}
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-border/30">
+                    <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-success' : 'bg-muted-foreground'}`} />
+                    <span className={`text-[10px] ${isActive ? 'text-success' : 'text-muted-foreground'}`}>
+                      {isActive ? 'Active liquidity' : 'Out of range'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No tokens in position</p>
               )}
             </div>
           </div>
