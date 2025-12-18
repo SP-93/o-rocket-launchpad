@@ -74,21 +74,33 @@ export const PositionCard = ({
     parseFloat(position.tokensOwed0) > 0.000001 || 
     parseFloat(position.tokensOwed1) > 0.000001;
 
-  // Calculate USD value of unclaimed tokens
-  const calculateUSDValue = (): number => {
-    const getTokenValue = (symbol: string, amount: string): number => {
-      const parsedAmount = parseFloat(amount);
-      if (symbol === 'USDT' || symbol === 'USDC') return parsedAmount;
-      if (symbol === 'WOVER' || symbol === 'OVER') return parsedAmount * overPriceUSD;
+  // Calculate total USD value (active liquidity + unclaimed tokens)
+  const calculateUSDValue = (): { totalValue: number; liquidityValue: number; unclaimedValue: number } => {
+    const getTokenPrice = (symbol: string): number => {
+      if (symbol === 'USDT' || symbol === 'USDC') return 1;
+      if (symbol === 'WOVER' || symbol === 'OVER') return overPriceUSD;
       return 0;
     };
     
-    const token0Value = getTokenValue(position.token0, position.tokensOwed0);
-    const token1Value = getTokenValue(position.token1, position.tokensOwed1);
-    return token0Value + token1Value;
+    const price0 = getTokenPrice(position.token0);
+    const price1 = getTokenPrice(position.token1);
+    
+    // Active liquidity value (calculated from position amounts)
+    const amount0 = parseFloat(position.token0Amount) || 0;
+    const amount1 = parseFloat(position.token1Amount) || 0;
+    const liquidityValue = (amount0 * price0) + (amount1 * price1);
+    
+    // Unclaimed tokens value
+    const unclaimed0 = parseFloat(position.tokensOwed0) || 0;
+    const unclaimed1 = parseFloat(position.tokensOwed1) || 0;
+    const unclaimedValue = (unclaimed0 * price0) + (unclaimed1 * price1);
+    
+    const totalValue = liquidityValue + unclaimedValue;
+    
+    return { totalValue, liquidityValue, unclaimedValue };
   };
 
-  const positionUSDValue = calculateUSDValue();
+  const { totalValue: positionUSDValue, liquidityValue, unclaimedValue } = calculateUSDValue();
 
   return (
     <div className="relative group">
@@ -215,12 +227,22 @@ export const PositionCard = ({
                 <DollarSign className="w-4 h-4 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground uppercase tracking-wide">Position Value</span>
               </div>
-              {overPriceUSD > 0 && positionUSDValue > 0 ? (
-                <p className="text-lg font-bold text-primary">
-                  ${positionUSDValue.toFixed(2)}
-                </p>
-              ) : positionUSDValue === 0 ? (
-                <p className="text-sm text-muted-foreground">$0.00</p>
+              {overPriceUSD > 0 ? (
+                <div className="space-y-1">
+                  <p className="text-lg font-bold text-primary">
+                    ${positionUSDValue.toFixed(2)}
+                  </p>
+                  {liquidityValue > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Liquidity: ${liquidityValue.toFixed(2)}
+                    </p>
+                  )}
+                  {unclaimedValue > 0 && (
+                    <p className="text-xs text-success">
+                      +${unclaimedValue.toFixed(2)} unclaimed
+                    </p>
+                  )}
+                </div>
               ) : (
                 <p className="text-sm text-muted-foreground">--</p>
               )}
