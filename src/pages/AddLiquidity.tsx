@@ -33,7 +33,7 @@ const AddLiquidity = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isConnected, isCorrectNetwork, address, switchNetwork } = useWallet();
-  const { status, error, txHash, addLiquidity, getTokenBalance, getPoolPrice, reset } = useLiquidity();
+  const { status, error, txHash, addLiquidity, increaseLiquidity, getTokenBalance, getPoolPrice, reset } = useLiquidity();
   
   const [step, setStep] = useState(1);
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -44,7 +44,9 @@ const AddLiquidity = () => {
   const [selectedFee, setSelectedFee] = useState(
     parseInt(searchParams.get("fee") || "3000")
   );
-
+  
+  // Check if we're adding to existing position
+  const existingTokenId = searchParams.get("tokenId");
   // Token selector state
   const [selectingToken, setSelectingToken] = useState<"token0" | "token1" | null>(null);
   
@@ -185,6 +187,28 @@ const AddLiquidity = () => {
       return;
     }
 
+    // If we have an existing tokenId, use increaseLiquidity
+    if (existingTokenId) {
+      const success = await increaseLiquidity({
+        tokenId: existingTokenId,
+        amount0,
+        amount1,
+        slippageTolerance: slippage,
+        deadline,
+      });
+
+      if (success) {
+        toast.success("Liquidity added to existing position!", {
+          description: `Position NFT #${existingTokenId} updated`,
+        });
+        navigate("/positions");
+      } else if (error) {
+        toast.error("Failed to add liquidity", { description: error });
+      }
+      return;
+    }
+
+    // Otherwise, create new position with mint
     // Get tick spacing for selected fee
     const feeTier = FEE_TIERS.find(f => f.value === selectedFee);
     const tickSpacing = feeTier?.tickSpacing || 60;
@@ -235,21 +259,21 @@ const AddLiquidity = () => {
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
-    if (currentPrice === null) return "Pool Doesn't Exist";
+    if (currentPrice === null && !existingTokenId) return "Pool Doesn't Exist";
     if (status === "wrapping") return "Wrapping OVER...";
     if (status === "approving") return "Approving Tokens...";
-    if (status === "adding") return "Adding Liquidity...";
+    if (status === "adding" || status === "increasing") return existingTokenId ? "Adding to Position..." : "Adding Liquidity...";
     if (!amount0 || !amount1) return "Enter Amounts";
     if (parseFloat(amount0) > parseFloat(balance0)) return `Insufficient ${token0}`;
     if (parseFloat(amount1) > parseFloat(balance1)) return `Insufficient ${token1}`;
-    return "Add Liquidity";
+    return existingTokenId ? "Add to Position" : "Add Liquidity";
   };
 
   const isButtonDisabled = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
-    if (currentPrice === null) return true; // Pool doesn't exist
-    if (status === "wrapping" || status === "approving" || status === "adding") return true;
+    if (currentPrice === null && !existingTokenId) return true; // Pool doesn't exist (but allow for existing positions)
+    if (status === "wrapping" || status === "approving" || status === "adding" || status === "increasing") return true;
     if (!amount0 || !amount1) return true;
     if (parseFloat(amount0) > parseFloat(balance0)) return true;
     if (parseFloat(amount1) > parseFloat(balance1)) return true;
@@ -270,8 +294,15 @@ const AddLiquidity = () => {
           </Button>
 
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-2 gradient-text">Add Liquidity</h1>
-            <p className="text-muted-foreground">Create a new liquidity position</p>
+            <h1 className="text-4xl font-bold mb-2 gradient-text">
+              {existingTokenId ? "Add More Liquidity" : "Add Liquidity"}
+            </h1>
+            <p className="text-muted-foreground">
+              {existingTokenId 
+                ? `Adding to Position #${existingTokenId}` 
+                : "Create a new liquidity position"
+              }
+            </p>
           </div>
 
           {/* Progress Steps */}

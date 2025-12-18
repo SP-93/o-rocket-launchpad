@@ -72,7 +72,15 @@ export interface RemoveLiquidityParams {
   deadline: number;
 }
 
-export type LiquidityStatus = 'idle' | 'wrapping' | 'approving' | 'adding' | 'removing' | 'collecting' | 'success' | 'error';
+export type LiquidityStatus = 'idle' | 'wrapping' | 'approving' | 'adding' | 'increasing' | 'removing' | 'collecting' | 'success' | 'error';
+
+export interface IncreaseLiquidityParams {
+  tokenId: string;
+  amount0: string;
+  amount1: string;
+  slippageTolerance: number;
+  deadline: number;
+}
 
 const getTokenAddress = (symbol: string): string => {
   const addresses: Record<string, string> = {
@@ -459,6 +467,148 @@ export const useLiquidity = () => {
     }
   }, [isConnected, isCorrectNetwork, address, getWriteProvider]);
 
+  // Increase liquidity in existing position (does NOT create new NFT)
+  const increaseLiquidity = useCallback(async (params: IncreaseLiquidityParams): Promise<boolean> => {
+    if (!isConnected || !isCorrectNetwork || !address) {
+      setError('Please connect wallet to correct network');
+      return false;
+    }
+
+    const contracts = getDeployedContracts();
+    if (!contracts.positionManager) {
+      setError('Position Manager contract not deployed');
+      return false;
+    }
+
+    setStatus('idle');
+    setError(null);
+    setTxHash(null);
+
+    try {
+      const provider = await getWriteProvider();
+      const signer = provider.getSigner();
+      const readProvider = getReadProvider();
+      
+      const positionManager = new ethers.Contract(
+        contracts.positionManager,
+        NonfungiblePositionManagerABI.abi,
+        signer
+      );
+
+      // Get existing position info
+      const position = await positionManager.positions(params.tokenId);
+      const token0Address = position.token0;
+      const token1Address = position.token1;
+      const token0Symbol = getTokenSymbol(token0Address);
+      const token1Symbol = getTokenSymbol(token1Address);
+      
+      logger.info(`IncreaseLiquidity: Position #${params.tokenId} - ${token0Symbol}/${token1Symbol}`);
+
+      // Check if we need to wrap OVER to WOVER
+      const needsWrap0 = token0Symbol === 'WOVER' && params.amount0 && parseFloat(params.amount0) > 0;
+      const needsWrap1 = token1Symbol === 'WOVER' && params.amount1 && parseFloat(params.amount1) > 0;
+
+      // For WOVER, check if user has enough WOVER, otherwise wrap from native OVER
+      if (needsWrap0 || needsWrap1) {
+        // Fetch WOVER balance directly (avoiding getTokenBalance circular reference)
+        const woverContract = new ethers.Contract(TOKEN_ADDRESSES.WOVER, ERC20_ABI, readProvider);
+        const woverBalanceRaw = await woverContract.balanceOf(address);
+        const woverBalance = parseFloat(ethers.utils.formatUnits(woverBalanceRaw, 18));
+        
+        const nativeBalanceRaw = await readProvider.getBalance(address);
+        const nativeBalance = parseFloat(ethers.utils.formatUnits(nativeBalanceRaw, 18));
+        
+        let amountToWrap = 0;
+        if (needsWrap0 && woverBalance < parseFloat(params.amount0)) {
+          amountToWrap += parseFloat(params.amount0) - woverBalance;
+        }
+        if (needsWrap1 && woverBalance < parseFloat(params.amount1)) {
+          amountToWrap += parseFloat(params.amount1) - woverBalance;
+        }
+        
+        if (amountToWrap > 0 && nativeBalance >= amountToWrap) {
+          setStatus('wrapping');
+          const wrapped = await wrapOver(amountToWrap.toString());
+          if (!wrapped) {
+            setStatus('error');
+            return false;
+          }
+        }
+      }
+
+      // Fetch decimals
+      const decimals0 = await getTokenDecimalsFromContract(token0Address, readProvider);
+      const decimals1 = await getTokenDecimalsFromContract(token1Address, readProvider);
+
+      // Approve tokens
+      setStatus('approving');
+      
+      if (params.amount0 && parseFloat(params.amount0) > 0) {
+        const approved0 = await checkAndApprove(
+          token0Address,
+          params.amount0,
+          contracts.positionManager,
+          decimals0
+        );
+        if (!approved0) {
+          setStatus('error');
+          return false;
+        }
+      }
+
+      if (params.amount1 && parseFloat(params.amount1) > 0) {
+        const approved1 = await checkAndApprove(
+          token1Address,
+          params.amount1,
+          contracts.positionManager,
+          decimals1
+        );
+        if (!approved1) {
+          setStatus('error');
+          return false;
+        }
+      }
+
+      // Increase liquidity
+      setStatus('increasing');
+
+      const amount0Wei = ethers.utils.parseUnits(params.amount0 || '0', decimals0);
+      const amount1Wei = ethers.utils.parseUnits(params.amount1 || '0', decimals1);
+      
+      // Calculate minimum amounts with slippage
+      const slippageBps = Math.floor(params.slippageTolerance * 100);
+      const amount0Min = amount0Wei.mul(10000 - slippageBps).div(10000);
+      const amount1Min = amount1Wei.mul(10000 - slippageBps).div(10000);
+      
+      const deadline = Math.floor(Date.now() / 1000) + params.deadline * 60;
+
+      const increaseParams = {
+        tokenId: params.tokenId,
+        amount0Desired: amount0Wei,
+        amount1Desired: amount1Wei,
+        amount0Min,
+        amount1Min,
+        deadline,
+      };
+
+      logger.info(`IncreaseLiquidity params:`, increaseParams);
+
+      const tx = await positionManager.increaseLiquidity(increaseParams);
+      setTxHash(tx.hash);
+
+      await tx.wait();
+
+      setStatus('success');
+      logger.info(`IncreaseLiquidity: Successfully added to position #${params.tokenId}`);
+      return true;
+    } catch (err: any) {
+      logger.error('Increase liquidity error:', err);
+      setError(err.reason || err.message || 'Failed to increase liquidity');
+      setStatus('error');
+      return false;
+    }
+  }, [isConnected, isCorrectNetwork, address, checkAndApprove, getWriteProvider, getReadProvider, wrapOver]);
+
   // Collect fees only (without removing liquidity)
   const collectFees = useCallback(async (tokenId: string): Promise<boolean> => {
     if (!isConnected || !isCorrectNetwork || !address) {
@@ -781,6 +931,7 @@ export const useLiquidity = () => {
     txHash,
     positions,
     addLiquidity,
+    increaseLiquidity,
     removeLiquidity,
     collectFees,
     fetchPositions,
