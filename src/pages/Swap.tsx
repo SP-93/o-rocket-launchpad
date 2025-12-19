@@ -102,7 +102,7 @@ const Swap = () => {
         setToAmount("");
         reset();
       }
-    }, 500);
+    }, 200); // Reduced from 500ms for faster response
     return () => clearTimeout(timer);
   }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab, fromBalance, reset]);
 
@@ -286,6 +286,13 @@ const Swap = () => {
         status === "wrapping" || status === "unwrapping") return true;
     if (!fromAmount || parseFloat(fromAmount) === 0) return true;
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return true;
+    
+    // OVER↔WOVER pairs should use Wrap/Unwrap tab, not Swap
+    const isWrapUnwrapPair = 
+      (fromToken.symbol === "OVER" && toToken.symbol === "WOVER") ||
+      (fromToken.symbol === "WOVER" && toToken.symbol === "OVER");
+    if (isWrapUnwrapPair) return true;
+    
     return false;
   };
 
