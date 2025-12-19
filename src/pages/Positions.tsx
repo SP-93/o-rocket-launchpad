@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, Plus, Loader2, Wallet, RefreshCw, AlertTriangle } from "lucide-react";
+import { TrendingUp, Plus, Loader2, Wallet, RefreshCw, AlertTriangle, Flame, Activity } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
@@ -20,6 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Slider } from "@/components/ui/slider";
 
 const Positions = () => {
   const navigate = useNavigate();
@@ -29,10 +30,13 @@ const Positions = () => {
   
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [reduceDialogOpen, setReduceDialogOpen] = useState(false);
+  const [burnDialogOpen, setBurnDialogOpen] = useState(false);
   const [collectDialogOpen, setCollectDialogOpen] = useState(false);
-  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [positionToReduce, setPositionToReduce] = useState<Position | null>(null);
+  const [positionToBurn, setPositionToBurn] = useState<Position | null>(null);
   const [positionToCollect, setPositionToCollect] = useState<Position | null>(null);
+  const [reducePercentage, setReducePercentage] = useState(50);
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
 
   // Fetch positions on mount and when wallet connects
@@ -47,24 +51,45 @@ const Positions = () => {
     loadPositions();
   }, [isConnected, isCorrectNetwork, fetchPositions]);
 
-  const handleRemoveClick = (position: Position) => {
-    setSelectedPosition(position);
-    setRemoveDialogOpen(true);
+  const handleReduceClick = (position: Position) => {
+    setPositionToReduce(position);
+    setReducePercentage(50);
+    setReduceDialogOpen(true);
   };
 
-  const handleRemoveLiquidity = async () => {
-    if (!selectedPosition) return;
+  const handleReduceLiquidity = async () => {
+    if (!positionToReduce) return;
     
-    setRemoveDialogOpen(false);
-    const success = await removeLiquidity(selectedPosition.tokenId);
+    setReduceDialogOpen(false);
+    const success = await removeLiquidity(positionToReduce.tokenId, reducePercentage);
     
     if (success) {
-      toast.success("Liquidity removed successfully!");
+      toast.success(`Removed ${reducePercentage}% liquidity successfully!`);
       await fetchPositions();
     } else if (error) {
-      toast.error("Failed to remove liquidity", { description: error });
+      toast.error("Failed to reduce liquidity", { description: error });
     }
-    setSelectedPosition(null);
+    setPositionToReduce(null);
+  };
+
+  const handleBurnClick = (position: Position) => {
+    setPositionToBurn(position);
+    setBurnDialogOpen(true);
+  };
+
+  const handleBurnPosition = async () => {
+    if (!positionToBurn) return;
+    
+    setBurnDialogOpen(false);
+    const success = await removeLiquidity(positionToBurn.tokenId, 100);
+    
+    if (success) {
+      toast.success("Position burned successfully!");
+      await fetchPositions();
+    } else if (error) {
+      toast.error("Failed to burn position", { description: error });
+    }
+    setPositionToBurn(null);
   };
 
   const handleCollectClick = (position: Position) => {
@@ -271,9 +296,11 @@ const Positions = () => {
                   position={position}
                   onAddMore={handleAddMore}
                   onCollect={handleCollectClick}
-                  onRemove={handleRemoveClick}
+                  onReduce={handleReduceClick}
+                  onBurn={handleBurnClick}
                   isCollecting={status === 'collecting'}
-                  isRemoving={status === 'removing' && selectedPosition?.tokenId === position.tokenId}
+                  isReducing={status === 'removing' && positionToReduce?.tokenId === position.tokenId}
+                  isBurning={status === 'removing' && positionToBurn?.tokenId === position.tokenId}
                   overPriceUSD={overPriceUSD}
                 />
               ))}
@@ -282,23 +309,153 @@ const Positions = () => {
         </div>
       </div>
 
-      {/* Remove Confirmation Dialog */}
-      <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
+      {/* Reduce Liquidity Dialog */}
+      <AlertDialog open={reduceDialogOpen} onOpenChange={setReduceDialogOpen}>
         <AlertDialogContent className="glass-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Liquidity</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove all liquidity from this position? 
-              This will also collect any unclaimed fees and burn the NFT.
+            <AlertDialogTitle>Reduce Liquidity</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  Remove a portion of your liquidity while keeping the position active.
+                </p>
+                
+                {/* Preset buttons */}
+                <div className="flex gap-2">
+                  {[25, 50, 75].map((pct) => (
+                    <Button
+                      key={pct}
+                      variant={reducePercentage === pct ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setReducePercentage(pct)}
+                      className="flex-1"
+                    >
+                      {pct}%
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Slider */}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Amount to remove</span>
+                    <span className="font-semibold text-primary">{reducePercentage}%</span>
+                  </div>
+                  <Slider
+                    value={[reducePercentage]}
+                    onValueChange={(v) => setReducePercentage(v[0])}
+                    min={1}
+                    max={99}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Preview */}
+                {positionToReduce && (
+                  <div className="glass-card rounded-lg p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">Estimated tokens to receive:</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-foreground">{positionToReduce.token0}</span>
+                      <span className="font-mono font-semibold text-primary">
+                        ~{(parseFloat(positionToReduce.token0Amount) * reducePercentage / 100).toFixed(6)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-foreground">{positionToReduce.token1}</span>
+                      <span className="font-mono font-semibold text-primary">
+                        ~{(parseFloat(positionToReduce.token1Amount) * reducePercentage / 100).toFixed(6)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-success flex items-center gap-1">
+                  <Activity className="w-3 h-3" />
+                  Position stays active after reducing
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleRemoveLiquidity}
+              onClick={handleReduceLiquidity}
+              className="bg-warning text-warning-foreground hover:bg-warning/90"
+            >
+              Reduce {reducePercentage}%
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Burn Position Dialog */}
+      <AlertDialog open={burnDialogOpen} onOpenChange={setBurnDialogOpen}>
+        <AlertDialogContent className="glass-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Flame className="w-5 h-5 text-destructive" />
+              Burn Position
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <AlertTriangle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-destructive">This action is PERMANENT!</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      You cannot undo this operation.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <p className="text-muted-foreground">This will:</p>
+                  <ul className="space-y-1 ml-4">
+                    <li className="flex items-center gap-2">
+                      <span className="text-success">✓</span>
+                      <span>Remove 100% of liquidity</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-success">✓</span>
+                      <span>Collect all unclaimed tokens</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-destructive">✗</span>
+                      <span>Permanently burn NFT #{positionToBurn?.tokenId}</span>
+                    </li>
+                  </ul>
+                </div>
+
+                {/* What you'll receive */}
+                {positionToBurn && (
+                  <div className="glass-card rounded-lg p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground">You will receive:</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-foreground">{positionToBurn.token0}</span>
+                      <span className="font-mono font-semibold text-primary">
+                        {(parseFloat(positionToBurn.token0Amount) + parseFloat(positionToBurn.tokensOwed0)).toFixed(6)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-foreground">{positionToBurn.token1}</span>
+                      <span className="font-mono font-semibold text-primary">
+                        {(parseFloat(positionToBurn.token1Amount) + parseFloat(positionToBurn.tokensOwed1)).toFixed(6)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBurnPosition}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove Liquidity
+              <Flame className="w-4 h-4 mr-1.5" />
+              Burn Position
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
