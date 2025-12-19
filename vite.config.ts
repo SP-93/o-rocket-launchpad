@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => ({
       includeAssets: ["favicon.ico", "icons/*.png"],
       manifest: false, // Use manual manifest.json in public folder
       workbox: {
+        skipWaiting: true, // New SW takes control immediately
+        clientsClaim: true, // Activates without waiting for refresh
+        cleanupOutdatedCaches: true, // Automatically removes old cache versions
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB for Web3Modal bundle
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
         runtimeCaching: [
