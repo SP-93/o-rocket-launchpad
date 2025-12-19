@@ -107,6 +107,9 @@ const AddLiquidity = () => {
 
   // Check pool availability for all fee tiers - PARALLELIZED
   useEffect(() => {
+    // Reset initialLoadComplete when tokens change
+    setInitialLoadComplete(false);
+    
     const checkPoolsForAllFees = async () => {
       if (!token0 || !token1) return;
       setCheckingPools(true);
