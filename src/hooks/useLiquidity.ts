@@ -750,45 +750,43 @@ export const useLiquidity = () => {
       return [];
     }
 
-    // Fetch each position
-    const userPositions: Position[] = [];
-
     // Get factory to look up pools
     const factory = contracts.factory ? new ethers.Contract(contracts.factory, UniswapV3FactoryABI.abi, provider) : null;
 
-    for (let i = 0; i < positionCount; i++) {
-      // Get tokenId
-      let tokenId: ethers.BigNumber;
-      try {
-        tokenId = await positionManager.tokenOfOwnerByIndex(address, i);
-      } catch (err: any) {
+    // PARALLEL: Fetch all tokenIds first
+    const tokenIdPromises = Array.from({ length: positionCount }, (_, i) =>
+      positionManager.tokenOfOwnerByIndex(address, i).catch((err: any) => {
         logger.error(`tokenOfOwnerByIndex(${i}) failed:`, err.message);
-        continue;
-      }
+        return null;
+      })
+    );
+    const tokenIds = (await Promise.all(tokenIdPromises)).filter((id): id is ethers.BigNumber => id !== null);
 
-      // Get position details
-      let position: any;
-      try {
-        position = await positionManager.positions(tokenId);
-      } catch (err: any) {
+    // PARALLEL: Fetch all position details
+    const positionPromises = tokenIds.map(tokenId =>
+      positionManager.positions(tokenId).catch((err: any) => {
         logger.error(`positions(${tokenId}) failed:`, err.message);
-        continue;
-      }
+        return null;
+      })
+    );
+    const positionResults = await Promise.all(positionPromises);
 
-      // Get decimals
-      let decimals0 = 18, decimals1 = 18;
-      try {
-        decimals0 = await getTokenDecimalsFromContract(position.token0, provider);
-        decimals1 = await getTokenDecimalsFromContract(position.token1, provider);
-      } catch {
-        // Use defaults
-      }
+    // PARALLEL: Process all positions with their additional data
+    const positionDataPromises = tokenIds.map(async (tokenId, index) => {
+      const position = positionResults[index];
+      if (!position) return null;
 
-      // Get current tick from pool to calculate token amounts
+      // Get decimals in parallel
+      const [decimals0, decimals1] = await Promise.all([
+        getTokenDecimalsFromContract(position.token0, provider).catch(() => 18),
+        getTokenDecimalsFromContract(position.token1, provider).catch(() => 18),
+      ]);
+
+      // Get current tick from pool
       let currentTick = 0;
       let amount0 = '0';
       let amount1 = '0';
-      
+
       if (factory && position.liquidity.gt(0)) {
         try {
           const poolAddress = await factory.getPool(position.token0, position.token1, position.fee);
@@ -796,8 +794,7 @@ export const useLiquidity = () => {
             const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
             const slot0 = await pool.slot0();
             currentTick = slot0.tick;
-            
-            // Calculate token amounts using Uniswap V3 math
+
             const { amount0: calc0, amount1: calc1 } = calculateTokenAmountsFromLiquidity(
               position.liquidity.toString(),
               currentTick,
@@ -814,7 +811,7 @@ export const useLiquidity = () => {
         }
       }
 
-      userPositions.push({
+      return {
         tokenId: tokenId.toString(),
         token0: getTokenSymbol(position.token0),
         token1: getTokenSymbol(position.token1),
@@ -833,10 +830,11 @@ export const useLiquidity = () => {
         feeGrowth1: position.feeGrowthInside1LastX128.toString(),
         tokensOwed0: ethers.utils.formatUnits(position.tokensOwed0, decimals0),
         tokensOwed1: ethers.utils.formatUnits(position.tokensOwed1, decimals1),
-      });
-    }
+      } as Position;
+    });
 
-    setPositions(userPositions);
+    const userPositions = (await Promise.all(positionDataPromises)).filter((p): p is Position => p !== null);
+
     setPositions(userPositions);
     return userPositions;
   }, [isConnected, address, getReadProvider]);
