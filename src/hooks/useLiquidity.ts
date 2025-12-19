@@ -13,6 +13,29 @@ import logger from '@/lib/logger';
 // MaxUint128 constant
 const MAX_UINT128 = ethers.BigNumber.from(2).pow(128).sub(1);
 
+// Handle transaction replacement (speed up/repriced) gracefully
+// When user speeds up a transaction, ethers throws TRANSACTION_REPLACED
+// but if cancelled=false, the transaction still succeeded
+const safeWait = async (
+  tx: ethers.ContractTransaction,
+  setTxHash?: (hash: string) => void
+): Promise<ethers.ContractReceipt> => {
+  try {
+    return await tx.wait();
+  } catch (err: any) {
+    // If transaction was replaced but NOT cancelled, it's still a success
+    if (err.code === 'TRANSACTION_REPLACED' && err.cancelled === false) {
+      logger.info('Transaction was repriced/sped up, but still succeeded');
+      // Update to new tx hash if callback provided
+      if (setTxHash && err.replacement?.hash) {
+        setTxHash(err.replacement.hash);
+      }
+      return err.receipt; // Contains the successful receipt
+    }
+    throw err; // Re-throw other errors
+  }
+};
+
 // Standard ERC20 ABI
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
@@ -238,7 +261,7 @@ export const useLiquidity = () => {
       }
 
       const tx = await token.approve(spender, ethers.constants.MaxUint256);
-      await tx.wait();
+      await safeWait(tx);
       return true;
     } catch (err: any) {
       logger.error('Approve error:', err);
@@ -260,7 +283,7 @@ export const useLiquidity = () => {
       logger.info(`Wrapping ${amount} OVER to WOVER...`);
       
       const tx = await wover.deposit({ value: amountWei });
-      await tx.wait();
+      await safeWait(tx);
       
       logger.info(`Successfully wrapped ${amount} OVER to WOVER`);
       // DON'T set status to success here - let the main liquidity operation handle final status
@@ -423,7 +446,7 @@ export const useLiquidity = () => {
       const tx = await positionManager.mint(mintParams);
       setTxHash(tx.hash);
 
-      const receipt = await tx.wait();
+      const receipt = await safeWait(tx, setTxHash);
       
       // Get tokenId from event
       const mintEvent = receipt.events?.find((e: any) => e.event === 'IncreaseLiquidity');
@@ -512,7 +535,7 @@ export const useLiquidity = () => {
       // Execute ALL in single multicall transaction (1 signature!)
       const tx = await positionManager.multicall(multicallData);
       setTxHash(tx.hash);
-      await tx.wait();
+      await safeWait(tx, setTxHash);
 
       setStatus('success');
       return true;
@@ -653,7 +676,7 @@ export const useLiquidity = () => {
       const tx = await positionManager.increaseLiquidity(increaseParams);
       setTxHash(tx.hash);
 
-      await tx.wait();
+      await safeWait(tx, setTxHash);
 
       setStatus('success');
       logger.info(`IncreaseLiquidity: Successfully added to position #${params.tokenId}`);
@@ -702,7 +725,7 @@ export const useLiquidity = () => {
 
       const tx = await positionManager.collect(collectParams);
       setTxHash(tx.hash);
-      await tx.wait();
+      await safeWait(tx, setTxHash);
 
       setStatus('success');
       return true;
