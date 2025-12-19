@@ -126,7 +126,7 @@ export interface SwapParams {
   deadline: number;
 }
 
-export type SwapStatus = 'idle' | 'quoting' | 'approving' | 'swapping' | 'wrapping' | 'wrapping-for-swap' | 'unwrapping' | 'success' | 'error';
+export type SwapStatus = 'idle' | 'quoting' | 'approving' | 'swapping' | 'pending' | 'wrapping' | 'wrapping-for-swap' | 'unwrapping' | 'success' | 'error';
 
 const getTokenAddress = (symbol: string): string => {
   const addresses: Record<string, string> = {
@@ -565,8 +565,9 @@ export const useSwap = () => {
 
       const tx = await router.exactInputSingle(swapParams);
       setTxHash(tx.hash);
+      setStatus('pending'); // Transaction signed, waiting for mining
 
-      await tx.wait();
+      await tx.wait(); // Wait for transaction to be mined
       
       setStatus('success');
       return true;
