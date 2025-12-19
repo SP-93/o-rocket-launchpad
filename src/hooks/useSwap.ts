@@ -26,6 +26,91 @@ const WOVER_ABI = [
   'function balanceOf(address account) external view returns (uint256)',
 ];
 
+// ============= MODULE-LEVEL CACHING =============
+// Token decimals cache - permanent (never changes)
+const decimalsCache = new Map<string, number>();
+
+// Pool address cache - 5 minute TTL
+const poolAddressCache = new Map<string, { address: string; timestamp: number }>();
+const POOL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// QuoterV2 validation - once per session
+let quoterValidated = false;
+let cachedQuoterFactory: string | null = null;
+let cachedQuoterWeth9: string | null = null;
+
+// Get cached decimals or fetch from contract
+const getCachedDecimals = async (tokenAddress: string, provider: ethers.providers.Provider): Promise<number> => {
+  const cached = decimalsCache.get(tokenAddress.toLowerCase());
+  if (cached !== undefined) return cached;
+  
+  try {
+    const token = new ethers.Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
+    const decimals = await token.decimals();
+    decimalsCache.set(tokenAddress.toLowerCase(), decimals);
+    return decimals;
+  } catch {
+    return 18; // Fallback
+  }
+};
+
+// Get cached pool address or fetch from factory
+const getCachedPoolAddress = async (
+  factory: ethers.Contract,
+  token0: string,
+  token1: string,
+  fee: number
+): Promise<string> => {
+  const cacheKey = `${token0.toLowerCase()}-${token1.toLowerCase()}-${fee}`;
+  const cached = poolAddressCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < POOL_CACHE_TTL) {
+    return cached.address;
+  }
+  
+  const poolAddress = await factory.getPool(token0, token1, fee);
+  poolAddressCache.set(cacheKey, { address: poolAddress, timestamp: Date.now() });
+  return poolAddress;
+};
+
+// Validate QuoterV2 once per session
+const validateQuoter = async (quoter: ethers.Contract, expectedFactory: string): Promise<{ valid: boolean; error?: string }> => {
+  if (quoterValidated && cachedQuoterFactory && cachedQuoterWeth9) {
+    // Already validated this session
+    if (cachedQuoterFactory.toLowerCase() !== expectedFactory.toLowerCase()) {
+      return { valid: false, error: `QuoterV2 uses different Factory!` };
+    }
+    if (cachedQuoterWeth9.toLowerCase() !== TOKEN_ADDRESSES.WOVER.toLowerCase()) {
+      return { valid: false, error: `QuoterV2 uses wrong WETH9 address!` };
+    }
+    return { valid: true };
+  }
+  
+  try {
+    const [quoterFactory, quoterWeth9] = await Promise.all([
+      quoter.factory(),
+      quoter.WETH9(),
+    ]);
+    
+    cachedQuoterFactory = quoterFactory;
+    cachedQuoterWeth9 = quoterWeth9;
+    quoterValidated = true;
+    
+    if (quoterFactory.toLowerCase() !== expectedFactory.toLowerCase()) {
+      return { valid: false, error: `QuoterV2 uses different Factory!` };
+    }
+    if (quoterWeth9.toLowerCase() !== TOKEN_ADDRESSES.WOVER.toLowerCase()) {
+      return { valid: false, error: `QuoterV2 uses wrong WETH9 address!` };
+    }
+    
+    return { valid: true };
+  } catch (err) {
+    logger.warn('Could not validate QuoterV2:', err);
+    quoterValidated = true; // Don't retry on error
+    return { valid: true }; // Proceed anyway
+  }
+};
+
 export interface SwapQuote {
   amountOut: string;
   priceImpact: number;
@@ -37,8 +122,8 @@ export interface SwapParams {
   tokenIn: string;
   tokenOut: string;
   amountIn: string;
-  slippageTolerance: number; // in percentage, e.g., 0.5 for 0.5%
-  deadline: number; // in minutes
+  slippageTolerance: number;
+  deadline: number;
 }
 
 export type SwapStatus = 'idle' | 'quoting' | 'approving' | 'swapping' | 'wrapping' | 'unwrapping' | 'success' | 'error';
@@ -48,64 +133,29 @@ const getTokenAddress = (symbol: string): string => {
     USDT: TOKEN_ADDRESSES.USDT,
     USDC: TOKEN_ADDRESSES.USDC,
     WOVER: TOKEN_ADDRESSES.WOVER,
-    OVER: TOKEN_ADDRESSES.WOVER, // Use WOVER address for OVER
-  };
-  return addresses[symbol] || '';
+    OVER: TOKEN_ADDRESSES.WOVER,
 };
 
-// Dynamic decimals fetching from contract
-const getTokenDecimalsFromContract = async (tokenAddress: string, provider: ethers.providers.Provider): Promise<number> => {
-  try {
-    const token = new ethers.Contract(tokenAddress, ['function decimals() view returns (uint8)'], provider);
-    const decimals = await token.decimals();
-    return decimals;
-  } catch {
-    return 18; // Fallback
-  }
-};
-
-// Helper to decode Error(string) revert reasons from 0x08c379a0 data
+// Helper to decode Error(string) revert reasons
 const decodeRevertReason = (errorData: string): string | null => {
   if (!errorData || typeof errorData !== 'string') return null;
-  
-  // 0x08c379a0 is the signature for Error(string)
   if (errorData.startsWith('0x08c379a0')) {
     try {
-      // Remove the 0x08c379a0 prefix (10 chars) to get just the encoded string
       const content = '0x' + errorData.substring(10);
       const decoded = ethers.utils.defaultAbiCoder.decode(['string'], content);
       return decoded[0];
-    } catch (decodeErr) {
-      logger.warn('Failed to decode revert reason:', decodeErr);
-      return null;
-    }
+    } catch { return null; }
   }
-  
-  // 0x4e487b71 is Panic(uint256) - arithmetic errors
   if (errorData.startsWith('0x4e487b71')) {
     try {
       const content = '0x' + errorData.substring(10);
       const decoded = ethers.utils.defaultAbiCoder.decode(['uint256'], content);
-      const panicCode = decoded[0].toNumber();
-      const panicMessages: Record<number, string> = {
-        0x00: 'Generic panic',
-        0x01: 'Assertion failed',
-        0x11: 'Arithmetic overflow/underflow',
-        0x12: 'Division by zero',
-        0x21: 'Invalid enum value',
-        0x22: 'Storage byte array encoding',
-        0x31: 'Empty array pop',
-        0x32: 'Array out of bounds',
-        0x41: 'Memory allocation failure',
-        0x51: 'Zero-initialized function pointer',
-      };
-      return panicMessages[panicCode] || `Panic code: ${panicCode}`;
-    } catch {
-      return 'Panic error (decode failed)';
-    }
+      return `Panic code: ${decoded[0].toNumber()}`;
+    } catch { return null; }
   }
-  
   return null;
+};
+  return addresses[symbol] || '';
 };
 
 export const useSwap = () => {
@@ -141,7 +191,7 @@ export const useSwap = () => {
     throw new Error('No wallet provider available. Please connect your wallet.');
   }, []);
 
-  // Get quote for swap with pool existence validation
+  // Get quote for swap - OPTIMIZED with caching
   const getQuote = useCallback(async (
     tokenInSymbol: string,
     tokenOutSymbol: string,
@@ -154,13 +204,8 @@ export const useSwap = () => {
     }
 
     const contracts = getDeployedContracts();
-    if (!contracts.quoter) {
-      setError('Quoter contract not deployed');
-      return null;
-    }
-
-    if (!contracts.factory) {
-      setError('Factory contract not deployed');
+    if (!contracts.quoter || !contracts.factory) {
+      setError('Contracts not deployed');
       return null;
     }
 
@@ -168,172 +213,55 @@ export const useSwap = () => {
     setError(null);
 
     try {
-      // Use READ provider for quotes (no wallet needed!)
       const provider = getReadProvider();
-
       const tokenIn = getTokenAddress(tokenInSymbol);
       const tokenOut = getTokenAddress(tokenOutSymbol);
 
-      // Factory.getPool expects token0 < token1 (sorted)
+      // Sort tokens for pool lookup
       const [token0, token1] = tokenIn.toLowerCase() < tokenOut.toLowerCase()
         ? [tokenIn, tokenOut]
         : [tokenOut, tokenIn];
 
-      // Check if pool exists first
       const factoryAbi = ['function getPool(address, address, uint24) view returns (address)'];
       const factory = new ethers.Contract(contracts.factory, factoryAbi, provider);
-      const poolAddress = await factory.getPool(token0, token1, fee);
-      
-      if (poolAddress === ethers.constants.AddressZero) {
-        // Build list of available pools
-        const availablePools: string[] = [];
-        const tokenPairs = [
-          ['WOVER', 'USDT'],
-          ['WOVER', 'USDC'],
-          ['USDT', 'USDC'],
-        ];
-        
-        for (const [t0, t1] of tokenPairs) {
-          const addr0 = getTokenAddress(t0);
-          const addr1 = getTokenAddress(t1);
-          const [p0, p1] = addr0.toLowerCase() < addr1.toLowerCase() ? [addr0, addr1] : [addr1, addr0];
-          const pool = await factory.getPool(p0, p1, fee);
-          if (pool !== ethers.constants.AddressZero) {
-            availablePools.push(`${t0}/${t1}`);
-          }
-        }
-        
-        const availableMsg = availablePools.length > 0 
-          ? `Available pools: ${availablePools.join(', ')}`
-          : 'No pools available yet';
-          
-        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} doesn't exist. ${availableMsg}`);
-        setStatus('idle');
-        return null;
-      }
-
       const quoter = new ethers.Contract(contracts.quoter, QuoterV2ABI.abi, provider);
-      
-      // === DIAGNOSTIC LOGGING START ===
-      logger.info('=== QUOTE DIAGNOSTIC START ===');
-      logger.info('Contract addresses:', {
-        quoter: contracts.quoter,
-        factory: contracts.factory,
-        router: contracts.router,
-      });
-      logger.info('Token info:', {
-        tokenIn,
-        tokenOut,
-        tokenInSymbol,
-        tokenOutSymbol,
-      });
-      logger.info('Pool found:', {
-        poolAddress,
-        fee,
-      });
 
-      // Check if QuoterV2 points to correct Factory
-      const quoterFactory = await quoter.factory();
-      logger.info('QuoterV2 Factory validation:', {
-        quoterPointsTo: quoterFactory,
-        ourFactory: contracts.factory,
-        match: quoterFactory.toLowerCase() === contracts.factory.toLowerCase(),
-      });
+      // PARALLEL: Fetch pool address (cached), decimals (cached), and validate quoter (once per session)
+      const [poolAddress, decimalsIn, decimalsOut, quoterValidation] = await Promise.all([
+        getCachedPoolAddress(factory, token0, token1, fee),
+        getCachedDecimals(tokenIn, provider),
+        getCachedDecimals(tokenOut, provider),
+        validateQuoter(quoter, contracts.factory),
+      ]);
 
-      // Validate Factory match - this is critical!
-      if (quoterFactory.toLowerCase() !== contracts.factory.toLowerCase()) {
-        const errorMsg = `QuoterV2 uses different Factory! QuoterV2 → ${quoterFactory.slice(0, 10)}... but our Factory is ${contracts.factory.slice(0, 10)}...`;
-        logger.error(errorMsg);
-        setError(errorMsg);
+      // Check quoter validation
+      if (!quoterValidation.valid) {
+        setError(quoterValidation.error || 'QuoterV2 validation failed');
         setStatus('idle');
         return null;
       }
 
-      // === CRITICAL: Check QuoterV2.WETH9() address ===
-      let quoterWeth9: string;
-      try {
-        quoterWeth9 = await quoter.WETH9();
-        logger.info('QuoterV2 WETH9 validation:', {
-          quoterWeth9,
-          expectedWeth9: TOKEN_ADDRESSES.WOVER,
-          match: quoterWeth9.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase(),
-        });
-
-        if (quoterWeth9.toLowerCase() !== TOKEN_ADDRESSES.WOVER.toLowerCase()) {
-          logger.error('CRITICAL: QuoterV2 WETH9 mismatch!', {
-            quoterWeth9,
-            expectedWover: TOKEN_ADDRESSES.WOVER,
-          });
-          setError(`QuoterV2 uses wrong WETH9 address! Expected WOVER (${TOKEN_ADDRESSES.WOVER.slice(0, 10)}...) but got ${quoterWeth9.slice(0, 10)}... - Contract may need redeployment.`);
-          setStatus('idle');
-          return null;
-        }
-      } catch (weth9Err) {
-        logger.warn('Could not verify QuoterV2.WETH9() - proceeding anyway:', weth9Err);
+      // Check if pool exists
+      if (poolAddress === ethers.constants.AddressZero) {
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} doesn't exist`);
+        setStatus('idle');
+        return null;
       }
 
-      // Verify pool data from slot0
-      const poolAbi = [
-        'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
-        'function token0() view returns (address)',
-        'function token1() view returns (address)',
-        'function fee() view returns (uint24)',
-        'function liquidity() view returns (uint128)',
-      ];
+      // Quick liquidity check (single RPC call)
+      const poolAbi = ['function liquidity() view returns (uint128)'];
       const pool = new ethers.Contract(poolAddress, poolAbi, provider);
+      const liquidity = await pool.liquidity();
       
-      let poolLiquidity: ethers.BigNumber | null = null;
-      try {
-        const [slot0, poolToken0, poolToken1, poolFee, liquidity] = await Promise.all([
-          pool.slot0(),
-          pool.token0(),
-          pool.token1(),
-          pool.fee(),
-          pool.liquidity(),
-        ]);
-        
-        poolLiquidity = liquidity;
-        
-        logger.info('Pool slot0 data:', {
-          sqrtPriceX96: slot0.sqrtPriceX96.toString(),
-          tick: slot0.tick,
-          unlocked: slot0.unlocked,
-        });
-        logger.info('Pool tokens and fee:', {
-          token0: poolToken0,
-          token1: poolToken1,
-          fee: poolFee,
-          liquidity: liquidity.toString(),
-        });
-        
-        // Verify token order matches expectation
-        const tokenInIsToken0 = tokenIn.toLowerCase() === poolToken0.toLowerCase();
-        const tokenInIsToken1 = tokenIn.toLowerCase() === poolToken1.toLowerCase();
-        logger.info('Token direction:', {
-          tokenInIsToken0,
-          tokenInIsToken1,
-          swapDirection: tokenInIsToken0 ? 'token0 → token1' : 'token1 → token0',
-        });
-        
-        // Check for zero or very low liquidity
-        if (liquidity.isZero()) {
-          logger.error('Pool has ZERO active liquidity at current tick!');
-          setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has no active liquidity at current price. The pool may exist but liquidity is out of range.`);
-          setStatus('idle');
-          return null;
-        }
-      } catch (poolErr) {
-        logger.error('Failed to read pool data:', poolErr);
+      if (liquidity.isZero()) {
+        setError(`Pool ${tokenInSymbol}/${tokenOutSymbol} has no active liquidity`);
+        setStatus('idle');
+        return null;
       }
-      // === DIAGNOSTIC LOGGING END ===
-
-      // Get decimals dynamically
-      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, provider);
-      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, provider);
 
       const amountInWei = ethers.utils.parseUnits(amountIn, decimalsIn);
 
-      // Use quoteExactInputSingle
+      // Execute quote
       const params = {
         tokenIn,
         tokenOut,
@@ -342,87 +270,32 @@ export const useSwap = () => {
         sqrtPriceLimitX96: 0,
       };
 
-      logger.info('Calling quoteExactInputSingle with params:', {
-        tokenIn: params.tokenIn,
-        tokenOut: params.tokenOut,
-        amountIn: params.amountIn.toString(),
-        fee: params.fee,
-        sqrtPriceLimitX96: params.sqrtPriceLimitX96,
-      });
-
-      // Wrap quote call in detailed try-catch with explicit gas limit
-      let result;
-      try {
-        // CRITICAL: Add explicit gasLimit - OverProtocol RPC requires this for callStatic
-        result = await quoter.callStatic.quoteExactInputSingle(params, {
-          gasLimit: 500000,
-        });
-        logger.info('Quote SUCCESS:', {
-          amountOut: result.amountOut.toString(),
-          sqrtPriceX96After: result.sqrtPriceX96After?.toString(),
-          initializedTicksCrossed: result.initializedTicksCrossed?.toString(),
-          gasEstimate: result.gasEstimate?.toString(),
-        });
-      } catch (quoteErr: any) {
-        logger.error('quoteExactInputSingle FAILED:', {
-          error: quoteErr,
-          errorString: String(quoteErr),
-          reason: quoteErr.reason,
-          code: quoteErr.code,
-          data: quoteErr.data,
-          errorArgs: quoteErr.errorArgs,
-          errorName: quoteErr.errorName,
-        });
-        throw quoteErr; // Re-throw for outer catch
-      }
-
+      const result = await quoter.callStatic.quoteExactInputSingle(params, { gasLimit: 500000 });
       const amountOut = ethers.utils.formatUnits(result.amountOut, decimalsOut);
 
-      // Calculate correct price impact using sqrtPriceX96 before and after
+      // Calculate price impact from sqrtPriceX96After
       let priceImpact = 0;
-      try {
-        // Get current pool data for spot price calculation
-        const poolAbiForPrice = [
-          'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)',
-          'function token0() view returns (address)',
-        ];
-        const poolForPrice = new ethers.Contract(poolAddress, poolAbiForPrice, provider);
-        const [slot0Data, poolToken0] = await Promise.all([
-          poolForPrice.slot0(),
-          poolForPrice.token0(),
-        ]);
-        
-        const sqrtPriceX96Before = slot0Data.sqrtPriceX96;
-        const sqrtPriceX96After = result.sqrtPriceX96After;
-        
-        // Determine swap direction
-        const tokenInIsToken0 = tokenIn.toLowerCase() === poolToken0.toLowerCase();
-        
-        // Calculate price change from sqrtPriceX96 values
-        // sqrtPriceX96 = sqrt(price) * 2^96, where price = token1/token0
-        const priceBefore = sqrtPriceX96Before.mul(sqrtPriceX96Before);
-        const priceAfter = sqrtPriceX96After.mul(sqrtPriceX96After);
-        
-        // Price impact = |(priceAfter - priceBefore) / priceBefore| * 100
-        if (!priceBefore.isZero()) {
-          const priceDiff = priceAfter.sub(priceBefore).abs();
-          // Use BigNumber arithmetic to avoid overflow
-          const impactBN = priceDiff.mul(10000).div(priceBefore);
-          priceImpact = impactBN.toNumber() / 100; // Convert from basis points to percentage
+      if (result.sqrtPriceX96After) {
+        try {
+          // Get current slot0 for price comparison
+          const poolSlot0Abi = ['function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16, uint16, uint16, uint8, bool)'];
+          const poolForSlot0 = new ethers.Contract(poolAddress, poolSlot0Abi, provider);
+          const slot0 = await poolForSlot0.slot0();
+          
+          const sqrtPriceX96Before = slot0.sqrtPriceX96;
+          const sqrtPriceX96After = result.sqrtPriceX96After;
+          
+          const priceBefore = sqrtPriceX96Before.mul(sqrtPriceX96Before);
+          const priceAfter = sqrtPriceX96After.mul(sqrtPriceX96After);
+          
+          if (!priceBefore.isZero()) {
+            const priceDiff = priceAfter.sub(priceBefore).abs();
+            const impactBN = priceDiff.mul(10000).div(priceBefore);
+            priceImpact = impactBN.toNumber() / 100;
+          }
+        } catch {
+          priceImpact = 0.1; // Default minimal impact
         }
-        
-        logger.info('Price impact calculation:', {
-          sqrtPriceX96Before: sqrtPriceX96Before.toString(),
-          sqrtPriceX96After: sqrtPriceX96After.toString(),
-          tokenInIsToken0,
-          priceImpact: priceImpact.toFixed(4),
-        });
-      } catch (priceImpactErr) {
-        logger.warn('Could not calculate precise price impact, using fallback:', priceImpactErr);
-        // Fallback: estimate from amount ratio with proper price consideration
-        // If we're swapping 1 OVER and getting 0.008 USDT, that's expected at ~$0.008/OVER
-        // Price impact should be near 0% for small trades
-        priceImpact = 0.1; // Default to minimal impact for working trades
       }
 
       const swapQuote: SwapQuote = {
@@ -434,7 +307,6 @@ export const useSwap = () => {
 
       setQuote(swapQuote);
       setStatus('idle');
-      logger.info('=== QUOTE DIAGNOSTIC END - SUCCESS ===');
       return swapQuote;
     } catch (err: any) {
       // Detailed error logging for debugging
@@ -521,7 +393,7 @@ export const useSwap = () => {
       const signer = provider.getSigner();
       
       const tokenAddress = getTokenAddress(tokenSymbol);
-      const decimals = await getTokenDecimalsFromContract(tokenAddress, getReadProvider());
+      const decimals = await getCachedDecimals(tokenAddress, getReadProvider());
       const token = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
 
       const amountWei = ethers.utils.parseUnits(amount, decimals);
@@ -656,8 +528,8 @@ export const useSwap = () => {
 
       const tokenIn = getTokenAddress(params.tokenIn);
       const tokenOut = getTokenAddress(params.tokenOut);
-      const decimalsIn = await getTokenDecimalsFromContract(tokenIn, readProvider);
-      const decimalsOut = await getTokenDecimalsFromContract(tokenOut, readProvider);
+      const decimalsIn = await getCachedDecimals(tokenIn, readProvider);
+      const decimalsOut = await getCachedDecimals(tokenOut, readProvider);
 
       // Step 1: Approve token
       const approved = await checkAndApprove(params.tokenIn, params.amountIn, contracts.router);

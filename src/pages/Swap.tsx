@@ -102,7 +102,7 @@ const Swap = () => {
         setToAmount("");
         reset();
       }
-    }, 200); // Reduced from 500ms for faster response
+    }, 100); // Optimized: 100ms debounce with cached quote
     return () => clearTimeout(timer);
   }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab, fromBalance, reset]);
 
