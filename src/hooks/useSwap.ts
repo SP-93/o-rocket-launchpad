@@ -134,6 +134,8 @@ const getTokenAddress = (symbol: string): string => {
     USDC: TOKEN_ADDRESSES.USDC,
     WOVER: TOKEN_ADDRESSES.WOVER,
     OVER: TOKEN_ADDRESSES.WOVER,
+  };
+  return addresses[symbol] || '';
 };
 
 // Helper to decode Error(string) revert reasons
@@ -154,8 +156,6 @@ const decodeRevertReason = (errorData: string): string | null => {
     } catch { return null; }
   }
   return null;
-};
-  return addresses[symbol] || '';
 };
 
 export const useSwap = () => {
