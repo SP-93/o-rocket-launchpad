@@ -119,6 +119,9 @@ const Swap = () => {
   };
 
   const handleSwap = async () => {
+    // Reset state at the start to clear any previous errors
+    reset();
+    
     if (!isConnected) {
       setShowWalletModal(true);
       return;
@@ -134,17 +137,18 @@ const Swap = () => {
       return;
     }
 
-    // Handle OVER → WOVER wrap first if needed
+    // Handle OVER → WOVER wrap first if needed (use forSwap=true to not show success yet)
     if (fromToken.symbol === "OVER") {
-      const wrapSuccess = await wrapOver(fromAmount);
+      const wrapSuccess = await wrapOver(fromAmount, true); // forSwap=true
       if (!wrapSuccess) {
         toast.error("Failed to wrap OVER", { description: error || "Wrap failed" });
         return;
       }
-      toast.success("Wrapped OVER to WOVER");
+      // DON'T show success toast here - wait for the full operation to complete
       
       // If target is also WOVER, we're done (it's just a wrap)
       if (toToken.symbol === "WOVER") {
+        toast.success("Wrapped OVER to WOVER");
         setFromAmount("");
         setToAmount("");
         reset();
@@ -257,6 +261,7 @@ const Swap = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
     if (status === "wrapping") return "Wrapping OVER...";
+    if (status === "wrapping-for-swap") return "Wrapping & Swapping...";
     if (status === "unwrapping") return "Unwrapping WOVER...";
     if (status === "quoting") return "Getting Quote...";
     if (status === "approving") return "Approving Token...";
@@ -283,7 +288,7 @@ const Swap = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
     if (status === "quoting" || status === "approving" || status === "swapping" || 
-        status === "wrapping" || status === "unwrapping") return true;
+        status === "wrapping" || status === "wrapping-for-swap" || status === "unwrapping") return true;
     if (!fromAmount || parseFloat(fromAmount) === 0) return true;
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return true;
     
@@ -469,13 +474,20 @@ const Swap = () => {
                       <span className="text-sm text-muted-foreground">Balance: {toBalance}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Input
-                        type="number"
-                        placeholder="0.0"
-                        value={toAmount}
-                        readOnly
-                        className="border-0 bg-transparent text-xl md:text-2xl font-semibold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0"
-                      />
+                      {status === "quoting" && fromAmount && parseFloat(fromAmount) > 0 ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                          <span className="text-xl text-muted-foreground">Calculating...</span>
+                        </div>
+                      ) : (
+                        <Input
+                          type="number"
+                          placeholder="0.0"
+                          value={toAmount}
+                          readOnly
+                          className="border-0 bg-transparent text-xl md:text-2xl font-semibold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0"
+                        />
+                      )}
                       <TokenSelector 
                         selected={toToken} 
                         onSelect={setToToken}

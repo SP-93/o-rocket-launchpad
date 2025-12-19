@@ -247,7 +247,7 @@ export const useLiquidity = () => {
     }
   }, [address, getWriteProvider]);
 
-  // Wrap native OVER to WOVER
+  // Wrap native OVER to WOVER (silent mode for liquidity operations - doesn't interrupt status)
   const wrapOver = useCallback(async (amount: string): Promise<boolean> => {
     if (!address) return false;
 
@@ -263,6 +263,7 @@ export const useLiquidity = () => {
       await tx.wait();
       
       logger.info(`Successfully wrapped ${amount} OVER to WOVER`);
+      // DON'T set status to success here - let the main liquidity operation handle final status
       return true;
     } catch (err: any) {
       logger.error('Wrap OVER error:', err);
