@@ -1,16 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { TokenIcon } from "@/components/TokenIcon";
 import { Position } from "@/hooks/useLiquidity";
-import { CirclePlus, Wallet, Trash2, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign, Coins, Percent } from "lucide-react";
+import { CirclePlus, Wallet, MinusCircle, Flame, ExternalLink, Loader2, TrendingUp, TrendingDown, Activity, DollarSign, Coins, Percent } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PositionCardProps {
   position: Position;
   onAddMore: (position: Position) => void;
   onCollect: (position: Position) => void;
-  onRemove: (position: Position) => void;
+  onReduce: (position: Position) => void;
+  onBurn: (position: Position) => void;
   isCollecting: boolean;
-  isRemoving: boolean;
+  isReducing: boolean;
+  isBurning: boolean;
   overPriceUSD?: number;
 }
 
@@ -63,9 +65,11 @@ export const PositionCard = ({
   position,
   onAddMore,
   onCollect,
-  onRemove,
+  onReduce,
+  onBurn,
   isCollecting,
-  isRemoving,
+  isReducing,
+  isBurning,
   overPriceUSD = 0,
 }: PositionCardProps) => {
   const isActive = hasActiveLiquidity(position.liquidity);
@@ -432,16 +436,31 @@ export const PositionCard = ({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onRemove(position)}
-              disabled={isRemoving || !isActive}
-              className="flex-1 md:flex-none text-destructive hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5"
+              onClick={() => onReduce(position)}
+              disabled={isReducing || !isActive}
+              className="flex-1 md:flex-none hover:border-warning/50 hover:bg-warning/5"
             >
-              {isRemoving ? (
+              {isReducing ? (
                 <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
               ) : (
-                <Trash2 className="w-4 h-4 mr-1.5" />
+                <MinusCircle className="w-4 h-4 mr-1.5" />
               )}
-              Remove
+              Reduce
+            </Button>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onBurn(position)}
+              disabled={isBurning || !isActive}
+              className="flex-1 md:flex-none text-destructive hover:text-destructive hover:border-destructive/50 hover:bg-destructive/5"
+            >
+              {isBurning ? (
+                <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+              ) : (
+                <Flame className="w-4 h-4 mr-1.5" />
+              )}
+              Burn
             </Button>
             
             <Button
