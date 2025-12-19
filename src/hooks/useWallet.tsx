@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAccount, useBalance, useDisconnect, useSwitchChain } from 'wagmi';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { getWalletClient } from '@wagmi/core';
@@ -6,6 +6,7 @@ import { wagmiConfig, overProtocol } from '@/config/web3modal';
 import logger from '@/lib/logger';
 
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+const NETWORK_CHECK_DELAY = 1500; // 1.5 seconds delay for mobile wallet chainId detection
 
 export const useWallet = () => {
   const { address, isConnected, chainId } = useAccount();
@@ -14,9 +15,26 @@ export const useWallet = () => {
   const { switchChain } = useSwitchChain();
   const { open } = useWeb3Modal();
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isNetworkCheckComplete, setIsNetworkCheckComplete] = useState(false);
 
-  const isCorrectNetwork = chainId === overProtocol.id;
+  const rawIsCorrectNetwork = chainId === overProtocol.id;
   const balance = balanceData?.formatted || '0';
+  
+  // Delay network check for mobile wallets that report wrong chainId initially
+  useEffect(() => {
+    if (isConnected) {
+      setIsNetworkCheckComplete(false);
+      const timer = setTimeout(() => {
+        setIsNetworkCheckComplete(true);
+      }, NETWORK_CHECK_DELAY);
+      return () => clearTimeout(timer);
+    } else {
+      setIsNetworkCheckComplete(false);
+    }
+  }, [isConnected, chainId]);
+
+  // Only show network warning after delay completes
+  const isCorrectNetwork = !isNetworkCheckComplete || rawIsCorrectNetwork;
 
   // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {

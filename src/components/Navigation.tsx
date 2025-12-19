@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink } from "./NavLink";
 import { Button } from "./ui/button";
-import { Rocket, Wallet, Menu, X, ChevronDown, Shield, Download } from "lucide-react";
+import { Rocket, Wallet, Menu, X, ChevronDown, Shield } from "lucide-react";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
 import { isAdmin } from "@/config/admin";
@@ -33,7 +33,6 @@ const Navigation = () => {
     { to: "/pools", label: "Pools" },
     { to: "/positions", label: "Positions" },
     { to: "/info", label: "Info" },
-    { to: "/install", label: "Install App", icon: Download },
   ];
 
   return (
@@ -51,10 +50,9 @@ const Navigation = () => {
                 <NavLink
                   key={link.to}
                   to={link.to}
-                  className="transition-colors font-medium flex items-center gap-1 text-muted-foreground hover:text-primary"
+                  className="transition-colors font-medium text-muted-foreground hover:text-primary"
                   activeClassName="text-primary font-semibold"
                 >
-                  {link.icon && <link.icon className="w-4 h-4" />}
                   {link.label}
                 </NavLink>
               ))}
@@ -128,11 +126,10 @@ const Navigation = () => {
             <NavLink
               key={link.to}
               to={link.to}
-              className="text-lg transition-colors font-medium py-3 px-4 rounded-lg flex items-center gap-2 text-muted-foreground hover:text-primary hover:bg-primary/10"
+              className="text-lg transition-colors font-medium py-3 px-4 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10"
               activeClassName="text-primary font-semibold bg-primary/10"
               onClick={() => setMobileMenuOpen(false)}
             >
-              {link.icon && <link.icon className="w-5 h-5" />}
               {link.label}
             </NavLink>
           ))}
