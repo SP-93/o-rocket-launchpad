@@ -104,17 +104,21 @@ const AddLiquidity = () => {
     if (urlFee) setSelectedFee(parseInt(urlFee));
   }, [searchParams]);
 
-  // Check pool availability for all fee tiers
+  // Check pool availability for all fee tiers - PARALLELIZED
   useEffect(() => {
     const checkPoolsForAllFees = async () => {
       if (!token0 || !token1) return;
       setCheckingPools(true);
       
+      // Parallel fetch all pool prices instead of sequential
+      const pricePromises = FEE_TIERS.map(tier => 
+        getPoolPrice(token0, token1, tier.value).then(price => ({ fee: tier.value, exists: price !== null }))
+      );
+      
+      const priceResults = await Promise.all(pricePromises);
       const results: Record<number, boolean> = {};
-      for (const tier of FEE_TIERS) {
-        const price = await getPoolPrice(token0, token1, tier.value);
-        results[tier.value] = price !== null;
-      }
+      priceResults.forEach(r => { results[r.fee] = r.exists; });
+      
       setAvailableFees(results);
       
       // Auto-select available fee if current is not available
