@@ -465,7 +465,7 @@ const AddLiquidity = () => {
                 </div>
 
                 {/* Pool existence warning on Step 1 */}
-                {currentPrice === null && (
+                {initialLoadComplete && currentPrice === null && (
                   <Card className="glass-card p-4 mb-4 border-yellow-500/30 bg-yellow-500/10">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
@@ -479,9 +479,9 @@ const AddLiquidity = () => {
                 <Button 
                   className="w-full btn-primary" 
                   onClick={() => setStep(2)}
-                  disabled={currentPrice === null}
+                  disabled={!initialLoadComplete || currentPrice === null}
                 >
-                  {currentPrice === null ? "Pool Doesn't Exist" : "Continue"}
+                  {!initialLoadComplete ? "Checking Pools..." : currentPrice === null ? "Pool Doesn't Exist" : "Continue"}
                 </Button>
               </div>
             )}
