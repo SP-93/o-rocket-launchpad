@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import logger from "@/lib/logger";
 import { ArrowDownUp, Settings, Info, ChevronDown, Check, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,17 @@ const Swap = () => {
   const [wrapDirection, setWrapDirection] = useState<"wrap" | "unwrap">("wrap");
   const [overBalance, setOverBalance] = useState("0.00");
   const [woverBalance, setWoverBalance] = useState("0.00");
+
+  // Reset unrelated state when switching tabs to prevent confusion
+  useEffect(() => {
+    if (activeTab === "swap") {
+      setWrapAmount(""); // Clear wrap amount when on swap tab
+    } else {
+      setFromAmount(""); // Clear swap amounts when on wrap tab
+      setToAmount("");
+    }
+    reset(); // Clear any errors
+  }, [activeTab, reset]);
 
   // Fetch balances
   useEffect(() => {
@@ -121,6 +133,8 @@ const Swap = () => {
   const handleSwap = async () => {
     // Reset state at the start to clear any previous errors
     reset();
+    
+    logger.info(`[Swap] Starting swap: ${fromAmount} ${fromToken.symbol} → ${toToken.symbol}`);
     
     if (!isConnected) {
       setShowWalletModal(true);

@@ -10,6 +10,29 @@ import SwapRouterABI from '@/contracts/abis/SwapRouter.json';
 import QuoterV2ABI from '@/contracts/abis/QuoterV2.json';
 import logger from '@/lib/logger';
 
+// Handle transaction replacement (speed up/repriced) gracefully
+// When user speeds up a transaction, ethers throws TRANSACTION_REPLACED
+// but if cancelled=false, the transaction still succeeded
+const safeWait = async (
+  tx: ethers.ContractTransaction,
+  setTxHash?: (hash: string) => void
+): Promise<ethers.ContractReceipt> => {
+  try {
+    return await tx.wait();
+  } catch (err: any) {
+    // If transaction was replaced but NOT cancelled, it's still a success
+    if (err.code === 'TRANSACTION_REPLACED' && err.cancelled === false) {
+      logger.info('Transaction was repriced/sped up, but still succeeded');
+      // Update to new tx hash if callback provided
+      if (setTxHash && err.replacement?.hash) {
+        setTxHash(err.replacement.hash);
+      }
+      return err.receipt; // Contains the successful receipt
+    }
+    throw err; // Re-throw other errors
+  }
+};
+
 // Standard ERC20 ABI for approve and balanceOf
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) external returns (bool)',
@@ -398,7 +421,7 @@ export const useSwap = () => {
       setStatus('approving');
       
       const tx = await token.approve(spender, ethers.constants.MaxUint256);
-      await tx.wait();
+      await safeWait(tx);
       return true;
     } catch (err: any) {
       logger.error('Approve error:', err);
@@ -439,7 +462,7 @@ export const useSwap = () => {
       try {
         const tx = await wover.deposit({ value: amountWei, gasLimit });
         if (!forSwap) setTxHash(tx.hash);
-        await tx.wait();
+        await safeWait(tx, forSwap ? undefined : setTxHash);
         logger.info(`Successfully wrapped ${amount} OVER to WOVER via deposit()`);
         if (!forSwap) setStatus('success');
         return true;
@@ -453,7 +476,7 @@ export const useSwap = () => {
           gasLimit: ethers.BigNumber.from(100000),
         });
         if (!forSwap) setTxHash(tx.hash);
-        await tx.wait();
+        await safeWait(tx as any, forSwap ? undefined : setTxHash);
         logger.info(`Successfully wrapped ${amount} OVER to WOVER via direct transfer`);
         if (!forSwap) setStatus('success');
         return true;
@@ -484,7 +507,7 @@ export const useSwap = () => {
       
       const tx = await wover.withdraw(amountWei);
       setTxHash(tx.hash);
-      await tx.wait();
+      await safeWait(tx, setTxHash);
       
       logger.info(`Successfully unwrapped ${amount} WOVER to OVER`);
       setStatus('success');
@@ -567,7 +590,7 @@ export const useSwap = () => {
       setTxHash(tx.hash);
       setStatus('pending'); // Transaction signed, waiting for mining
 
-      await tx.wait(); // Wait for transaction to be mined
+      await safeWait(tx, setTxHash); // Wait for transaction to be mined (handles repriced txs)
       
       setStatus('success');
       return true;
