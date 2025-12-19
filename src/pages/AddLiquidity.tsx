@@ -467,20 +467,20 @@ const AddLiquidity = () => {
                   </div>
                 </div>
 
-                {/* Loading indicator */}
-                {(!initialLoadComplete || checkingPools || loadingBalances) && (
+                {/* Loading indicator - only show while checking pools */}
+                {(!initialLoadComplete || checkingPools) && (
                   <Card className="glass-card p-4 mb-4 border-primary/30 bg-primary/10">
                     <div className="flex items-center gap-2">
                       <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
                       <p className="text-sm text-primary">
-                        Loading pool data...
+                        Checking pools...
                       </p>
                     </div>
                   </Card>
                 )}
 
-                {/* Pool existence warning on Step 1 - only show after all loading is complete */}
-                {initialLoadComplete && !loadingBalances && !checkingPools && currentPrice === null && (
+                {/* Pool existence warning - only show after pool check is complete and pool doesn't exist */}
+                {initialLoadComplete && !checkingPools && availableFees[selectedFee] === false && (
                   <Card className="glass-card p-4 mb-4 border-yellow-500/30 bg-yellow-500/10">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-5 h-5 text-yellow-500 shrink-0" />
@@ -494,9 +494,9 @@ const AddLiquidity = () => {
                 <Button 
                   className="w-full btn-primary" 
                   onClick={() => setStep(2)}
-                  disabled={!initialLoadComplete || loadingBalances || checkingPools || currentPrice === null}
+                  disabled={!initialLoadComplete || checkingPools || availableFees[selectedFee] === false}
                 >
-                  {(!initialLoadComplete || loadingBalances || checkingPools) ? "Loading..." : currentPrice === null ? "Pool Doesn't Exist" : "Continue"}
+                  {(!initialLoadComplete || checkingPools) ? "Checking Pools..." : availableFees[selectedFee] === false ? "Pool Doesn't Exist" : "Continue"}
                 </Button>
               </div>
             )}
