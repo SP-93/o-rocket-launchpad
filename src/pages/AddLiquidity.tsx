@@ -71,6 +71,7 @@ const AddLiquidity = () => {
   // Pool availability per fee tier
   const [availableFees, setAvailableFees] = useState<Record<number, boolean>>({});
   const [checkingPools, setCheckingPools] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
 
   // Auto-calculate other token amount based on pool price
   const handleAmount0Change = (value: string) => {
@@ -127,6 +128,7 @@ const AddLiquidity = () => {
         if (availableTier) setSelectedFee(availableTier.value);
       }
       setCheckingPools(false);
+      setInitialLoadComplete(true);
     };
     
     checkPoolsForAllFees();
@@ -421,14 +423,14 @@ const AddLiquidity = () => {
                       })}
                     </div>
                     
-                    {checkingPools && (
+                    {(!initialLoadComplete || checkingPools) && (
                       <p className="text-muted-foreground text-sm mt-2 flex items-center gap-2">
                         <Loader2 className="w-3 h-3 animate-spin" />
                         Checking available pools...
                       </p>
                     )}
                     
-                    {!checkingPools && Object.values(availableFees).filter(Boolean).length === 0 && Object.keys(availableFees).length > 0 && (
+                    {initialLoadComplete && !checkingPools && Object.values(availableFees).filter(Boolean).length === 0 && Object.keys(availableFees).length > 0 && (
                       <div className="mt-3 p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-destructive" />
                         <span className="text-sm text-destructive">No pools exist for this token pair. Contact admin to create one first.</span>

@@ -266,6 +266,7 @@ const Swap = () => {
     if (status === "quoting") return "Getting Quote...";
     if (status === "approving") return "Approving Token...";
     if (status === "swapping") return "Swapping...";
+    if (status === "pending") return "Confirming Transaction...";
     if (!fromAmount || parseFloat(fromAmount) === 0) return "Enter Amount";
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return "Insufficient Balance";
     return "Swap";
@@ -288,7 +289,7 @@ const Swap = () => {
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
     if (status === "quoting" || status === "approving" || status === "swapping" || 
-        status === "wrapping" || status === "wrapping-for-swap" || status === "unwrapping") return true;
+        status === "pending" || status === "wrapping" || status === "wrapping-for-swap" || status === "unwrapping") return true;
     if (!fromAmount || parseFloat(fromAmount) === 0) return true;
     if (parseFloat(fromAmount) > parseFloat(fromBalance)) return true;
     
@@ -540,6 +541,24 @@ const Swap = () => {
                   </div>
                 )}
 
+                {/* Pending Transaction Alert */}
+                {status === 'pending' && txHash && (
+                  <Alert className="mb-4 border-primary/30 bg-primary/10">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <AlertDescription className="flex items-center justify-between">
+                      <span>Transaction submitted! Waiting for confirmation...</span>
+                      <a 
+                        href={`https://scan.over.network/tx/${txHash}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="underline text-primary ml-2 hover:text-primary/80"
+                      >
+                        View on Explorer
+                      </a>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 {/* Error Display */}
                 {error && activeTab === "swap" && (
                   <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
@@ -553,7 +572,7 @@ const Swap = () => {
                   onClick={handleSwap}
                   disabled={isButtonDisabled()}
                 >
-                  {(status === "approving" || status === "swapping" || status === "quoting") && (
+                  {(status === "approving" || status === "swapping" || status === "quoting" || status === "pending") && (
                     <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   )}
                   {getButtonText()}
