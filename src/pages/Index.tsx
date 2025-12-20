@@ -70,7 +70,7 @@ const Index = () => {
               <span className="text-xl font-bold gradient-text">O'ROCKET</span>
             </div>
             <p className="text-muted-foreground mb-2">Built on OverProtocol Mainnet</p>
-            <p className="text-sm text-muted-foreground/60">© 2024 O'Rocket. All rights reserved.</p>
+            <p className="text-sm text-muted-foreground/60">© 2025 O'Rocket. All rights reserved.</p>
           </div>
         </footer>
       </div>
