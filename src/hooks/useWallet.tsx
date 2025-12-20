@@ -6,19 +6,22 @@ import { wagmiConfig, overProtocol } from '@/config/web3modal';
 import logger from '@/lib/logger';
 
 const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-const NETWORK_CHECK_DELAY = 1500; // 1.5 seconds delay for mobile wallet chainId detection
+const NETWORK_CHECK_DELAY = 3000; // 3 seconds delay for mobile wallet chainId detection
 
 export const useWallet = () => {
   const { address, isConnected, chainId } = useAccount();
-  const { data: balanceData } = useBalance({ address });
+  const { data: balanceData, refetch: refetchBalance } = useBalance({ 
+    address,
+    chainId: overProtocol.id, // Explicitly use Over Protocol chainId
+  });
   const { disconnect: wagmiDisconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const { open } = useWeb3Modal();
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isNetworkCheckComplete, setIsNetworkCheckComplete] = useState(false);
+  const [manualBalance, setManualBalance] = useState<string | null>(null);
 
   const rawIsCorrectNetwork = chainId === overProtocol.id;
-  const balance = balanceData?.formatted || '0';
   
   // Delay network check for mobile wallets that report wrong chainId initially
   useEffect(() => {
@@ -35,6 +38,57 @@ export const useWallet = () => {
 
   // Only show network warning after delay completes
   const isCorrectNetwork = !isNetworkCheckComplete || rawIsCorrectNetwork;
+
+  // Refetch balance after connection stabilizes
+  useEffect(() => {
+    if (isConnected && address && refetchBalance) {
+      const timer = setTimeout(() => {
+        refetchBalance();
+        logger.info('[Wallet] Refetching balance after connection stabilized');
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [isConnected, address, chainId, refetchBalance]);
+
+  // Fallback: fetch balance manually if wagmi doesn't work
+  useEffect(() => {
+    const fetchManualBalance = async () => {
+      if (isConnected && address && (!balanceData || balanceData.value === 0n)) {
+        try {
+          const { ethers } = await import('ethers');
+          const provider = new ethers.providers.JsonRpcProvider(
+            overProtocol.rpcUrls.default.http[0]
+          );
+          const rawBalance = await provider.getBalance(address);
+          const formatted = ethers.utils.formatEther(rawBalance);
+          setManualBalance(formatted);
+          logger.info('[Wallet] Manual balance fetch succeeded:', formatted);
+        } catch (err) {
+          logger.error('[Wallet] Manual balance fetch failed:', err);
+        }
+      }
+    };
+    
+    // Delay for mobile wallets
+    const timer = setTimeout(fetchManualBalance, 2000);
+    return () => clearTimeout(timer);
+  }, [isConnected, address, balanceData]);
+
+  // Debug logging
+  useEffect(() => {
+    if (isConnected) {
+      logger.info('[Wallet] Connection state:', { 
+        address, 
+        chainId, 
+        expectedChainId: overProtocol.id,
+        balanceData: balanceData?.formatted,
+        manualBalance,
+      });
+    }
+  }, [isConnected, address, chainId, balanceData, manualBalance]);
+
+  // Use balanceData if available, otherwise use manual fallback
+  const finalBalance = balanceData?.formatted || manualBalance || '0';
 
   // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {
@@ -133,7 +187,7 @@ export const useWallet = () => {
 
   return {
     address: address || null,
-    balance: parseFloat(balance).toFixed(4),
+    balance: parseFloat(finalBalance).toFixed(4),
     chainId: chainId || null,
     isConnected,
     isCorrectNetwork,
