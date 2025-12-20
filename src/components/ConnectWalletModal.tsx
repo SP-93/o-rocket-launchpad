@@ -6,7 +6,7 @@ import {
 } from './ui/dialog';
 import { Button } from './ui/button';
 import { useWallet } from '@/hooks/useWallet';
-import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut } from 'lucide-react';
+import { Wallet, AlertTriangle, Check, ExternalLink, Copy, LogOut, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 
@@ -21,6 +21,7 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
     balance, 
     isConnected, 
     isCorrectNetwork, 
+    isLoadingBalance,
     disconnect, 
     switchNetwork,
   } = useWallet();
@@ -130,9 +131,16 @@ export const ConnectWalletModal = ({ open, onOpenChange }: ConnectWalletModalPro
 
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Balance</p>
-                <p className="text-2xl font-bold gradient-text">
-                  {balance} <span className="text-lg">OVER</span>
-                </p>
+                {isLoadingBalance ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span className="text-lg">Loading balance...</span>
+                  </div>
+                ) : (
+                  <p className="text-2xl font-bold gradient-text">
+                    {balance} <span className="text-lg">OVER</span>
+                  </p>
+                )}
               </div>
             </div>
 

@@ -10,7 +10,7 @@ const NETWORK_CHECK_DELAY = 3000; // 3 seconds delay for mobile wallet chainId d
 
 export const useWallet = () => {
   const { address, isConnected, chainId } = useAccount();
-  const { data: balanceData, refetch: refetchBalance } = useBalance({ 
+  const { data: balanceData, refetch: refetchBalance, isLoading: isBalanceLoading, isFetching: isBalanceFetching } = useBalance({ 
     address,
     chainId: overProtocol.id, // Explicitly use Over Protocol chainId
   });
@@ -20,7 +20,7 @@ export const useWallet = () => {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isNetworkCheckComplete, setIsNetworkCheckComplete] = useState(false);
   const [manualBalance, setManualBalance] = useState<string | null>(null);
-
+  const [isManualBalanceLoading, setIsManualBalanceLoading] = useState(false);
   const rawIsCorrectNetwork = chainId === overProtocol.id;
   
   // Delay network check for mobile wallets that report wrong chainId initially
@@ -54,6 +54,7 @@ export const useWallet = () => {
   useEffect(() => {
     const fetchManualBalance = async () => {
       if (isConnected && address && (!balanceData || balanceData.value === 0n)) {
+        setIsManualBalanceLoading(true);
         try {
           const { ethers } = await import('ethers');
           const provider = new ethers.providers.JsonRpcProvider(
@@ -65,6 +66,8 @@ export const useWallet = () => {
           logger.info('[Wallet] Manual balance fetch succeeded:', formatted);
         } catch (err) {
           logger.error('[Wallet] Manual balance fetch failed:', err);
+        } finally {
+          setIsManualBalanceLoading(false);
         }
       }
     };
@@ -89,6 +92,7 @@ export const useWallet = () => {
 
   // Use balanceData if available, otherwise use manual fallback
   const finalBalance = balanceData?.formatted || manualBalance || '0';
+  const isLoadingBalance = isBalanceLoading || isBalanceFetching || isManualBalanceLoading || (isConnected && !balanceData && !manualBalance);
 
   // Reset inactivity timer
   const resetInactivityTimer = useCallback(() => {
@@ -191,6 +195,7 @@ export const useWallet = () => {
     chainId: chainId || null,
     isConnected,
     isCorrectNetwork,
+    isLoadingBalance,
     connect,
     disconnect,
     switchNetwork,
