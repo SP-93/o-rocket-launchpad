@@ -183,31 +183,67 @@ const WhitepaperSection = () => {
           </AccordionTrigger>
           <AccordionContent className="text-muted-foreground leading-relaxed space-y-4 pb-6">
             <p>
-              Rocket.fun is a fair-launch token creation platform where anyone can create and launch tokens with transparent bonding curve mechanics.
+              Rocket.fun is a fair-launch token creation platform where anyone can create and launch tokens with transparent bonding curve mechanics. No coding required - just creativity and a vision.
             </p>
             
             <div>
-              <h4 className="text-foreground font-medium mb-2">How It Works</h4>
-              <ol className="list-decimal list-inside space-y-2">
-                <li>Create a token with custom name, symbol, and metadata</li>
-                <li>Token launches with a bonding curve - price increases with demand</li>
-                <li>When market cap reaches threshold, liquidity is automatically migrated to the DEX</li>
-                <li>LP tokens are burned, ensuring permanent liquidity</li>
-              </ol>
-            </div>
-
-            <div>
-              <h4 className="text-foreground font-medium mb-2">Fee Structure</h4>
-              <ul className="list-disc list-inside space-y-1">
-                <li>Token creation: Small fixed fee in OVER</li>
-                <li>Trading fee: 1% of each trade</li>
-                <li>Fee allocation: Buyback ROCKET, platform development, liquidity</li>
+              <h4 className="text-foreground font-medium mb-2">🚀 For Token Creators</h4>
+              <ul className="list-disc list-inside space-y-2">
+                <li><strong className="text-foreground">Supply Options:</strong> Choose from 150M, 250M, 500M, 750M, or 1B tokens</li>
+                <li><strong className="text-foreground">Creation Fee:</strong> Fixed fee in OVER to launch your token</li>
+                <li><strong className="text-foreground">Bonding Curve:</strong> Price automatically increases as demand grows</li>
+                <li><strong className="text-foreground">DEX Migration:</strong> When 80% of tokens are sold, liquidity is automatically migrated to O'ROCKET DEX</li>
+                <li><strong className="text-foreground">Creator Royalties:</strong> Earn 50% of the DEX trading fee from your token's pool</li>
+                <li><strong className="text-foreground">Monthly Payouts:</strong> Royalties sent directly to your wallet every month</li>
               </ul>
             </div>
 
             <div>
-              <h4 className="text-foreground font-medium mb-2">ROCKET Token Integration</h4>
-              <p>Fees from Rocket.fun fuel the ROCKET ecosystem through strategic buybacks, adding buy pressure and supporting the token's long-term value.</p>
+              <h4 className="text-foreground font-medium mb-2">💰 For Traders</h4>
+              <ul className="list-disc list-inside space-y-2">
+                <li><strong className="text-foreground">Bonding Curve Trading:</strong> 1.25% fee per trade during launch phase</li>
+                <li><strong className="text-foreground">DEX Trading:</strong> 1% fee after migration to the DEX</li>
+                <li><strong className="text-foreground">Fair Launch:</strong> Everyone buys at the same bonding curve - no insider advantage</li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-foreground font-medium mb-2">📊 Fee Structure</h4>
+              <div className="space-y-3 mt-3">
+                <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
+                  <span>Bonding Curve Phase</span>
+                  <span className="font-semibold text-primary">1.25% per trade</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-primary/10 rounded-lg">
+                  <span>DEX Trading (after migration)</span>
+                  <span className="font-semibold text-primary">1% per trade</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-success/10 rounded-lg">
+                  <span>Creator Share (DEX)</span>
+                  <span className="font-semibold text-success">50% of trading fee</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-warning/10 rounded-lg">
+                  <span>Platform Share (DEX)</span>
+                  <span className="font-semibold text-warning">50% of trading fee</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-foreground font-medium mb-2">🔄 How Migration Works</h4>
+              <ol className="list-decimal list-inside space-y-2">
+                <li>Creator launches token with bonding curve</li>
+                <li>Traders buy tokens, price increases with each purchase</li>
+                <li>When 80% of supply is sold, admin initiates DEX migration</li>
+                <li>Remaining tokens + raised OVER form initial liquidity pool</li>
+                <li>Platform holds LP position and collects fees for creator royalties</li>
+                <li>Creators receive 50% of trading fees monthly</li>
+              </ol>
+            </div>
+
+            <div className="mt-4 p-4 border border-primary/30 rounded-lg bg-primary/5">
+              <h4 className="text-foreground font-medium mb-2">💡 Why Rocket.fun?</h4>
+              <p>Unlike other launchpads, Rocket.fun provides ongoing passive income for creators through trading fee royalties. Your token's success is your success - the more it trades, the more you earn.</p>
             </div>
           </AccordionContent>
         </AccordionItem>

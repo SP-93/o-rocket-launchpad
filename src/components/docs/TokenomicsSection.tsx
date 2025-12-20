@@ -159,6 +159,28 @@ const TokenomicsSection = () => {
           <p className="text-sm text-muted-foreground">Final Supply</p>
         </div>
       </div>
+
+      {/* Rocket.fun Ecosystem */}
+      <div className="glass-card p-6 rounded-xl border border-primary/20">
+        <h3 className="text-lg font-semibold mb-4 text-foreground flex items-center gap-2">
+          🚀 Rocket.fun Fee Distribution
+        </h3>
+        <p className="text-muted-foreground mb-4">
+          Fees from the Rocket.fun launchpad support both token creators and platform development:
+        </p>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="p-4 rounded-lg border border-warning/20 bg-warning/10">
+            <p className="text-lg font-bold text-warning">1.25%</p>
+            <p className="text-sm text-muted-foreground">Bonding Curve Fee</p>
+            <p className="text-xs text-muted-foreground mt-1">During token launch phase</p>
+          </div>
+          <div className="p-4 rounded-lg border border-primary/20 bg-primary/10">
+            <p className="text-lg font-bold text-primary">1%</p>
+            <p className="text-sm text-muted-foreground">DEX Trading Fee</p>
+            <p className="text-xs text-muted-foreground mt-1">50% creator / 50% platform</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

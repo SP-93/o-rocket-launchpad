@@ -129,6 +129,36 @@ const DisclaimerSection = () => {
         </ul>
       </div>
 
+      {/* Rocket.fun Disclaimer */}
+      <div className="glass-card p-6 rounded-xl border border-destructive/30 bg-destructive/5">
+        <div className="flex items-center gap-2 mb-4">
+          <AlertTriangle className="w-5 h-5 text-destructive" />
+          <h3 className="text-lg font-semibold text-destructive">Rocket.fun Token Disclaimer</h3>
+        </div>
+        <ul className="space-y-3 text-muted-foreground">
+          <li className="flex items-start gap-2">
+            <span className="text-destructive mt-1">•</span>
+            <span><strong className="text-foreground">No Affiliation:</strong> Tokens created on Rocket.fun are NOT affiliated with, endorsed by, or created by the O'ROCKET team. Each token is created by independent third parties.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-destructive mt-1">•</span>
+            <span><strong className="text-foreground">DYOR Required:</strong> Always Do Your Own Research before investing in any token launched on Rocket.fun. Verify the project, team, and use case independently.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-destructive mt-1">•</span>
+            <span><strong className="text-foreground">Creator Royalties:</strong> Creator royalties depend on trading volume. Low volume tokens may generate minimal or no royalties.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-destructive mt-1">•</span>
+            <span><strong className="text-foreground">No Refunds:</strong> Token creation fees are non-refundable. Migration fees are charged upon successful DEX deployment.</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-destructive mt-1">•</span>
+            <span><strong className="text-foreground">Scam Tokens:</strong> O'ROCKET is not responsible for scam tokens or rug pulls created by third parties on the platform.</span>
+          </li>
+        </ul>
+      </div>
+
       {/* Final Statement */}
       <div className="text-center py-8 border-t border-primary/20">
         <p className="text-muted-foreground text-sm">
