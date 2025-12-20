@@ -33,6 +33,7 @@ const Navigation = () => {
     { to: "/pools", label: "Pools" },
     { to: "/positions", label: "Positions" },
     { to: "/info", label: "Info" },
+    { to: "/docs", label: "Docs" },
   ];
 
   return (

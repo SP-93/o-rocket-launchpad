@@ -11,6 +11,7 @@ import Pools from "./pages/Pools";
 import AddLiquidity from "./pages/AddLiquidity";
 import Positions from "./pages/Positions";
 import Info from "./pages/Info";
+import Docs from "./pages/Docs";
 import Admin from "./pages/Admin";
 import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/add-liquidity" element={<AddLiquidity />} />
             <Route path="/positions" element={<Positions />} />
             <Route path="/info" element={<Info />} />
+            <Route path="/docs" element={<Docs />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/install" element={<Install />} />
             <Route path="*" element={<NotFound />} />
