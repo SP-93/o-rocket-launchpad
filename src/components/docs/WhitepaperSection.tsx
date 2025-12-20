@@ -1,24 +1,15 @@
 import { FileText, Download, ExternalLink, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 const WhitepaperSection = () => {
   const handleDownload = () => {
     // Placeholder - PDF will be added later
     window.open('/docs/orocket-whitepaper.pdf', '_blank');
   };
-
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
   };
-
-  return (
-    <div className="space-y-8">
+  return <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -38,19 +29,7 @@ const WhitepaperSection = () => {
       </div>
 
       {/* Table of Contents */}
-      <div className="glass-card p-6 rounded-xl border border-primary/20">
-        <h3 className="text-lg font-semibold mb-4 text-foreground">Table of Contents</h3>
-        <nav className="space-y-2 text-muted-foreground">
-          <a href="#introduction" className="block hover:text-primary transition-colors">1. Introduction</a>
-          <a href="#problem" className="block hover:text-primary transition-colors">2. Problem & Solution</a>
-          <a href="#technology" className="block hover:text-primary transition-colors">3. Technology Stack</a>
-          <a href="#tokenomics" className="block hover:text-primary transition-colors">4. ROCKET Tokenomics</a>
-          <a href="#rocket-fun" className="block hover:text-primary transition-colors">5. Rocket.fun Launchpad</a>
-          <a href="#future" className="block hover:text-primary transition-colors">6. Future Development</a>
-          <a href="#team" className="block hover:text-primary transition-colors">7. Team</a>
-          <a href="#disclaimer" className="block hover:text-primary transition-colors">8. Disclaimer</a>
-        </nav>
-      </div>
+      
 
       {/* Whitepaper Content */}
       <Accordion type="multiple" className="space-y-4">
@@ -295,12 +274,7 @@ const WhitepaperSection = () => {
               <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                 <h4 className="text-foreground font-medium mb-1">Over Hippo</h4>
                 <p className="text-sm text-muted-foreground mb-2">Founder & Lead Developer</p>
-                <a 
-                  href="https://x.com/SteeWee_93" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline text-sm flex items-center gap-1"
-                >
+                <a href="https://x.com/SteeWee_93" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm flex items-center gap-1">
                   <ExternalLink className="w-3 h-3" />
                   @SteeWee_93
                 </a>
@@ -332,8 +306,6 @@ const WhitepaperSection = () => {
           </AccordionContent>
         </AccordionItem>
       </Accordion>
-    </div>
-  );
+    </div>;
 };
-
 export default WhitepaperSection;
