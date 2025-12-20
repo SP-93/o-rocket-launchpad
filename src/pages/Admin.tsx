@@ -4,7 +4,8 @@ import { useWallet } from '@/hooks/useWallet';
 import { useContractDeployment } from '@/hooks/useContractDeployment';
 import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
-import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, NETWORK_CONFIG } from '@/config/admin';
+import { useProtocolFees, PoolFeeStatus, AccumulatedFees } from '@/hooks/useProtocolFees';
+import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, FEE_PROTOCOL_OPTIONS, NETWORK_CONFIG, MAINNET_POOLS, TREASURY_WALLET } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
 import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, importDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools, removeDeployedPool } from '@/contracts/storage';
 import { ContractId } from '@/contracts/bytecode';
@@ -19,6 +20,7 @@ import {
   Upload, Smartphone, Monitor, Clipboard
 } from 'lucide-react';
 import PoolVerification from '@/components/admin/PoolVerification';
+import TreasurySection from '@/components/admin/TreasurySection';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -978,30 +980,7 @@ const Admin = () => {
 
             {/* Treasury Tab */}
             <TabsContent value="treasury" className="space-y-6">
-              <GlowCard className="p-6">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-primary" />
-                  Protocol Treasury
-                </h2>
-                <p className="text-muted-foreground mb-6">
-                  View and manage protocol fees. Fees are stored in original tokens and never auto-converted.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div className="bg-background/50 rounded-xl p-4 border border-primary/20">
-                    <p className="text-sm text-muted-foreground mb-1">LP Share</p>
-                    <p className="text-2xl font-bold gradient-text">{PROTOCOL_FEE_CONFIG.lpShare}%</p>
-                  </div>
-                  <div className="bg-background/50 rounded-xl p-4 border border-primary/20">
-                    <p className="text-sm text-muted-foreground mb-1">Protocol Share</p>
-                    <p className="text-2xl font-bold text-warning">{PROTOCOL_FEE_CONFIG.protocolShare}%</p>
-                  </div>
-                </div>
-
-                <div className="text-center text-muted-foreground py-8">
-                  Treasury balances will appear after contracts are deployed and pools have activity
-                </div>
-              </GlowCard>
+              <TreasurySection />
             </TabsContent>
 
             {/* Settings Tab */}

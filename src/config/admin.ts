@@ -21,11 +21,22 @@ export const TREASURY_WALLET = ADMIN_WALLETS[0];
 // Legacy export for backwards compatibility
 export const ADMIN_WALLET = ADMIN_WALLETS[0];
 
-// Protocol fee configuration
+// Protocol fee configuration - 80/20 split (80% LP, 20% Protocol)
 export const PROTOCOL_FEE_CONFIG = {
-  lpShare: 75, // 75% goes to liquidity providers
-  protocolShare: 25, // 25% goes to protocol treasury
+  lpShare: 80, // 80% goes to liquidity providers
+  protocolShare: 20, // 20% goes to protocol treasury
+  feeProtocol: 5, // Uniswap V3 value for 20% (100/5 = 20%)
 };
+
+// Fee protocol options for UI dropdown
+// Formula: Protocol % = 100 / feeProtocol
+export const FEE_PROTOCOL_OPTIONS = [
+  { label: '80/20 (Default)', lpShare: 80, protocolShare: 20, feeProtocol: 5 },
+  { label: '75/25', lpShare: 75, protocolShare: 25, feeProtocol: 4 },
+  { label: '83/17', lpShare: 83.33, protocolShare: 16.67, feeProtocol: 6 },
+  { label: '90/10', lpShare: 90, protocolShare: 10, feeProtocol: 10 },
+  { label: 'Deactivate (100/0)', lpShare: 100, protocolShare: 0, feeProtocol: 0 },
+];
 
 // ============================================================
 // DEPLOYED CONTRACT ADDRESSES - OverProtocol Mainnet
