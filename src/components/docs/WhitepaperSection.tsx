@@ -1,13 +1,165 @@
-import { FileText, Download, ExternalLink, ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { FileText, Download, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { toast } from "@/hooks/use-toast";
+import jsPDF from "jspdf";
+
 const WhitepaperSection = () => {
-  const handleDownload = () => {
-    // Placeholder - PDF will be added later
-    window.open('/docs/orocket-whitepaper.pdf', '_blank');
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const generatePDF = async () => {
+    setIsGenerating(true);
+    
+    try {
+      const pdf = new jsPDF();
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 20;
+      const maxWidth = pageWidth - margin * 2;
+      let y = 20;
+
+      const addTitle = (text: string, size: number = 20) => {
+        pdf.setFontSize(size);
+        pdf.setFont("helvetica", "bold");
+        pdf.setTextColor(255, 100, 50);
+        pdf.text(text, margin, y);
+        y += size * 0.5;
+      };
+
+      const addSection = (title: string) => {
+        if (y > 260) { pdf.addPage(); y = 20; }
+        pdf.setFontSize(14);
+        pdf.setFont("helvetica", "bold");
+        pdf.setTextColor(50, 50, 50);
+        pdf.text(title, margin, y);
+        y += 8;
+      };
+
+      const addText = (text: string) => {
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(80, 80, 80);
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        lines.forEach((line: string) => {
+          if (y > 280) { pdf.addPage(); y = 20; }
+          pdf.text(line, margin, y);
+          y += 5;
+        });
+        y += 3;
+      };
+
+      const addBullet = (text: string) => {
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+        pdf.setTextColor(80, 80, 80);
+        const lines = pdf.splitTextToSize(`• ${text}`, maxWidth - 5);
+        lines.forEach((line: string, i: number) => {
+          if (y > 280) { pdf.addPage(); y = 20; }
+          pdf.text(i === 0 ? line : `  ${line}`, margin, y);
+          y += 5;
+        });
+      };
+
+      // Title
+      addTitle("O'ROCKET Whitepaper v1.0", 24);
+      y += 5;
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text("Decentralized Exchange & Token Launchpad on Over Protocol", margin, y);
+      y += 15;
+
+      // 1. Introduction
+      addSection("1. Introduction");
+      addText("O'ROCKET is a decentralized exchange (DEX) and token launchpad ecosystem built natively on the Over Protocol blockchain. Our mission is to provide a seamless, secure, and community-driven platform for token creation, trading, and liquidity provision.");
+      addText("The platform consists of two core products: a Uniswap V3-style DEX with concentrated liquidity, and Rocket.fun - a fair-launch token creation platform designed specifically for the Over Protocol ecosystem.");
+      y += 5;
+
+      // 2. Problem & Solution
+      addSection("2. Problem & Solution");
+      addText("The Problem:");
+      addBullet("Over Protocol lacks native DeFi infrastructure for efficient token swaps");
+      addBullet("No fair-launch platform exists for community-driven token creation");
+      addBullet("Token launches often favor insiders over community members");
+      y += 3;
+      addText("Our Solution:");
+      addBullet("Native DEX with concentrated liquidity for capital-efficient trading");
+      addBullet("Rocket.fun provides fair, transparent token launches with bonding curves");
+      addBullet("Community-first approach with sustainable tokenomics");
+      y += 5;
+
+      // 3. Technology Stack
+      addSection("3. Technology Stack");
+      addBullet("Blockchain: Over Protocol (EVM-compatible)");
+      addBullet("Smart Contracts: Uniswap V3 Core, Rocket.fun bonding curves");
+      addBullet("Frontend: React + TypeScript, Ethers.js, Web3Modal");
+      addBullet("Security: Audited contracts, Multi-sig treasury");
+      y += 5;
+
+      // 4. ROCKET Tokenomics
+      addSection("4. ROCKET Tokenomics");
+      addText("Total Supply: 1,000,000,000 ROCKET (1 Billion)");
+      addBullet("Presale (OVER/WOVER + USDT): 250M (25%)");
+      addBullet("Initial Liquidity: 150M (15%)");
+      addBullet("Farm Rewards (10 Years): 600M (60%)");
+      y += 3;
+      addText("Deflationary Mechanism: 10% of farm rewards (60M ROCKET) will be burned over the 10-year farming period.");
+      y += 5;
+
+      // 5. Rocket.fun Launchpad
+      addSection("5. Rocket.fun Launchpad");
+      addText("For Token Creators:");
+      addBullet("Supply Options: 150M, 250M, 500M, 750M, or 1B tokens");
+      addBullet("Creation Fee: Fixed fee in OVER");
+      addBullet("DEX Migration: Auto-migrates when 80% sold");
+      addBullet("Creator Royalties: 50% of DEX trading fee");
+      addBullet("Monthly Payouts: Royalties sent to your wallet");
+      y += 3;
+      addText("For Traders:");
+      addBullet("Bonding Curve Trading: 1.25% fee");
+      addBullet("DEX Trading: 1% fee after migration");
+      y += 5;
+
+      // 6. Future Development
+      addSection("6. Future Development");
+      addBullet("Base Bridge Integration (expected end of 2026)");
+      addBullet("Arbitrage Bots for advanced traders");
+      addBullet("Governance voting for ROCKET holders");
+      addBullet("Official ROCKET/USDC pool");
+      y += 5;
+
+      // 7. Disclaimer
+      addSection("7. Disclaimer");
+      addText("This document is for informational purposes only and does not constitute financial advice. Cryptocurrency investments carry significant risk. DYOR before making any investment decisions.");
+
+      // Footer
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text("© 2025 O'ROCKET - Built on Over Protocol", margin, 290);
+
+      pdf.save("OROCKET-Whitepaper-v1.0.pdf");
+      
+      toast({
+        title: "PDF Downloaded",
+        description: "Whitepaper has been saved to your device.",
+      });
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast({
+        title: "Download Failed",
+        description: "Could not generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
   };
+
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
+    toast({
+      title: "Link Copied",
+      description: "Whitepaper link copied to clipboard.",
+    });
   };
   return <div className="space-y-8">
       {/* Header */}
@@ -21,9 +173,13 @@ const WhitepaperSection = () => {
             <ExternalLink className="w-4 h-4 mr-2" />
             Share
           </Button>
-          <Button size="sm" onClick={handleDownload} className="btn-primary">
-            <Download className="w-4 h-4 mr-2" />
-            Download PDF
+          <Button size="sm" onClick={generatePDF} disabled={isGenerating} className="btn-primary">
+            {isGenerating ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            {isGenerating ? "Generating..." : "Download PDF"}
           </Button>
         </div>
       </div>
