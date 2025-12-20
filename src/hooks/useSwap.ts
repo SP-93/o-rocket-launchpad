@@ -533,7 +533,7 @@ export const useSwap = () => {
       return false;
     }
 
-    setStatus('idle');
+    setStatus('pending');
     setError(null);
     setTxHash(null);
 
