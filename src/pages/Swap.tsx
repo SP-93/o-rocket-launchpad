@@ -52,6 +52,9 @@ const Swap = () => {
   const [wrapDirection, setWrapDirection] = useState<"wrap" | "unwrap">("wrap");
   const [overBalance, setOverBalance] = useState("0.00");
   const [woverBalance, setWoverBalance] = useState("0.00");
+  
+  // NOVO: Globalni state za multi-step operacije - drži dugme disabled tokom cele operacije
+  const [isSwapping, setIsSwapping] = useState(false);
 
   // Reset unrelated state when switching tabs to prevent confusion
   useEffect(() => {
@@ -131,88 +134,108 @@ const Swap = () => {
   };
 
   const handleSwap = async () => {
-    // Reset state at the start to clear any previous errors
-    reset();
+    // NOVO: Zaključaj dugme na početku cele operacije
+    setIsSwapping(true);
     
-    logger.info(`[Swap] Starting swap: ${fromAmount} ${fromToken.symbol} → ${toToken.symbol}`);
-    
-    if (!isConnected) {
-      setShowWalletModal(true);
-      return;
-    }
-
-    if (!isCorrectNetwork) {
-      await switchNetwork();
-      return;
-    }
-
-    if (!fromAmount || parseFloat(fromAmount) === 0) {
-      toast.error("Enter an amount to swap");
-      return;
-    }
-
-    // Handle OVER → WOVER wrap first if needed (use forSwap=true to not show success yet)
-    if (fromToken.symbol === "OVER") {
-      const wrapSuccess = await wrapOver(fromAmount, true); // forSwap=true
-      if (!wrapSuccess) {
-        toast.error("Failed to wrap OVER", { description: error || "Wrap failed" });
-        return;
-      }
-      // DON'T show success toast here - wait for the full operation to complete
+    try {
+      // Reset state at the start to clear any previous errors
+      reset();
       
-      // If target is also WOVER, we're done (it's just a wrap)
-      if (toToken.symbol === "WOVER") {
-        toast.success("Wrapped OVER to WOVER");
-        setFromAmount("");
-        setToAmount("");
-        reset();
+      logger.info(`[Swap] Starting swap: ${fromAmount} ${fromToken.symbol} → ${toToken.symbol}`);
+      
+      if (!isConnected) {
+        setShowWalletModal(true);
         return;
       }
-    }
 
-    // Handle OVER/WOVER swap (1:1 wrap/unwrap)
-    if (fromToken.symbol === "WOVER" && toToken.symbol === "OVER") {
-      const unwrapSuccess = await unwrapWover(fromAmount);
-      if (unwrapSuccess) {
-        toast.success("Unwrapped WOVER to OVER");
-        setFromAmount("");
-        setToAmount("");
-        reset();
-      } else {
-        toast.error("Unwrap failed", { description: error });
+      if (!isCorrectNetwork) {
+        await switchNetwork();
+        return;
       }
-      return;
-    }
 
-    // Execute actual swap (use WOVER if original was OVER)
-    const actualFromToken = fromToken.symbol === "OVER" ? "WOVER" : fromToken.symbol;
-    const actualToToken = toToken.symbol === "OVER" ? "WOVER" : toToken.symbol;
+      if (!fromAmount || parseFloat(fromAmount) === 0) {
+        toast.error("Enter an amount to swap");
+        return;
+      }
 
-    const success = await executeSwap({
-      tokenIn: actualFromToken,
-      tokenOut: actualToToken,
-      amountIn: fromAmount,
-      slippageTolerance: slippage,
-      deadline,
-    });
-
-    if (success) {
-      // If user wanted OVER as output, unwrap WOVER
-      if (toToken.symbol === "OVER" && actualToToken === "WOVER") {
-        const unwrapSuccess = await unwrapWover(toAmount);
-        if (!unwrapSuccess) {
-          toast.warning("Swap succeeded but unwrap failed. You received WOVER instead.");
+      // Handle OVER → WOVER wrap first if needed (use forSwap=true to not show success yet)
+      if (fromToken.symbol === "OVER") {
+        const wrapSuccess = await wrapOver(fromAmount, true); // forSwap=true
+        if (!wrapSuccess) {
+          toast.error("Failed to wrap OVER", { description: error || "Wrap failed" });
+          return;
+        }
+        
+        // NOVO: Čekaj dodatnih 2 sekunde i verifikuj WOVER balans
+        logger.info('[Swap] Wrap complete, waiting for balance confirmation...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const newWoverBalance = await getTokenBalance("WOVER");
+        const amountNeeded = parseFloat(fromAmount);
+        if (parseFloat(newWoverBalance) < amountNeeded * 0.99) { // 1% tolerancija
+          toast.error("Wrap not confirmed yet", { description: "Please try again in a few seconds" });
+          reset();
+          return;
+        }
+        logger.info(`[Swap] WOVER balance confirmed: ${newWoverBalance}`);
+        
+        // If target is also WOVER, we're done (it's just a wrap)
+        if (toToken.symbol === "WOVER") {
+          toast.success("Wrapped OVER to WOVER");
+          setFromAmount("");
+          setToAmount("");
+          reset();
+          return;
         }
       }
-      
-      toast.success("Swap successful!", {
-        description: `Swapped ${fromAmount} ${fromToken.symbol} for ${toAmount} ${toToken.symbol}`,
+
+      // Handle OVER/WOVER swap (1:1 wrap/unwrap)
+      if (fromToken.symbol === "WOVER" && toToken.symbol === "OVER") {
+        const unwrapSuccess = await unwrapWover(fromAmount);
+        if (unwrapSuccess) {
+          toast.success("Unwrapped WOVER to OVER");
+          setFromAmount("");
+          setToAmount("");
+          reset();
+        } else {
+          toast.error("Unwrap failed", { description: error });
+        }
+        return;
+      }
+
+      // Execute actual swap (use WOVER if original was OVER)
+      const actualFromToken = fromToken.symbol === "OVER" ? "WOVER" : fromToken.symbol;
+      const actualToToken = toToken.symbol === "OVER" ? "WOVER" : toToken.symbol;
+
+      const success = await executeSwap({
+        tokenIn: actualFromToken,
+        tokenOut: actualToToken,
+        amountIn: fromAmount,
+        slippageTolerance: slippage,
+        deadline,
       });
-      setFromAmount("");
-      setToAmount("");
-      reset();
-    } else if (error) {
-      toast.error("Swap failed", { description: error });
+
+      if (success) {
+        // If user wanted OVER as output, unwrap WOVER
+        if (toToken.symbol === "OVER" && actualToToken === "WOVER") {
+          const unwrapSuccess = await unwrapWover(toAmount);
+          if (!unwrapSuccess) {
+            toast.warning("Swap succeeded but unwrap failed. You received WOVER instead.");
+          }
+        }
+        
+        toast.success("Swap successful!", {
+          description: `Swapped ${fromAmount} ${fromToken.symbol} for ${toAmount} ${toToken.symbol}`,
+        });
+        setFromAmount("");
+        setToAmount("");
+        reset();
+      } else if (error) {
+        toast.error("Swap failed", { description: error });
+      }
+    } finally {
+      // NOVO: Uvek otključaj dugme na kraju, bez obzira na uspeh ili grešku
+      setIsSwapping(false);
     }
   };
 
@@ -274,8 +297,11 @@ const Swap = () => {
   const getButtonText = () => {
     if (!isConnected) return "Connect Wallet";
     if (!isCorrectNetwork) return "Switch to OverProtocol";
+    // NOVO: Poboljšan prikaz za multi-step operacije
+    if (status === "wrapping-for-swap") return "Step 1/2: Wrapping OVER...";
+    if (status === "approving" && fromToken.symbol === "OVER") return "Step 2/2: Approving...";
+    if (status === "swapping" && fromToken.symbol === "OVER") return "Step 2/2: Swapping...";
     if (status === "wrapping") return "Wrapping OVER...";
-    if (status === "wrapping-for-swap") return "Wrapping & Swapping...";
     if (status === "unwrapping") return "Unwrapping WOVER...";
     if (status === "quoting") return "Getting Quote...";
     if (status === "approving") return "Approving Token...";
@@ -300,6 +326,9 @@ const Swap = () => {
   };
 
   const isButtonDisabled = () => {
+    // NOVO: Prva provera - ako je isSwapping true, dugme je UVEK disabled
+    if (isSwapping) return true;
+    
     if (!isConnected) return false;
     if (!isCorrectNetwork) return false;
     if (status === "quoting" || status === "approving" || status === "swapping" || 

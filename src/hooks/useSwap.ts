@@ -18,7 +18,8 @@ const safeWait = async (
   setTxHash?: (hash: string) => void
 ): Promise<ethers.ContractReceipt> => {
   try {
-    return await tx.wait();
+    // Eksplicitno čekaj 1 block potvrdu pre nego što nastavimo
+    return await tx.wait(1);
   } catch (err: any) {
     // If transaction was replaced but NOT cancelled, it's still a success
     if (err.code === 'TRANSACTION_REPLACED' && err.cancelled === false) {
