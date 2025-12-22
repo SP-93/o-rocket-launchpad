@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { NavLink } from "./NavLink";
 import { Button } from "./ui/button";
-import { Rocket, Wallet, Menu, X, ChevronDown, Shield } from "lucide-react";
+import { Rocket, Wallet, Menu, X, ChevronDown, Shield, Loader2 } from "lucide-react";
 import { ConnectWalletModal } from "./ConnectWalletModal";
 import { useWallet } from "@/hooks/useWallet";
-import { isAdmin } from "@/config/admin";
+import { useAdminRole, useLegacyAdminCheck } from "@/hooks/useAdminRole";
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import logger from "@/lib/logger";
 
@@ -24,9 +24,14 @@ const Navigation = () => {
 
   const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 
-  const isAdminWallet = isAdmin(address);
+  // Use secure database role check with legacy fallback during migration
+  const { isAdmin: isDbAdmin, isLoading: isAdminLoading } = useAdminRole();
+  const isLegacyAdmin = useLegacyAdminCheck();
   
-  logger.debug('Admin check:', { address, isAdminWallet });
+  // Show admin link if either database role OR legacy check passes (for migration period)
+  const isAdminWallet = isDbAdmin || isLegacyAdmin;
+  
+  logger.debug('Admin check:', { address, isDbAdmin, isLegacyAdmin, isAdminWallet });
 
   const navLinks = [
     { to: "/swap", label: "Swap" },

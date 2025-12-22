@@ -13,6 +13,7 @@ import Positions from "./pages/Positions";
 import Info from "./pages/Info";
 import Docs from "./pages/Docs";
 import Admin from "./pages/Admin";
+import Auth from "./pages/Auth";
 import Install from "./pages/Install";
 import NotFound from "./pages/NotFound";
 import { initializeSecurity } from "./lib/securityInit";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/info" element={<Info />} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/auth" element={<Auth />} />
             <Route path="/install" element={<Install />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
