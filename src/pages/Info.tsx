@@ -2,7 +2,7 @@ import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import PriceChart from "@/components/PriceChart";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
-import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2, ArrowLeftRight } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
 import gateIoLogo from "@/assets/icons/gate-io.jpg";
@@ -127,6 +127,35 @@ const Info = () => {
             <p className="text-base sm:text-lg md:text-xl text-muted-foreground px-2">
               Real-time statistics and insights for O'Rocket DEX
             </p>
+          </div>
+
+          {/* OverBridge Banner - Prominent at top */}
+          <div className="mb-12 md:mb-16">
+            <GlowCard className="p-8 md:p-10 text-center" glowColor="cyan">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center shadow-2xl shadow-cyan-500/30 animate-pulse-slow">
+                  <ArrowLeftRight className="w-10 h-10 text-white" />
+                </div>
+                <h2 className="text-2xl md:text-4xl font-bold gradient-text">
+                  Bridge OVER to Base Network
+                </h2>
+                <p className="text-lg text-muted-foreground max-w-xl">
+                  Transfer your OVER tokens between Over Protocol and Base Network using the official OverBridge
+                </p>
+                <a 
+                  href="https://bridge.over.network/" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                >
+                  <NeonButton variant="primary" className="text-lg px-8 py-4 mt-2">
+                    Launch Bridge <ExternalLink className="w-5 h-5 ml-2" />
+                  </NeonButton>
+                </a>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Fee: 100 OVER per transfer • EVM Compatible
+                </p>
+              </div>
+            </GlowCard>
           </div>
 
           {/* Live Market Data Section */}
