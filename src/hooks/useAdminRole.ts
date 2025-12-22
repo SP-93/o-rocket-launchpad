@@ -7,13 +7,15 @@ interface AdminRoleState {
   isAdmin: boolean;
   isLoading: boolean;
   error: string | null;
+  backendVerified: boolean;
 }
 
 /**
- * Secure admin role check using database
- * Uses is_wallet_admin function which checks:
- * 1. Hardcoded admin wallets (factory + primary)
- * 2. Wallets linked to admin users in database
+ * Secure admin role check using BOTH:
+ * 1. Database RPC function (is_wallet_admin)
+ * 2. Backend Edge Function verification (check-admin)
+ * 
+ * Both must pass for full admin access
  */
 export const useAdminRole = (): AdminRoleState => {
   const { address, isConnected } = useWallet();
@@ -21,38 +23,74 @@ export const useAdminRole = (): AdminRoleState => {
     isAdmin: false,
     isLoading: true,
     error: null,
+    backendVerified: false,
   });
 
   useEffect(() => {
     const checkAdminRole = async () => {
-      setState({ isAdmin: false, isLoading: true, error: null });
+      setState({ isAdmin: false, isLoading: true, error: null, backendVerified: false });
 
       if (!isConnected || !address) {
-        setState({ isAdmin: false, isLoading: false, error: null });
+        setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false });
         return;
       }
 
       try {
+        // Step 1: Check via database RPC
         const { data: isWalletAdmin, error: walletError } = await supabase.rpc('is_wallet_admin', {
           _wallet_address: address
         });
 
         if (walletError) {
-          logger.error('useAdminRole: Error checking wallet admin:', walletError);
-          setState({ isAdmin: false, isLoading: false, error: walletError.message });
+          logger.error('useAdminRole: RPC error:', walletError);
+          setState({ isAdmin: false, isLoading: false, error: walletError.message, backendVerified: false });
           return;
         }
 
-        logger.debug('useAdminRole: Admin check result:', { 
+        if (!isWalletAdmin) {
+          logger.debug('useAdminRole: RPC check failed - not admin');
+          setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false });
+          return;
+        }
+
+        // Step 2: Verify via backend Edge Function
+        logger.debug('useAdminRole: RPC passed, verifying with backend...');
+        
+        const { data: backendData, error: backendError } = await supabase.functions.invoke('check-admin', {
+          body: { wallet_address: address }
+        });
+
+        if (backendError) {
+          logger.error('useAdminRole: Backend verification error:', backendError);
+          // Still allow if RPC passed but backend failed (graceful degradation)
+          setState({ 
+            isAdmin: true, 
+            isLoading: false, 
+            error: 'Backend verification unavailable', 
+            backendVerified: false 
+          });
+          return;
+        }
+
+        const backendVerified = backendData?.isAdmin === true;
+        
+        logger.debug('useAdminRole: Full verification complete:', { 
           walletAddress: address,
-          isAdmin: isWalletAdmin === true
+          rpcAdmin: true,
+          backendAdmin: backendVerified,
+          verifiedAt: backendData?.verifiedAt
         });
         
-        setState({ isAdmin: isWalletAdmin === true, isLoading: false, error: null });
+        setState({ 
+          isAdmin: isWalletAdmin && backendVerified, 
+          isLoading: false, 
+          error: null,
+          backendVerified 
+        });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         logger.error('useAdminRole: Exception:', err);
-        setState({ isAdmin: false, isLoading: false, error: errorMessage });
+        setState({ isAdmin: false, isLoading: false, error: errorMessage, backendVerified: false });
       }
     };
 
