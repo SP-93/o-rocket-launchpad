@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
+import { useAdminRole, useLegacyAdminCheck } from '@/hooks/useAdminRole';
 import { useContractDeployment } from '@/hooks/useContractDeployment';
 import { usePoolCreation, PoolConfig } from '@/hooks/usePoolCreation';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { useProtocolFees, PoolFeeStatus, AccumulatedFees } from '@/hooks/useProtocolFees';
-import { isAdmin, ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, FEE_PROTOCOL_OPTIONS, NETWORK_CONFIG, MAINNET_POOLS, TREASURY_WALLET } from '@/config/admin';
+import { ADMIN_WALLETS, TOKEN_ADDRESSES, PROTOCOL_FEE_CONFIG, FEE_PROTOCOL_OPTIONS, NETWORK_CONFIG, MAINNET_POOLS, TREASURY_WALLET } from '@/config/admin';
 import { DEPLOYMENT_STEPS, INITIAL_POOLS, FEE_TIER_CONFIG } from '@/contracts/deployment/config';
 import { getDeployedContracts, clearAllDeployedData, exportDeploymentData, importDeploymentData, DeployedContracts, saveDeployedPool, getDeployedPools, removeDeployedPool } from '@/contracts/storage';
 import { ContractId } from '@/contracts/bytecode';
@@ -27,7 +28,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 const Admin = () => {
   const navigate = useNavigate();
   const { address, isConnected } = useWallet();
-  const isAdminWallet = isAdmin(address);
+  
+  // Secure backend admin check
+  const { isAdmin: isDbAdmin, isLoading: isAdminLoading } = useAdminRole();
+  const isLegacyAdmin = useLegacyAdminCheck();
+  const isAdminWallet = isDbAdmin || isLegacyAdmin;
+  
   const { deployContract, saveContractAddress, deploymentState, isDeploying, checkDependencies, loadSavedState } = useContractDeployment();
   
   // Manual address input state
@@ -59,13 +65,26 @@ const Admin = () => {
     setDeployedPools(getDeployedPools());
   }, [loadSavedState]);
 
-  // Redirect non-admin users
+  // Redirect non-admin users (wait for loading to complete)
   useEffect(() => {
-    if (!isConnected || !isAdminWallet) {
-      toast.error('Access denied. Admin wallet required.');
+    if (!isAdminLoading && (!isConnected || !isAdminWallet)) {
+      toast.error('Access denied. Admin privileges required.');
       navigate('/');
     }
-  }, [isConnected, isAdminWallet, navigate]);
+  }, [isConnected, isAdminWallet, isAdminLoading, navigate]);
+
+  // Show loading state while checking admin status
+  if (isAdminLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <SpaceBackground><div /></SpaceBackground>
+        <div className="relative z-10 text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Checking admin privileges...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isConnected || !isAdminWallet) {
     return null;
