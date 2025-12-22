@@ -6,18 +6,11 @@ import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
 
-// Import profile images
-import overHippoImg from "@/assets/social/over-hippo.jpg";
-import overProtocolImg from "@/assets/social/over-protocol.jpg";
-import benOvernanceImg from "@/assets/social/ben-overnance.jpg";
-
-// Gate.io SVG Logo Component - Official blue G with teal accent
+// Gate.io SVG Logo Component - Teal/cyan G shape
 const GateLogo = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 40 40" fill="none">
-    {/* Blue circular G shape */}
-    <path d="M20 4C11.163 4 4 11.163 4 20s7.163 16 16 16 16-7.163 16-16h-8v8h-8v-8h8v-8H20V4z" fill="#2354E6"/>
-    {/* Teal/green square accent */}
-    <rect x="20" y="12" width="8" height="8" fill="#00D4AA"/>
+  <svg className={className} viewBox="0 0 100 100" fill="none">
+    <circle cx="50" cy="50" r="45" fill="#00D4AA"/>
+    <path d="M50 25C36.2 25 25 36.2 25 50s11.2 25 25 25 25-11.2 25-25H62.5v12.5H50V50h12.5V37.5H50V25z" fill="white"/>
   </svg>
 );
 
@@ -44,38 +37,31 @@ const EXCHANGES = [
   },
 ];
 
-// Social links with profile images
+// Social links - X accounts use X icon only
 const SOCIAL_LINKS = [
   { 
     name: "O'Rocket Telegram", 
     url: 'https://t.me/+6aGbv0-Ct6JjMDEy', 
     type: 'telegram' as const,
-    description: 'Join our community',
-    bgColor: 'bg-[#0088cc]'
+    description: 'Join our community'
   },
   { 
     name: "Over Hippo", 
     url: 'https://x.com/SteeWee_93', 
-    type: 'profile' as const,
-    image: overHippoImg,
-    description: '@SteeWee_93',
-    bgColor: 'bg-foreground'
+    type: 'x' as const,
+    description: '@SteeWee_93'
   },
   { 
     name: 'Over Protocol', 
     url: 'https://x.com/overprotocol', 
-    type: 'profile' as const,
-    image: overProtocolImg,
-    description: '@overprotocol',
-    bgColor: 'bg-[#FF6B00]'
+    type: 'x' as const,
+    description: '@overprotocol'
   },
   { 
     name: 'Ben', 
     url: 'https://x.com/overnance', 
-    type: 'profile' as const,
-    image: benOvernanceImg,
-    description: '@overnance',
-    bgColor: 'bg-[#1DA1F2]'
+    type: 'x' as const,
+    description: '@overnance'
   },
 ];
 
@@ -274,19 +260,12 @@ const Info = () => {
                       className="flex flex-col items-center gap-3 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-xl p-4 transition-all group hover:scale-105"
                     >
                       {link.type === 'telegram' ? (
-                        <div className={`w-14 h-14 rounded-full ${link.bgColor} flex items-center justify-center shadow-lg shadow-[#0088cc]/30 group-hover:shadow-[#0088cc]/50 transition-all`}>
+                        <div className="w-14 h-14 rounded-full bg-[#0088cc] flex items-center justify-center shadow-lg shadow-[#0088cc]/30 group-hover:shadow-[#0088cc]/50 transition-all">
                           <TelegramLogo className="w-8 h-8 text-white" />
                         </div>
                       ) : (
-                        <div className="relative">
-                          <img 
-                            src={link.image} 
-                            alt={link.name}
-                            className="w-14 h-14 rounded-full object-cover border-2 border-primary/30 group-hover:border-primary/50 transition-all shadow-lg"
-                          />
-                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-foreground flex items-center justify-center border border-background">
-                            <XLogo className="w-3 h-3 text-background" />
-                          </div>
+                        <div className="w-14 h-14 rounded-full bg-foreground flex items-center justify-center shadow-lg group-hover:shadow-foreground/30 transition-all">
+                          <XLogo className="w-8 h-8 text-background" />
                         </div>
                       )}
                       <div className="text-center">
