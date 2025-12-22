@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import PoolVerification from '@/components/admin/PoolVerification';
 import TreasurySection from '@/components/admin/TreasurySection';
+import WalletLinkSection from '@/components/admin/WalletLinkSection';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -446,6 +447,9 @@ const Admin = () => {
               </TabsTrigger>
               <TabsTrigger value="verify" className="flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4" /> Verify Pools
+              </TabsTrigger>
+              <TabsTrigger value="security" className="flex items-center gap-2">
+                <Shield className="w-4 h-4" /> Security
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex items-center gap-2">
                 <Settings className="w-4 h-4" /> Settings
@@ -1163,6 +1167,11 @@ const Admin = () => {
             {/* Pool Verification Tab */}
             <TabsContent value="verify" className="space-y-6">
               <PoolVerification />
+            </TabsContent>
+
+            {/* Security Tab */}
+            <TabsContent value="security" className="space-y-6">
+              <WalletLinkSection />
             </TabsContent>
           </Tabs>
         </div>
