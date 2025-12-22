@@ -2,44 +2,77 @@ import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import PriceChart from "@/components/PriceChart";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
-import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2, MessageCircle } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
+
+// Import profile images
+import overHippoImg from "@/assets/social/over-hippo.jpg";
+import overProtocolImg from "@/assets/social/over-protocol.jpg";
+import benOvernanceImg from "@/assets/social/ben-overnance.jpg";
+
+// Gate.io SVG Logo Component
+const GateLogo = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6 13.5h-4.5V18h-3v-4.5H6v-3h4.5V6h3v4.5H18v3z"/>
+  </svg>
+);
+
+// Telegram SVG Logo Component
+const TelegramLogo = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+  </svg>
+);
+
+// X (Twitter) SVG Logo Component
+const XLogo = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+  </svg>
+);
 
 // Exchanges where OVER is traded
 const EXCHANGES = [
   { 
     name: 'Gate.io', 
     url: 'https://www.gate.com/referral/cashback?ref=AgJMUFkK&ref_type=103&page=earnVoucher&utm_cmp=PEYEQd', 
-    logo: '🏛️' 
+    description: 'Buy OVER with referral bonus'
   },
 ];
 
-// Social links
+// Social links with profile images
 const SOCIAL_LINKS = [
   { 
     name: "O'Rocket Telegram", 
     url: 'https://t.me/+6aGbv0-Ct6JjMDEy', 
-    icon: 'telegram',
-    description: 'Join our community'
+    type: 'telegram' as const,
+    description: 'Join our community',
+    bgColor: 'bg-[#0088cc]'
   },
   { 
-    name: "O'Rocket X", 
+    name: "Over Hippo", 
     url: 'https://x.com/SteeWee_93', 
-    icon: 'x',
-    description: '@SteeWee_93'
+    type: 'profile' as const,
+    image: overHippoImg,
+    description: '@SteeWee_93',
+    bgColor: 'bg-foreground'
   },
   { 
-    name: 'Over Protocol X', 
+    name: 'Over Protocol', 
     url: 'https://x.com/overprotocol', 
-    icon: 'x',
-    description: '@overprotocol'
+    type: 'profile' as const,
+    image: overProtocolImg,
+    description: '@overprotocol',
+    bgColor: 'bg-[#FF6B00]'
   },
   { 
-    name: 'Ben (Over Creator)', 
+    name: 'Ben', 
     url: 'https://x.com/overnance', 
-    icon: 'x',
-    description: '@overnance'
+    type: 'profile' as const,
+    image: benOvernanceImg,
+    description: '@overnance',
+    bgColor: 'bg-[#1DA1F2]'
   },
 ];
 
@@ -190,18 +223,23 @@ const Info = () => {
                     {/* Exchanges */}
                     <div>
                       <p className="text-sm font-medium text-foreground mb-3">Trade OVER on:</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         {EXCHANGES.map((exchange) => (
                           <a
                             key={exchange.name}
                             href={exchange.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-lg px-3 py-2 transition-all"
+                            className="flex items-center gap-3 bg-gradient-to-r from-[#00D4AA]/10 to-[#00B4D8]/10 hover:from-[#00D4AA]/20 hover:to-[#00B4D8]/20 border border-[#00D4AA]/30 hover:border-[#00D4AA]/50 rounded-xl px-5 py-3 transition-all group"
                           >
-                            <span>{exchange.logo}</span>
-                            <span className="text-sm font-medium">{exchange.name}</span>
-                            <ExternalLink className="w-3 h-3 text-muted-foreground" />
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#00D4AA] to-[#00B4D8] flex items-center justify-center shadow-lg shadow-[#00D4AA]/20">
+                              <GateLogo className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="text-left">
+                              <span className="text-base font-bold text-foreground block">{exchange.name}</span>
+                              <span className="text-xs text-muted-foreground">{exchange.description}</span>
+                            </div>
+                            <ExternalLink className="w-4 h-4 text-[#00D4AA] opacity-0 group-hover:opacity-100 transition-opacity ml-2" />
                           </a>
                         ))}
                       </div>
@@ -230,19 +268,26 @@ const Info = () => {
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex flex-col items-center gap-2 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-xl p-4 transition-all group"
+                      className="flex flex-col items-center gap-3 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-xl p-4 transition-all group hover:scale-105"
                     >
-                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-all">
-                        {link.icon === 'telegram' ? (
-                          <MessageCircle className="w-6 h-6 text-primary" />
-                        ) : (
-                          <svg className="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                          </svg>
-                        )}
-                      </div>
+                      {link.type === 'telegram' ? (
+                        <div className={`w-14 h-14 rounded-full ${link.bgColor} flex items-center justify-center shadow-lg shadow-[#0088cc]/30 group-hover:shadow-[#0088cc]/50 transition-all`}>
+                          <TelegramLogo className="w-8 h-8 text-white" />
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <img 
+                            src={link.image} 
+                            alt={link.name}
+                            className="w-14 h-14 rounded-full object-cover border-2 border-primary/30 group-hover:border-primary/50 transition-all shadow-lg"
+                          />
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-foreground flex items-center justify-center border border-background">
+                            <XLogo className="w-3 h-3 text-background" />
+                          </div>
+                        </div>
+                      )}
                       <div className="text-center">
-                        <p className="text-sm font-medium text-foreground">{link.name}</p>
+                        <p className="text-sm font-semibold text-foreground">{link.name}</p>
                         <p className="text-xs text-muted-foreground">{link.description}</p>
                       </div>
                       <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
