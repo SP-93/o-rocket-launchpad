@@ -2,17 +2,45 @@ import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import PriceChart from "@/components/PriceChart";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
-import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2, MessageCircle } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
 
 // Exchanges where OVER is traded
 const EXCHANGES = [
-  { name: 'Bybit', url: 'https://www.bybit.com/trade/spot/OVER/USDT', logo: '🔶' },
-  { name: 'MEXC', url: 'https://www.mexc.com/exchange/OVER_USDT', logo: '🟦' },
-  { name: 'Gate.io', url: 'https://www.gate.io/trade/OVER_USDT', logo: '🔷' },
-  { name: 'Bitget', url: 'https://www.bitget.com/spot/OVERUSDT', logo: '🟩' },
-  { name: 'KuCoin', url: 'https://www.kucoin.com/trade/OVER-USDT', logo: '🟢' },
+  { 
+    name: 'Gate.io', 
+    url: 'https://www.gate.com/referral/cashback?ref=AgJMUFkK&ref_type=103&page=earnVoucher&utm_cmp=PEYEQd', 
+    logo: '🏛️' 
+  },
+];
+
+// Social links
+const SOCIAL_LINKS = [
+  { 
+    name: "O'Rocket Telegram", 
+    url: 'https://t.me/+6aGbv0-Ct6JjMDEy', 
+    icon: 'telegram',
+    description: 'Join our community'
+  },
+  { 
+    name: "O'Rocket X", 
+    url: 'https://x.com/SteeWee_93', 
+    icon: 'x',
+    description: '@SteeWee_93'
+  },
+  { 
+    name: 'Over Protocol X', 
+    url: 'https://x.com/overprotocol', 
+    icon: 'x',
+    description: '@overprotocol'
+  },
+  { 
+    name: 'Ben (Over Creator)', 
+    url: 'https://x.com/overnance', 
+    icon: 'x',
+    description: '@overnance'
+  },
 ];
 
 const Info = () => {
@@ -186,6 +214,41 @@ const Info = () => {
                     )}
                   </>
                 )}
+              </GlowCard>
+            </div>
+          </div>
+
+          {/* Community & Social Links */}
+          <div className="mb-12 md:mb-16">
+            <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-center">Community & Social</h2>
+            <div className="max-w-4xl mx-auto">
+              <GlowCard className="p-6" glowColor="purple">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {SOCIAL_LINKS.map((link) => (
+                    <a
+                      key={link.name}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-col items-center gap-2 bg-background/50 hover:bg-primary/10 border border-border/30 hover:border-primary/30 rounded-xl p-4 transition-all group"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center border border-primary/30 group-hover:bg-primary/30 transition-all">
+                        {link.icon === 'telegram' ? (
+                          <MessageCircle className="w-6 h-6 text-primary" />
+                        ) : (
+                          <svg className="w-5 h-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-medium text-foreground">{link.name}</p>
+                        <p className="text-xs text-muted-foreground">{link.description}</p>
+                      </div>
+                      <ExternalLink className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </a>
+                  ))}
+                </div>
               </GlowCard>
             </div>
           </div>
