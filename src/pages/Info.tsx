@@ -11,21 +11,24 @@ import overHippoImg from "@/assets/social/over-hippo.jpg";
 import overProtocolImg from "@/assets/social/over-protocol.jpg";
 import benOvernanceImg from "@/assets/social/ben-overnance.jpg";
 
-// Gate.io SVG Logo Component
+// Gate.io SVG Logo Component - Official blue G with teal accent
 const GateLogo = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm6 13.5h-4.5V18h-3v-4.5H6v-3h4.5V6h3v4.5H18v3z"/>
+  <svg className={className} viewBox="0 0 40 40" fill="none">
+    {/* Blue circular G shape */}
+    <path d="M20 4C11.163 4 4 11.163 4 20s7.163 16 16 16 16-7.163 16-16h-8v8h-8v-8h8v-8H20V4z" fill="#2354E6"/>
+    {/* Teal/green square accent */}
+    <rect x="20" y="12" width="8" height="8" fill="#00D4AA"/>
   </svg>
 );
 
-// Telegram SVG Logo Component
+// Telegram SVG Logo Component - Standard paper plane
 const TelegramLogo = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
   </svg>
 );
 
-// X (Twitter) SVG Logo Component
+// X (Twitter) SVG Logo Component - Standard X logo
 const XLogo = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
