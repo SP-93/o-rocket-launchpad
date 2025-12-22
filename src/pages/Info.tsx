@@ -5,20 +5,15 @@ import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
 import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart3, ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
+import gateIoLogo from "@/assets/icons/gate-io.jpg";
 
-// Gate.io SVG Logo Component - Blue G with green square accent
+// Gate.io Logo Component - using official image
 const GateLogo = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 48 48" fill="none">
-    {/* Blue G shape - circular C-like curve */}
-    <path 
-      d="M24 4C12.954 4 4 12.954 4 24s8.954 20 20 20 20-8.954 20-20h-8c0 6.627-5.373 12-12 12S12 30.627 12 24s5.373-12 12-12V4z" 
-      fill="#2354E6"
-    />
-    {/* Horizontal bar of G */}
-    <rect x="24" y="20" width="16" height="8" fill="#2354E6"/>
-    {/* Green square accent */}
-    <rect x="20" y="20" width="10" height="10" fill="#17E6A1"/>
-  </svg>
+  <img 
+    src={gateIoLogo} 
+    alt="Gate.io" 
+    className={`rounded-lg ${className || ''}`}
+  />
 );
 
 // Telegram SVG Logo Component - Standard paper plane
