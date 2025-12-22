@@ -6,11 +6,20 @@ import { TrendingUp, TrendingDown, DollarSign, Users, Layers, Activity, BarChart
 import { TokenIcon } from "@/components/TokenIcon";
 import NeonButton from "@/components/ui/NeonButton";
 
-// Gate.io SVG Logo Component - Teal/cyan G shape
+// Gate.io SVG Logo Component - Official teal G with white accent
 const GateLogo = ({ className }: { className?: string }) => (
-  <svg className={className} viewBox="0 0 100 100" fill="none">
-    <circle cx="50" cy="50" r="45" fill="#00D4AA"/>
-    <path d="M50 25C36.2 25 25 36.2 25 50s11.2 25 25 25 25-11.2 25-25H62.5v12.5H50V50h12.5V37.5H50V25z" fill="white"/>
+  <svg className={className} viewBox="0 0 48 48" fill="none">
+    {/* Teal background circle */}
+    <circle cx="24" cy="24" r="24" fill="#17E6A1"/>
+    {/* White G shape - C-like curve with horizontal bar */}
+    <path 
+      d="M24 10c-7.732 0-14 6.268-14 24s6.268 14 14 14c7.732 0 14-6.268 14-14v-7h-7v7c0 3.866-3.134 7-7 7s-7-3.134-7-7 3.134-7 7-7v-3h14v-4H24z" 
+      fill="white"
+      fillRule="evenodd"
+    />
+    {/* Simplified G mark */}
+    <path d="M24 14a10 10 0 00-10 10 10 10 0 0010 10 10 10 0 0010-10h-6a4 4 0 01-4 4 4 4 0 01-4-4 4 4 0 014-4v-6z" fill="white"/>
+    <rect x="24" y="22" width="10" height="4" fill="white"/>
   </svg>
 );
 
