@@ -12,7 +12,8 @@ const GateLogo = ({ className }: { className?: string }) => (
   <img 
     src={gateIoLogo} 
     alt="Gate.io" 
-    className={`rounded-lg ${className || ''}`}
+    className={`rounded-lg object-contain ${className || ''}`}
+    style={{ width: '48px', height: '48px' }}
   />
 );
 
