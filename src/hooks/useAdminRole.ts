@@ -10,8 +10,10 @@ interface AdminRoleState {
 }
 
 /**
- * Secure admin role check using database user_roles table
- * This replaces the insecure localStorage/hardcoded wallet check
+ * Secure admin role check using database
+ * Checks both:
+ * 1. user_roles table (Supabase auth user has admin role)
+ * 2. is_wallet_admin function (connected wallet belongs to admin user)
  */
 export const useAdminRole = (): AdminRoleState => {
   const { address, isConnected } = useWallet();
@@ -32,28 +34,49 @@ export const useAdminRole = (): AdminRoleState => {
       }
 
       try {
-        // Check if user is authenticated
+        // First check: Is the connected wallet linked to an admin user?
+        const { data: isWalletAdmin, error: walletError } = await supabase.rpc('is_wallet_admin', {
+          _wallet_address: address
+        });
+
+        if (walletError) {
+          logger.error('useAdminRole: Error checking wallet admin:', walletError);
+          // Continue to check Supabase auth
+        }
+
+        if (isWalletAdmin === true) {
+          logger.debug('useAdminRole: Wallet is admin via is_wallet_admin:', address);
+          setState({ isAdmin: true, isLoading: false, error: null });
+          return;
+        }
+
+        // Second check: Is the current Supabase user an admin?
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
-          logger.debug('useAdminRole: No authenticated user');
+          logger.debug('useAdminRole: No authenticated user, wallet not admin');
           setState({ isAdmin: false, isLoading: false, error: null });
           return;
         }
 
         // Query the user_roles table using the is_admin function
-        const { data, error } = await supabase.rpc('is_admin', {
+        const { data: isUserAdmin, error: userError } = await supabase.rpc('is_admin', {
           _user_id: user.id
         });
 
-        if (error) {
-          logger.error('useAdminRole: Error checking admin role:', error);
-          setState({ isAdmin: false, isLoading: false, error: error.message });
+        if (userError) {
+          logger.error('useAdminRole: Error checking user admin role:', userError);
+          setState({ isAdmin: false, isLoading: false, error: userError.message });
           return;
         }
 
-        const isAdmin = data === true;
-        logger.debug('useAdminRole: Admin check result:', { userId: user.id, isAdmin });
+        const isAdmin = isUserAdmin === true;
+        logger.debug('useAdminRole: Admin check result:', { 
+          userId: user.id, 
+          walletAddress: address,
+          isWalletAdmin,
+          isUserAdmin: isAdmin 
+        });
         
         setState({ isAdmin, isLoading: false, error: null });
       } catch (err) {
