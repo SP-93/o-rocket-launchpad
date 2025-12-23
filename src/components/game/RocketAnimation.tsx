@@ -10,7 +10,8 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
   const rocketY = useRef(0);
-  const particles = useRef<Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string }>>([]);
+  const trailParticles = useRef<Array<{ x: number; y: number; alpha: number; size: number }>>([]);
+  const explosionParticles = useRef<Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }>>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,75 +33,100 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     const height = canvas.offsetHeight;
 
     // Reset rocket position based on status
-    if (status === 'betting' || status === 'countdown') {
-      rocketY.current = height - 100;
+    if (status === 'betting' || status === 'countdown' || status === 'idle') {
+      rocketY.current = height - 120;
+      trailParticles.current = [];
     }
 
-    const drawStars = () => {
-      for (let i = 0; i < 50; i++) {
-        const x = (Math.sin(i * 12.9898 + Date.now() * 0.0001) * 0.5 + 0.5) * width;
-        const y = (Math.cos(i * 78.233 + Date.now() * 0.0001) * 0.5 + 0.5) * height;
-        const size = Math.sin(i * 43758.5453 + Date.now() * 0.002) * 0.5 + 1;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + Math.sin(Date.now() * 0.003 + i) * 0.3})`;
-        ctx.fill();
-      }
+    // Get CSS variable colors
+    const getColor = (variable: string, fallback: string) => {
+      try {
+        const computed = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+        if (computed) {
+          return `hsl(${computed})`;
+        }
+      } catch (e) {}
+      return fallback;
     };
+
+    const primaryColor = getColor('--primary', '#8B5CF6');
+    const successColor = getColor('--success', '#22C55E');
+    const destructiveColor = getColor('--destructive', '#EF4444');
+    const warningColor = getColor('--warning', '#F59E0B');
 
     const drawRocket = (x: number, y: number, shake: boolean = false) => {
       ctx.save();
       
-      const offsetX = shake ? (Math.random() - 0.5) * 4 : 0;
-      const offsetY = shake ? (Math.random() - 0.5) * 4 : 0;
+      const offsetX = shake ? (Math.random() - 0.5) * 3 : 0;
+      const offsetY = shake ? (Math.random() - 0.5) * 3 : 0;
       
       ctx.translate(x + offsetX, y + offsetY);
       
-      // Rocket body
+      // Glow effect
+      ctx.shadowColor = primaryColor;
+      ctx.shadowBlur = 20;
+      
+      // Rocket body - modern sleek design
       ctx.beginPath();
-      ctx.moveTo(0, -30);
-      ctx.lineTo(-15, 20);
-      ctx.lineTo(-10, 20);
-      ctx.lineTo(-10, 35);
-      ctx.lineTo(10, 35);
-      ctx.lineTo(10, 20);
-      ctx.lineTo(15, 20);
+      ctx.moveTo(0, -40); // Tip
+      ctx.bezierCurveTo(-5, -30, -12, -10, -12, 15); // Left curve
+      ctx.lineTo(-12, 30);
+      ctx.lineTo(-8, 35);
+      ctx.lineTo(8, 35);
+      ctx.lineTo(12, 30);
+      ctx.lineTo(12, 15);
+      ctx.bezierCurveTo(12, -10, 5, -30, 0, -40); // Right curve
       ctx.closePath();
       
-      const gradient = ctx.createLinearGradient(0, -30, 0, 35);
-      gradient.addColorStop(0, '#FF6B35');
-      gradient.addColorStop(0.5, '#FF8C42');
-      gradient.addColorStop(1, '#FFD700');
-      ctx.fillStyle = gradient;
+      const bodyGradient = ctx.createLinearGradient(-15, -40, 15, 35);
+      bodyGradient.addColorStop(0, '#E0E7FF');
+      bodyGradient.addColorStop(0.3, '#C7D2FE');
+      bodyGradient.addColorStop(0.7, '#A5B4FC');
+      bodyGradient.addColorStop(1, '#818CF8');
+      ctx.fillStyle = bodyGradient;
       ctx.fill();
       
-      ctx.strokeStyle = '#FFF';
-      ctx.lineWidth = 2;
+      // Subtle stroke
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
       ctx.stroke();
       
       // Window
       ctx.beginPath();
-      ctx.arc(0, 0, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#87CEEB';
+      ctx.arc(0, -5, 7, 0, Math.PI * 2);
+      const windowGradient = ctx.createRadialGradient(0, -5, 0, 0, -5, 7);
+      windowGradient.addColorStop(0, '#60A5FA');
+      windowGradient.addColorStop(0.5, '#3B82F6');
+      windowGradient.addColorStop(1, '#1D4ED8');
+      ctx.fillStyle = windowGradient;
       ctx.fill();
-      ctx.strokeStyle = '#FFF';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.5;
       ctx.stroke();
       
-      // Fins
-      ctx.fillStyle = '#FF4500';
+      // Window glare
       ctx.beginPath();
-      ctx.moveTo(-15, 20);
-      ctx.lineTo(-25, 35);
-      ctx.lineTo(-10, 30);
+      ctx.arc(-2, -7, 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fill();
+      
+      // Fins - angular modern design
+      ctx.fillStyle = '#6366F1';
+      
+      // Left fin
+      ctx.beginPath();
+      ctx.moveTo(-12, 20);
+      ctx.lineTo(-22, 38);
+      ctx.lineTo(-12, 32);
       ctx.closePath();
       ctx.fill();
       
+      // Right fin
       ctx.beginPath();
-      ctx.moveTo(15, 20);
-      ctx.lineTo(25, 35);
-      ctx.lineTo(10, 30);
+      ctx.moveTo(12, 20);
+      ctx.lineTo(22, 38);
+      ctx.lineTo(12, 32);
       ctx.closePath();
       ctx.fill();
       
@@ -108,53 +134,97 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     };
 
     const drawFlame = (x: number, y: number, intensity: number) => {
-      const flameHeight = 30 + intensity * 20 + Math.sin(Date.now() * 0.02) * 10;
+      const time = Date.now() * 0.01;
+      const baseHeight = 25 + intensity * 35;
       
-      // Outer flame
-      ctx.beginPath();
-      ctx.moveTo(x - 8, y + 35);
-      ctx.quadraticCurveTo(x, y + 35 + flameHeight, x + 8, y + 35);
-      const gradient = ctx.createLinearGradient(x, y + 35, x, y + 35 + flameHeight);
-      gradient.addColorStop(0, '#FF4500');
-      gradient.addColorStop(0.5, '#FF6347');
-      gradient.addColorStop(1, 'rgba(255, 99, 71, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fill();
+      // Add trail particles
+      if (status === 'flying') {
+        trailParticles.current.push({
+          x: x + (Math.random() - 0.5) * 10,
+          y: y + 40,
+          alpha: 0.8,
+          size: 3 + Math.random() * 4
+        });
+      }
       
-      // Inner flame
-      ctx.beginPath();
-      ctx.moveTo(x - 4, y + 35);
-      ctx.quadraticCurveTo(x, y + 35 + flameHeight * 0.7, x + 4, y + 35);
-      const innerGradient = ctx.createLinearGradient(x, y + 35, x, y + 35 + flameHeight * 0.7);
-      innerGradient.addColorStop(0, '#FFD700');
-      innerGradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
-      ctx.fillStyle = innerGradient;
-      ctx.fill();
+      // Draw trail
+      trailParticles.current = trailParticles.current.filter(p => {
+        p.y += 3;
+        p.alpha -= 0.02;
+        if (p.alpha > 0) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * p.alpha, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(139, 92, 246, ${p.alpha * 0.3})`;
+          ctx.fill();
+          return true;
+        }
+        return false;
+      });
+      
+      // Main flame
+      for (let i = 0; i < 3; i++) {
+        const flameWidth = 8 - i * 2;
+        const flameHeight = baseHeight + Math.sin(time + i) * 8;
+        const yOffset = i * 5;
+        
+        ctx.beginPath();
+        ctx.moveTo(x - flameWidth, y + 35);
+        ctx.quadraticCurveTo(
+          x + Math.sin(time * 2 + i) * 3, 
+          y + 35 + flameHeight + yOffset, 
+          x + flameWidth, 
+          y + 35
+        );
+        
+        const gradient = ctx.createLinearGradient(x, y + 35, x, y + 35 + flameHeight + yOffset);
+        if (i === 0) {
+          gradient.addColorStop(0, 'rgba(139, 92, 246, 1)');
+          gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.8)');
+          gradient.addColorStop(1, 'rgba(192, 132, 252, 0)');
+        } else if (i === 1) {
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+          gradient.addColorStop(0.3, 'rgba(196, 181, 253, 0.7)');
+          gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+        } else {
+          gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
+          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
     };
 
     const drawExplosion = (x: number, y: number) => {
-      // Add explosion particles
-      for (let i = 0; i < 5; i++) {
-        particles.current.push({
-          x,
-          y,
-          vx: (Math.random() - 0.5) * 10,
-          vy: (Math.random() - 0.5) * 10,
-          life: 1,
-          color: ['#FF4500', '#FF6347', '#FFD700', '#FFA500'][Math.floor(Math.random() * 4)],
-        });
+      // Add new particles
+      if (explosionParticles.current.length < 100) {
+        for (let i = 0; i < 8; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 6;
+          explosionParticles.current.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2,
+            life: 1,
+            color: ['#EF4444', '#F97316', '#FBBF24', '#FDE047', '#8B5CF6'][Math.floor(Math.random() * 5)],
+            size: 3 + Math.random() * 6
+          });
+        }
       }
 
       // Update and draw particles
-      particles.current = particles.current.filter(p => {
+      explosionParticles.current = explosionParticles.current.filter(p => {
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.2;
-        p.life -= 0.02;
+        p.vy += 0.15;
+        p.life -= 0.015;
+        p.size *= 0.98;
 
         if (p.life > 0) {
           ctx.beginPath();
-          ctx.arc(p.x, p.y, p.life * 8, 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.fillStyle = p.color;
           ctx.globalAlpha = p.life;
           ctx.fill();
@@ -166,84 +236,99 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     };
 
     const drawMultiplier = () => {
-      ctx.font = 'bold 48px system-ui';
+      const centerY = height * 0.35;
+      
+      // Multiplier value
+      ctx.font = 'bold 64px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       
-      let color = '#22C55E'; // Green
-      if (multiplier >= 5) color = '#EAB308'; // Yellow
-      if (multiplier >= 8) color = '#EF4444'; // Red
-      if (status === 'crashed') color = '#EF4444';
+      let color = successColor;
+      if (multiplier >= 3) color = warningColor;
+      if (multiplier >= 5) color = '#F97316';
+      if (multiplier >= 8) color = destructiveColor;
+      if (status === 'crashed') color = destructiveColor;
       
-      ctx.fillStyle = color;
+      // Glow
       ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
-      ctx.fillText(`${multiplier.toFixed(2)}x`, width / 2, 60);
+      ctx.shadowBlur = 30;
+      ctx.fillStyle = color;
+      ctx.fillText(`${multiplier.toFixed(2)}×`, width / 2, centerY);
+      
+      // Clear shadow for status
       ctx.shadowBlur = 0;
       
       // Status text
-      ctx.font = 'bold 18px system-ui';
-      ctx.fillStyle = '#94A3B8';
+      ctx.font = '600 16px system-ui, -apple-system, sans-serif';
+      ctx.letterSpacing = '0.1em';
       
       let statusText = '';
+      let statusColor = 'rgba(148, 163, 184, 0.8)';
+      
       switch (status) {
         case 'betting':
           statusText = 'PLACE YOUR BETS';
+          statusColor = primaryColor;
           break;
         case 'countdown':
           statusText = 'LAUNCHING...';
+          statusColor = warningColor;
           break;
         case 'flying':
-          statusText = 'ROCKET FLYING!';
+          statusText = 'TO THE MOON';
+          statusColor = successColor;
           break;
         case 'crashed':
-          statusText = `CRASHED @ ${crashPoint?.toFixed(2)}x`;
-          ctx.fillStyle = '#EF4444';
+          statusText = `CRASHED @ ${crashPoint?.toFixed(2)}×`;
+          statusColor = destructiveColor;
+          break;
+        case 'payout':
+          statusText = 'CALCULATING PAYOUTS';
+          statusColor = successColor;
           break;
         default:
-          statusText = 'WAITING...';
+          statusText = 'WAITING FOR ROUND';
       }
       
-      ctx.fillText(statusText, width / 2, 90);
+      ctx.fillStyle = statusColor;
+      ctx.fillText(statusText, width / 2, centerY + 45);
     };
 
     const animate = () => {
       ctx.clearRect(0, 0, width, height);
       
-      // Draw background stars
-      drawStars();
-      
-      // Draw multiplier
+      // Draw multiplier first (background)
       drawMultiplier();
       
       const rocketX = width / 2;
       
       switch (status) {
         case 'betting':
-          rocketY.current = height - 100;
+        case 'idle':
+          rocketY.current = height - 120;
           drawRocket(rocketX, rocketY.current, false);
           break;
           
         case 'countdown':
-          rocketY.current = height - 100;
+          rocketY.current = height - 120;
           drawRocket(rocketX, rocketY.current, true);
-          drawFlame(rocketX, rocketY.current, 0.3);
+          drawFlame(rocketX, rocketY.current, 0.4);
           break;
           
         case 'flying':
-          // Move rocket up based on multiplier
-          const targetY = height - 100 - (multiplier - 1) * 50;
-          rocketY.current = Math.max(100, targetY);
+          const targetY = height - 120 - (multiplier - 1) * 40;
+          rocketY.current = Math.max(height * 0.55, targetY);
           drawRocket(rocketX, rocketY.current, true);
-          drawFlame(rocketX, rocketY.current, multiplier / 2);
+          drawFlame(rocketX, rocketY.current, Math.min(multiplier / 3, 1.5));
           break;
           
         case 'crashed':
           drawExplosion(rocketX, rocketY.current);
           break;
           
-        default:
-          rocketY.current = height - 100;
-          drawRocket(rocketX, rocketY.current, false);
+        case 'payout':
+          // Just show multiplier, no rocket
+          break;
       }
       
       animationRef.current = requestAnimationFrame(animate);
