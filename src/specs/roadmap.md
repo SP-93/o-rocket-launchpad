@@ -45,7 +45,24 @@
 - [ ] Reward distribution (from 60% allocation)
 - [ ] Burn mechanism (10% of farm rewards)
 
-## Phase 7: Analytics & Monitoring
+## Phase 7: Rocket Crash Game 🎮
+- [ ] Game Treasury Wallet setup
+- [ ] Database tables (6 tables with RLS)
+- [ ] Ticket purchase system (WOVER + USDT → Treasury)
+- [ ] Round manager edge function
+- [ ] Provably fair crash calculation
+- [ ] 3D Rocket game UI
+- [ ] Betting panel with auto cash-out (x2, x10, OFF)
+- [ ] Payout system (WOVER only)
+- [ ] Admin panel - Game Management section
+- [ ] WOVER distribution (20-80% split to Pool/Platform)
+- [ ] USDT distribution (100% → Factory Deployer)
+- [ ] Leaderboard
+- [ ] Sound effects
+- [ ] Auto-pause mechanism (<150 WOVER)
+- [ ] Spectator mode (no wallet connected)
+
+## Phase 8: Analytics & Monitoring
 - [ ] Protocol Overview Dashboard (TVL, Volume, Transactions)
 - [ ] Pool Analytics with charts
 - [ ] Transaction History page
