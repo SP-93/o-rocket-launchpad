@@ -4,11 +4,11 @@ import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
 import CrashHistory from '@/components/game/CrashHistory';
 import Leaderboard from '@/components/game/Leaderboard';
-import SpectatorOverlay from '@/components/game/SpectatorOverlay';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Rocket, Users, Clock, Zap } from 'lucide-react';
+import { Wallet, Users, Trophy, TrendingUp, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Game = () => {
   const { address, isConnected } = useWallet();
@@ -16,7 +16,6 @@ const Game = () => {
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
 
-  // Refetch bets when round changes
   useEffect(() => {
     if (currentRound?.id) {
       refetchBets();
@@ -28,181 +27,175 @@ const Game = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] relative overflow-hidden">
-      {/* Deep space background */}
-      <div className="fixed inset-0 bg-gradient-to-b from-[#0a0a12] via-[#0d0d1a] to-[#050508]" />
-      
-      {/* Subtle stars */}
-      <div className="fixed inset-0 opacity-30">
-        {[...Array(100)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full bg-white animate-pulse"
-            style={{
-              width: Math.random() * 2 + 1 + 'px',
-              height: Math.random() * 2 + 1 + 'px',
-              top: Math.random() * 100 + '%',
-              left: Math.random() * 100 + '%',
-              animationDelay: Math.random() * 3 + 's',
-              animationDuration: Math.random() * 2 + 2 + 's',
-            }}
-          />
-        ))}
+    <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Modern gradient mesh background */}
+      <div className="fixed inset-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
-      <div className="relative z-10 min-h-screen pt-24 pb-12 px-4">
+      <div className="relative z-10 min-h-screen pt-20 pb-8 px-4">
         <div className="container mx-auto max-w-7xl">
-          {/* Compact Header */}
-          <div className="text-center mb-6">
-            <h1 className="text-2xl md:text-3xl font-bold gradient-text flex items-center justify-center gap-2">
-              <Rocket className="w-6 h-6 text-primary animate-float" />
-              Rocket Crash
-            </h1>
-          </div>
+          
+          {/* Main Game Layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+            
+            {/* Left Sidebar - Only show if connected */}
+            {isConnected ? (
+              <div className="lg:col-span-3 order-2 lg:order-1 space-y-4">
+                <TicketPurchase 
+                  walletAddress={address} 
+                  isConnected={isConnected} 
+                />
+                <div className="lg:hidden">
+                  <CrashHistory history={roundHistory} />
+                </div>
+              </div>
+            ) : null}
 
-          {/* Main Game Layout - Monitor Focus */}
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-            {/* Left Column - Tickets */}
-            <div className="order-2 xl:order-1">
-              <TicketPurchase 
-                walletAddress={address} 
-                isConnected={isConnected} 
-              />
-            </div>
-
-            {/* Center - LARGE Game Monitor */}
-            <div className="order-1 xl:order-2 xl:col-span-2">
-              {/* Gaming Monitor Frame */}
+            {/* Center - Game Display (Always visible and larger when not connected) */}
+            <div className={`order-1 lg:order-2 ${isConnected ? 'lg:col-span-6' : 'lg:col-span-8 lg:col-start-3'}`}>
+              {/* Game Container */}
               <div className="relative">
-                {/* Monitor outer bezel */}
-                <div className="bg-gradient-to-b from-[#2a2a3a] via-[#1a1a2a] to-[#0f0f1a] p-3 rounded-3xl shadow-2xl">
-                  {/* Monitor inner bezel with LED accent */}
-                  <div className="relative bg-gradient-to-b from-[#1a1a25] to-[#0d0d15] p-1 rounded-2xl">
-                    {/* LED strip effect */}
-                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50 rounded-t-2xl" />
+                {/* Modern glass card */}
+                <div className="relative bg-card/30 backdrop-blur-xl border border-border/50 rounded-2xl overflow-hidden shadow-2xl">
+                  {/* Top accent line */}
+                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                  
+                  {/* Game Screen */}
+                  <div className="relative aspect-video bg-gradient-to-b from-background/80 to-background/40">
+                    {/* Subtle grid overlay */}
+                    <div 
+                      className="absolute inset-0 opacity-[0.02]" 
+                      style={{
+                        backgroundImage: 'linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)',
+                        backgroundSize: '50px 50px'
+                      }}
+                    />
                     
-                    {/* Screen */}
-                    <div className="relative bg-[#050510] rounded-xl overflow-hidden aspect-video border border-primary/10 shadow-[inset_0_0_100px_rgba(0,0,0,0.8)]">
-                      {/* Scanline effect */}
-                      <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.1)_50%)] bg-[length:100%_4px] pointer-events-none opacity-20 z-10" />
-                      
-                      {/* CRT corner vignette */}
-                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)] pointer-events-none z-10" />
-                      
-                      <RocketAnimation
-                        status={currentRound?.status || 'idle'}
-                        multiplier={currentMultiplier}
-                        crashPoint={currentRound?.crash_point}
-                      />
-                      
-                      {/* Spectator Overlay */}
-                      {!isConnected && (
-                        <SpectatorOverlay onConnect={handleConnect} />
-                      )}
+                    <RocketAnimation
+                      status={currentRound?.status || 'idle'}
+                      multiplier={currentMultiplier}
+                      crashPoint={currentRound?.crash_point}
+                    />
+                  </div>
+
+                  {/* Bottom info bar */}
+                  <div className="border-t border-border/30 bg-card/50 backdrop-blur-sm">
+                    <div className="grid grid-cols-4 divide-x divide-border/30">
+                      <div className="p-3 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Round</div>
+                        <div className="font-mono font-semibold text-sm">#{currentRound?.round_number || '---'}</div>
+                      </div>
+                      <div className="p-3 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Players</div>
+                        <div className="font-mono font-semibold text-sm text-primary">{bets.length}</div>
+                      </div>
+                      <div className="p-3 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Prize Pool</div>
+                        <div className="font-mono font-semibold text-sm text-warning">{currentRound?.total_wagered || 0}</div>
+                      </div>
+                      <div className="p-3 text-center">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Status</div>
+                        <div className={`font-semibold text-sm capitalize ${
+                          currentRound?.status === 'flying' ? 'text-success' :
+                          currentRound?.status === 'crashed' ? 'text-destructive' :
+                          currentRound?.status === 'betting' ? 'text-primary' :
+                          'text-muted-foreground'
+                        }`}>
+                          {currentRound?.status || 'Idle'}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-                
-                {/* Monitor Stand */}
-                <div className="flex justify-center">
-                  <div className="w-24 h-6 bg-gradient-to-b from-[#2a2a3a] to-[#1a1a2a] rounded-b-lg" />
-                </div>
-                <div className="flex justify-center -mt-1">
-                  <div className="w-40 h-3 bg-gradient-to-b from-[#1a1a2a] to-[#0f0f1a] rounded-b-xl" />
+
+                {/* Crash History - Desktop */}
+                <div className="mt-4 hidden lg:block">
+                  <CrashHistory history={roundHistory} />
                 </div>
               </div>
 
-              {/* Stats Bar below monitor */}
-              <div className="mt-4 bg-[#0d0d18]/80 backdrop-blur border border-primary/10 rounded-xl p-3">
-                <div className="grid grid-cols-4 gap-2 text-center">
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs">
-                      <Clock className="w-3 h-3" />
-                      Round
+              {/* Connect Wallet CTA - Only show if not connected */}
+              {!isConnected && (
+                <div className="mt-6 bg-card/40 backdrop-blur-xl border border-border/50 rounded-2xl p-6 text-center">
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Wallet className="w-6 h-6 text-primary" />
                     </div>
-                    <div className="font-bold text-sm">#{currentRound?.round_number || '-'}</div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs">
-                      <Users className="w-3 h-3" />
-                      Players
-                    </div>
-                    <div className="font-bold text-sm text-primary">{bets.length}</div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-center gap-1 text-muted-foreground text-xs">
-                      <Zap className="w-3 h-3" />
-                      Pool
-                    </div>
-                    <div className="font-bold text-sm text-warning">{currentRound?.total_wagered || 0}</div>
-                  </div>
-                  <div>
-                    <div className="text-muted-foreground text-xs">Status</div>
-                    <div className={`font-bold text-sm capitalize ${
-                      currentRound?.status === 'flying' ? 'text-success' :
-                      currentRound?.status === 'crashed' ? 'text-destructive' :
-                      currentRound?.status === 'betting' ? 'text-primary' :
-                      'text-muted-foreground'
-                    }`}>
-                      {currentRound?.status || 'Waiting'}
+                    <div className="text-left">
+                      <h3 className="font-semibold text-lg">Ready to play?</h3>
+                      <p className="text-sm text-muted-foreground">Connect wallet to place bets</p>
                     </div>
                   </div>
+                  <Button onClick={handleConnect} size="lg" className="w-full sm:w-auto px-8">
+                    <Wallet className="w-4 h-4 mr-2" />
+                    Connect Wallet
+                  </Button>
                 </div>
-              </div>
-
-              {/* Crash History below game on mobile */}
-              <div className="mt-4 xl:hidden">
-                <CrashHistory history={roundHistory} />
-              </div>
+              )}
             </div>
 
-            {/* Right Column - Betting & History */}
-            <div className="space-y-4 order-3">
-              <BettingPanel
-                walletAddress={address}
-                isConnected={isConnected}
-                currentRound={currentRound}
-                myBet={myBet}
-                currentMultiplier={currentMultiplier}
-                onBetPlaced={refetchBets}
-              />
-              <div className="hidden xl:block">
-                <CrashHistory history={roundHistory} />
+            {/* Right Sidebar - Only show if connected */}
+            {isConnected ? (
+              <div className="lg:col-span-3 order-3 space-y-4">
+                <BettingPanel
+                  walletAddress={address}
+                  isConnected={isConnected}
+                  currentRound={currentRound}
+                  myBet={myBet}
+                  currentMultiplier={currentMultiplier}
+                  onBetPlaced={refetchBets}
+                />
+                <Leaderboard />
               </div>
-              <Leaderboard />
-            </div>
+            ) : (
+              <div className="lg:col-span-8 lg:col-start-3 order-3">
+                <Leaderboard />
+              </div>
+            )}
           </div>
 
-          {/* Info Section */}
-          <div className="mt-8 bg-[#0d0d18]/60 backdrop-blur border border-primary/10 rounded-xl p-5">
-            <h2 className="text-lg font-bold mb-4 text-center">How to Play</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="text-center p-3 bg-primary/5 rounded-lg">
-                <div className="w-10 h-10 mx-auto rounded-full bg-primary/20 flex items-center justify-center mb-2">
-                  <span className="text-xl">🎟️</span>
+          {/* How to Play - Modern cards */}
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="group bg-card/30 backdrop-blur-xl border border-border/50 rounded-xl p-5 hover:border-primary/30 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <Zap className="w-5 h-5 text-primary" />
                 </div>
-                <h3 className="font-semibold text-sm mb-1">1. Buy Tickets</h3>
-                <p className="text-xs text-muted-foreground">
-                  Purchase tickets with WOVER or USDT
-                </p>
+                <div>
+                  <h3 className="font-semibold mb-1">Buy Tickets</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Purchase game tickets using WOVER or USDT tokens
+                  </p>
+                </div>
               </div>
-              <div className="text-center p-3 bg-primary/5 rounded-lg">
-                <div className="w-10 h-10 mx-auto rounded-full bg-primary/20 flex items-center justify-center mb-2">
-                  <span className="text-xl">🎯</span>
+            </div>
+            <div className="group bg-card/30 backdrop-blur-xl border border-border/50 rounded-xl p-5 hover:border-primary/30 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <TrendingUp className="w-5 h-5 text-primary" />
                 </div>
-                <h3 className="font-semibold text-sm mb-1">2. Place Bet</h3>
-                <p className="text-xs text-muted-foreground">
-                  Use a ticket during betting phase
-                </p>
+                <div>
+                  <h3 className="font-semibold mb-1">Place Your Bet</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Use tickets during betting phase before launch
+                  </p>
+                </div>
               </div>
-              <div className="text-center p-3 bg-primary/5 rounded-lg">
-                <div className="w-10 h-10 mx-auto rounded-full bg-primary/20 flex items-center justify-center mb-2">
-                  <span className="text-xl">🚀</span>
+            </div>
+            <div className="group bg-card/30 backdrop-blur-xl border border-border/50 rounded-xl p-5 hover:border-primary/30 transition-all duration-300">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <Trophy className="w-5 h-5 text-primary" />
                 </div>
-                <h3 className="font-semibold text-sm mb-1">3. Cash Out!</h3>
-                <p className="text-xs text-muted-foreground">
-                  Exit before the rocket crashes
-                </p>
+                <div>
+                  <h3 className="font-semibold mb-1">Cash Out & Win</h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    Exit anytime before crash to multiply winnings
+                  </p>
+                </div>
               </div>
             </div>
           </div>
