@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
@@ -7,13 +7,15 @@ import { Label } from '@/components/ui/label';
 import { 
   Rocket, Loader2, CheckCircle, XCircle, ExternalLink, 
   Copy, RefreshCw, Wallet, DollarSign, Shield, Play, Pause,
-  TrendingUp, AlertTriangle, Database
+  TrendingUp, AlertTriangle, Database, Info
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { getDeployedContracts } from '@/contracts/storage';
 import { useWallet } from '@/hooks/useWallet';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG, TREASURY_WALLET } from '@/config/admin';
+import { CRASH_GAME_BYTECODE } from '@/contracts/artifacts/crashGame';
+import { analyzeBytecode } from '@/lib/bytecodeAnalyzer';
 
 const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
 
@@ -39,6 +41,11 @@ const CrashGameContractSection = () => {
   const [newPercentage, setNewPercentage] = useState(70);
   const [isUpdating, setIsUpdating] = useState(false);
   const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
+
+  // Analyze bytecode for PUSH0 compatibility
+  const bytecodeAnalysis = useMemo(() => {
+    return analyzeBytecode(CRASH_GAME_BYTECODE);
+  }, []);
 
   // Get ethers signer from wallet client
   const getSigner = useCallback(async () => {
@@ -265,6 +272,54 @@ const CrashGameContractSection = () => {
               <p><strong>Factory Deployer:</strong> {truncateAddress(FACTORY_DEPLOYER_WALLET)}</p>
             </div>
 
+            {/* PUSH0 Warning */}
+            {bytecodeAnalysis.hasPush0 && (
+              <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
+                  <div className="space-y-2">
+                    <p className="font-medium text-destructive">EVM Compatibility Issue Detected</p>
+                    <p className="text-sm text-muted-foreground">
+                      Bytecode contains <code className="bg-background/50 px-1 rounded">PUSH0</code> opcode 
+                      (Solidity 0.8.20 Shanghai). Over Protocol may not support this opcode yet.
+                    </p>
+                    <div className="bg-background/30 rounded p-3 text-sm">
+                      <p className="font-medium mb-2">How to fix:</p>
+                      <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                        <li>Open Remix IDE (<code>remix.ethereum.org</code>)</li>
+                        <li>Load CrashGame.sol</li>
+                        <li>In Compiler → Advanced → set <strong>EVM Version: Paris</strong></li>
+                        <li>Compile and copy new ABI + Bytecode</li>
+                        <li>Update <code>crashGame.ts</code> artifacts</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Bytecode Info */}
+            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Bytecode Status</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-muted-foreground">EVM Target: </span>
+                  <span className={bytecodeAnalysis.hasPush0 ? 'text-destructive' : 'text-success'}>
+                    {bytecodeAnalysis.evmVersion.toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">PUSH0: </span>
+                  <span className={bytecodeAnalysis.hasPush0 ? 'text-destructive' : 'text-success'}>
+                    {bytecodeAnalysis.hasPush0 ? 'Present ⚠️' : 'Not found ✓'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
             {/* Deploy gas controls */}
             <div className="bg-background/30 rounded-lg p-4 border border-border/30 space-y-2">
               <Label htmlFor="deployGasLimit" className="text-sm">Deploy Gas Limit</Label>
@@ -276,7 +331,7 @@ const CrashGameContractSection = () => {
                 onChange={(e) => setDeployGasLimit(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                If deploy fails, try 15000000. If it still reverts, it may be opcode-incompatible bytecode.
+                Default: 12M. If deploy reverts without PUSH0 issue, try increasing to 15-20M.
               </p>
             </div>
 

@@ -95,7 +95,19 @@ export const useCrashGameContract = () => {
       return contract.address;
     } catch (error: any) {
       console.error('CrashGame deployment failed:', error);
-      toast.error('Deployment failed: ' + (error.reason || error.message));
+      
+      // Enhanced error messaging
+      const errorMsg = error.reason || error.message || 'Unknown error';
+      const isCallException = errorMsg.includes('CALL_EXCEPTION') || error.code === 'CALL_EXCEPTION';
+      const isOutOfGas = errorMsg.includes('out of gas') || errorMsg.includes('gas');
+      
+      if (isCallException && !isOutOfGas) {
+        toast.error('Deployment reverted - likely unsupported opcode (PUSH0). Recompile with EVM=Paris.');
+        console.error('[CrashGame] CALL_EXCEPTION without gas issue - suspected PUSH0 incompatibility');
+      } else {
+        toast.error('Deployment failed: ' + errorMsg);
+      }
+      
       throw error;
     } finally {
       setIsDeploying(false);
