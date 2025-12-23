@@ -72,10 +72,12 @@ function isValidAddress(address: string): boolean {
 }
 
 // Validate all addresses in an object
+// Only validate 42-character hex strings (0x + 40 hex chars) as addresses
 function validateAddresses(obj: Record<string, string>): { valid: boolean; invalid: string[] } {
   const invalid: string[] = [];
   for (const [key, value] of Object.entries(obj)) {
-    if (typeof value === 'string' && value.startsWith('0x')) {
+    // Only validate if it looks like an Ethereum address (42 chars: 0x + 40 hex)
+    if (typeof value === 'string' && value.startsWith('0x') && value.length === 42) {
       if (!isValidAddress(value)) {
         invalid.push(key);
       }
