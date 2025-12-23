@@ -45,6 +45,13 @@
 - [ ] Reward distribution (from 60% allocation)
 - [ ] Burn mechanism (10% of farm rewards)
 
+## Phase 7: Analytics & Monitoring
+- [ ] Protocol Overview Dashboard (TVL, Volume, Transactions)
+- [ ] Pool Analytics with charts
+- [ ] Transaction History page
+- [ ] User P&L tracking
+- [ ] Admin monitoring alerts
+
 ---
 
 ## Priority Tasks (Immediate)
