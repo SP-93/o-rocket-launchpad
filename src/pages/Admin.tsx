@@ -26,6 +26,7 @@ import WalletLinkSection from '@/components/admin/WalletLinkSection';
 import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
 import AuditLogSection from '@/components/admin/AuditLogSection';
 import GameManagementSection from '@/components/admin/GameManagementSection';
+import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -1009,7 +1010,20 @@ const Admin = () => {
 
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
-              <GameManagementSection />
+              {/* Smart Contract Section */}
+              <CrashGameContractSection />
+              
+              {/* Database Management Section */}
+              <div className="border-t border-border/30 pt-6">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-primary" />
+                  Off-Chain Game Management
+                </h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Manage game data stored in the database (backup system when blockchain is not available)
+                </p>
+                <GameManagementSection />
+              </div>
             </TabsContent>
 
             {/* Treasury Tab */}
