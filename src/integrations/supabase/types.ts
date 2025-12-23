@@ -53,6 +53,236 @@ export type Database = {
         }
         Relationships: []
       }
+      game_bets: {
+        Row: {
+          auto_cashout_at: number | null
+          bet_amount: number
+          cashed_out_at: number | null
+          created_at: string | null
+          id: string
+          round_id: string | null
+          status: string | null
+          ticket_id: string | null
+          wallet_address: string
+          winnings: number | null
+        }
+        Insert: {
+          auto_cashout_at?: number | null
+          bet_amount: number
+          cashed_out_at?: number | null
+          created_at?: string | null
+          id?: string
+          round_id?: string | null
+          status?: string | null
+          ticket_id?: string | null
+          wallet_address: string
+          winnings?: number | null
+        }
+        Update: {
+          auto_cashout_at?: number | null
+          bet_amount?: number
+          cashed_out_at?: number | null
+          created_at?: string | null
+          id?: string
+          round_id?: string | null
+          status?: string | null
+          ticket_id?: string | null
+          wallet_address?: string
+          winnings?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_bets_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "game_rounds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_bets_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "game_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      game_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          id: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          id?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      game_pool: {
+        Row: {
+          current_balance: number | null
+          id: string
+          last_payout_at: string | null
+          last_refill_at: string | null
+          total_deposits: number | null
+          total_payouts: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          current_balance?: number | null
+          id?: string
+          last_payout_at?: string | null
+          last_refill_at?: string | null
+          total_deposits?: number | null
+          total_payouts?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          current_balance?: number | null
+          id?: string
+          last_payout_at?: string | null
+          last_refill_at?: string | null
+          total_deposits?: number | null
+          total_payouts?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      game_revenue: {
+        Row: {
+          id: string
+          last_distribution_at: string | null
+          pending_usdt: number | null
+          pending_wover: number | null
+          total_usdt_collected: number | null
+          total_wover_collected: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          last_distribution_at?: string | null
+          pending_usdt?: number | null
+          pending_wover?: number | null
+          total_usdt_collected?: number | null
+          total_wover_collected?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          last_distribution_at?: string | null
+          pending_usdt?: number | null
+          pending_wover?: number | null
+          total_usdt_collected?: number | null
+          total_wover_collected?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      game_rounds: {
+        Row: {
+          crash_point: number | null
+          crashed_at: string | null
+          created_at: string | null
+          id: string
+          round_number: number
+          server_seed: string | null
+          server_seed_hash: string | null
+          started_at: string | null
+          status: string | null
+          total_bets: number | null
+          total_payouts: number | null
+          total_wagered: number | null
+        }
+        Insert: {
+          crash_point?: number | null
+          crashed_at?: string | null
+          created_at?: string | null
+          id?: string
+          round_number?: number
+          server_seed?: string | null
+          server_seed_hash?: string | null
+          started_at?: string | null
+          status?: string | null
+          total_bets?: number | null
+          total_payouts?: number | null
+          total_wagered?: number | null
+        }
+        Update: {
+          crash_point?: number | null
+          crashed_at?: string | null
+          created_at?: string | null
+          id?: string
+          round_number?: number
+          server_seed?: string | null
+          server_seed_hash?: string | null
+          started_at?: string | null
+          status?: string | null
+          total_bets?: number | null
+          total_payouts?: number | null
+          total_wagered?: number | null
+        }
+        Relationships: []
+      }
+      game_tickets: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: string
+          is_used: boolean | null
+          payment_amount: number
+          payment_currency: string
+          ticket_value: number
+          tx_hash: string | null
+          used_in_round: string | null
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          is_used?: boolean | null
+          payment_amount: number
+          payment_currency: string
+          ticket_value: number
+          tx_hash?: string | null
+          used_in_round?: string | null
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          is_used?: boolean | null
+          payment_amount?: number
+          payment_currency?: string
+          ticket_value?: number
+          tx_hash?: string | null
+          used_in_round?: string | null
+          wallet_address?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_used_in_round"
+            columns: ["used_in_round"]
+            isOneToOne: false
+            referencedRelation: "game_rounds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string | null
