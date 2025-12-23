@@ -13,6 +13,7 @@ export interface DeployedContracts {
   nftDescriptor: string | null;
   positionManager: string | null;
   quoter: string | null;
+  crashGame: string | null;
 }
 
 export interface DeployedPools {
@@ -42,6 +43,7 @@ const getHardcodedContracts = (): DeployedContracts => ({
   nftDescriptor: MAINNET_CONTRACTS.nftDescriptor || null,
   positionManager: MAINNET_CONTRACTS.positionManager || null,
   quoter: MAINNET_CONTRACTS.quoter || null,
+  crashGame: null, // Game contract deployed dynamically
 });
 
 // Get hardcoded pools from config (available to all users)
@@ -60,6 +62,7 @@ const DEFAULT_CONTRACTS: DeployedContracts = {
   nftDescriptor: null,
   positionManager: null,
   quoter: null,
+  crashGame: null,
 };
 
 // Storage validation state
@@ -77,6 +80,7 @@ const mergeContracts = (hardcoded: DeployedContracts, stored: DeployedContracts)
   nftDescriptor: hardcoded.nftDescriptor || stored.nftDescriptor,
   positionManager: hardcoded.positionManager || stored.positionManager,
   quoter: hardcoded.quoter || stored.quoter,
+  crashGame: stored.crashGame || hardcoded.crashGame,
 });
 
 // Get deployed contract addresses with validation
