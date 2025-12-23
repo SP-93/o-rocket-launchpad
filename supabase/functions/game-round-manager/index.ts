@@ -6,46 +6,42 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Provably fair crash point generation
-function generateCrashPoint(serverSeed: string): number {
-  // Convert seed to hash
+// SECURITY: In-memory storage for server seeds - never exposed until crash
+// This prevents any database query from revealing the seed before the round ends
+const activeRoundSeeds = new Map<string, { serverSeed: string; serverSeedHash: string }>();
+
+// Cryptographically secure crash point generation using SHA-256
+async function generateCrashPoint(serverSeed: string): Promise<number> {
   const encoder = new TextEncoder();
   const data = encoder.encode(serverSeed);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
   
-  // Simple hash-based random number
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data[i];
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
+  // Use first 4 bytes for random value (32 bits of entropy)
+  const view = new DataView(hashBuffer);
+  const randomValue = view.getUint32(0, true) / 0xFFFFFFFF;
   
   // 3% chance of instant crash (x1.00)
-  const instantCrashCheck = Math.abs(hash % 100);
-  if (instantCrashCheck < 3) {
+  if (randomValue < 0.03) {
     return 1.00;
   }
   
-  // Generate crash point between 1.01 and 10.00
-  // Using exponential distribution for more 1.x crashes
-  const normalizedHash = Math.abs(hash % 10000) / 10000;
-  
   // Exponential distribution: more low values, fewer high values
-  // Formula creates a curve where ~50% crash before 2x, ~20% reach 5x+
-  const crashPoint = 1 + (Math.pow(1.05, normalizedHash * 100) - 1) / 10;
+  // ~50% crash before 2x, ~20% reach 5x+
+  const crashPoint = 1 + (Math.pow(1.05, randomValue * 100) - 1) / 10;
   
   // Clamp to max 10.00
   return Math.min(Math.round(crashPoint * 100) / 100, 10.00);
 }
 
-// Generate server seed
+// Generate cryptographically secure server seed
 function generateServerSeed(): string {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
   return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-// Hash server seed for pre-commitment
+// Hash server seed for pre-commitment (provably fair)
 async function hashSeed(seed: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(seed);
@@ -60,7 +56,8 @@ serve(async (req) => {
   }
 
   try {
-    const { action } = await req.json();
+    const body = await req.json();
+    const { action } = body;
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -114,14 +111,15 @@ serve(async (req) => {
         const serverSeed = generateServerSeed();
         const serverSeedHash = await hashSeed(serverSeed);
 
-        // Create new round
+        // SECURITY: Create round WITHOUT server_seed and crash_point
+        // These are stored in memory only and revealed after crash
         const { data: round, error: roundError } = await supabase
           .from('game_rounds')
           .insert({
             status: 'betting',
             server_seed_hash: serverSeedHash,
-            server_seed: serverSeed, // Will be revealed after crash
-            crash_point: generateCrashPoint(serverSeed),
+            server_seed: null,      // SECURITY: Never store before crash!
+            crash_point: null,      // SECURITY: Never store before crash!
           })
           .select()
           .single();
@@ -134,7 +132,10 @@ serve(async (req) => {
           );
         }
 
-        console.log(`New round started: ${round.id}, hash: ${serverSeedHash}`);
+        // SECURITY: Store seed in memory only - cannot be read from database
+        activeRoundSeeds.set(round.id, { serverSeed, serverSeedHash });
+
+        console.log(`[SECURE] Round ${round.id} started. Hash: ${serverSeedHash} (seed stored in memory only)`);
 
         return new Response(
           JSON.stringify({
@@ -151,7 +152,7 @@ serve(async (req) => {
       }
 
       case 'start_countdown': {
-        const { round_id } = await req.json();
+        const { round_id } = body;
 
         const { error } = await supabase
           .from('game_rounds')
@@ -173,7 +174,7 @@ serve(async (req) => {
       }
 
       case 'start_flying': {
-        const { round_id } = await req.json();
+        const { round_id } = body;
 
         const { error } = await supabase
           .from('game_rounds')
@@ -195,7 +196,15 @@ serve(async (req) => {
       }
 
       case 'process_auto_cashouts': {
-        const { round_id, current_multiplier } = await req.json();
+        const { round_id, current_multiplier } = body;
+
+        // SECURITY: Validate multiplier range
+        if (current_multiplier < 1.00 || current_multiplier > 10.00) {
+          return new Response(
+            JSON.stringify({ error: 'Invalid multiplier' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         // Find all active bets with auto_cashout_at <= current_multiplier
         const { data: autoCashouts } = await supabase
@@ -228,30 +237,42 @@ serve(async (req) => {
       }
 
       case 'crash': {
-        const { round_id } = await req.json();
+        const { round_id } = body;
 
-        // Get round data
-        const { data: round } = await supabase
-          .from('game_rounds')
-          .select('*')
-          .eq('id', round_id)
-          .single();
-
-        if (!round) {
+        // SECURITY: Get seed from memory (not database!)
+        const seedData = activeRoundSeeds.get(round_id);
+        
+        if (!seedData) {
+          console.error(`[SECURITY] No seed found in memory for round ${round_id}`);
           return new Response(
-            JSON.stringify({ error: 'Round not found' }),
-            { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ error: 'Round seed not found - possible server restart' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        // Mark round as crashed
-        await supabase
+        const { serverSeed, serverSeedHash } = seedData;
+        
+        // SECURITY: Calculate crash point now (not before!)
+        const crashPoint = await generateCrashPoint(serverSeed);
+
+        // NOW reveal seed and crash point in database
+        const { error: updateError } = await supabase
           .from('game_rounds')
           .update({ 
             status: 'crashed', 
-            crashed_at: new Date().toISOString() 
+            crashed_at: new Date().toISOString(),
+            server_seed: serverSeed,    // SECURITY: Only reveal now!
+            crash_point: crashPoint,    // SECURITY: Only reveal now!
           })
           .eq('id', round_id);
+
+        if (updateError) {
+          console.error('Error updating round:', updateError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to crash round' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         // Mark all active bets as lost
         await supabase
@@ -260,21 +281,24 @@ serve(async (req) => {
           .eq('round_id', round_id)
           .eq('status', 'active');
 
-        console.log(`Round ${round_id} crashed at ${round.crash_point}`);
+        // SECURITY: Remove seed from memory
+        activeRoundSeeds.delete(round_id);
+
+        console.log(`[SECURE] Round ${round_id} crashed at ${crashPoint}x. Seed revealed: ${serverSeed.substring(0, 8)}...`);
 
         return new Response(
           JSON.stringify({
             success: true,
-            crash_point: round.crash_point,
-            server_seed: round.server_seed, // Reveal for verification
-            server_seed_hash: round.server_seed_hash,
+            crash_point: crashPoint,
+            server_seed: serverSeed, // Now safe to reveal for verification
+            server_seed_hash: serverSeedHash,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       case 'process_payouts': {
-        const { round_id } = await req.json();
+        const { round_id } = body;
 
         // Get all winning bets
         const { data: winningBets } = await supabase

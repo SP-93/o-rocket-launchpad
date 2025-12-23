@@ -24,6 +24,15 @@ function isRateLimited(key: string): boolean {
   return record.count > MAX_REQUESTS;
 }
 
+// SECURITY: Calculate expected multiplier on server side
+function calculateServerMultiplier(startedAt: string): number {
+  const startTime = new Date(startedAt).getTime();
+  const elapsedSeconds = (Date.now() - startTime) / 1000;
+  // Same formula as client: Math.pow(1.0718, elapsed)
+  const multiplier = Math.pow(1.0718, elapsedSeconds);
+  return Math.min(multiplier, 10.00);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -56,7 +65,7 @@ serve(async (req) => {
       );
     }
 
-    // Validate multiplier
+    // Validate multiplier range
     if (current_multiplier < 1.00 || current_multiplier > 10.00) {
       return new Response(
         JSON.stringify({ error: 'Invalid multiplier value' }),
@@ -69,7 +78,7 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get bet
+    // Get bet with round info
     const { data: bet, error: betError } = await supabase
       .from('game_bets')
       .select('*, game_rounds(*)')
@@ -107,14 +116,44 @@ serve(async (req) => {
       );
     }
 
-    // Calculate winnings
-    const winnings = bet.bet_amount * current_multiplier;
+    // SECURITY: Server-side multiplier validation
+    // Calculate what the multiplier SHOULD be based on round start time
+    const roundStartedAt = bet.game_rounds.started_at;
+    if (!roundStartedAt) {
+      return new Response(
+        JSON.stringify({ error: 'Round start time not available' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const serverCalculatedMultiplier = calculateServerMultiplier(roundStartedAt);
+    
+    // Allow 15% tolerance for network latency and timing differences
+    const tolerance = 0.15;
+    const multiplierDiff = Math.abs(current_multiplier - serverCalculatedMultiplier) / serverCalculatedMultiplier;
+    
+    if (multiplierDiff > tolerance) {
+      console.warn(`[SECURITY] Multiplier mismatch! Client: ${current_multiplier}, Server: ${serverCalculatedMultiplier.toFixed(2)}, Diff: ${(multiplierDiff * 100).toFixed(1)}%`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Multiplier validation failed - please try again',
+          details: 'Your cashout timing may have been affected by network latency'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // SECURITY: Use server-calculated multiplier (more secure, prevents manipulation)
+    const validatedMultiplier = Math.min(current_multiplier, serverCalculatedMultiplier);
+    
+    // Calculate winnings using validated multiplier
+    const winnings = bet.bet_amount * validatedMultiplier;
 
     // Update bet
     const { data: updatedBet, error: updateError } = await supabase
       .from('game_bets')
       .update({
-        cashed_out_at: current_multiplier,
+        cashed_out_at: validatedMultiplier,
         winnings: winnings,
         status: 'won',
       })
@@ -131,7 +170,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Cashout successful: ${bet_id} by ${wallet_address}, multiplier: ${current_multiplier}, winnings: ${winnings}`);
+    console.log(`[SECURE] Cashout: ${bet_id} by ${wallet_address.substring(0, 10)}..., client_mult: ${current_multiplier}, validated_mult: ${validatedMultiplier.toFixed(2)}, winnings: ${winnings.toFixed(2)}`);
 
     return new Response(
       JSON.stringify({
