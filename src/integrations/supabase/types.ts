@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          ip_address: string | null
+          new_value: Json | null
+          old_value: Json | null
+          record_id: string | null
+          table_name: string
+          user_agent: string | null
+          wallet_address: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+          record_id?: string | null
+          table_name: string
+          user_agent?: string | null
+          wallet_address: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: string | null
+          new_value?: Json | null
+          old_value?: Json | null
+          record_id?: string | null
+          table_name?: string
+          user_agent?: string | null
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
@@ -29,6 +68,39 @@ export type Database = {
           created_at?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      protocol_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          created_at: string | null
+          description: string | null
+          id: string
+          is_public: boolean | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_public?: boolean | null
+          updated_at?: string | null
+          updated_by?: string | null
         }
         Relationships: []
       }

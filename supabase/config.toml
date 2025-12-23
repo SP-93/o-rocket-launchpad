@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.check-admin]
 verify_jwt = false
+
+[functions.get-protocol-config]
+verify_jwt = false
+
+[functions.update-protocol-config]
+verify_jwt = false
