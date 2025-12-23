@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
@@ -7,10 +7,16 @@ import Leaderboard from '@/components/game/Leaderboard';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Users, Trophy, TrendingUp, Zap } from 'lucide-react';
+import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Game = () => {
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('rocketGameSound') !== 'false';
+    }
+    return true;
+  });
   const { address, isConnected } = useWallet();
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
@@ -26,13 +32,19 @@ const Game = () => {
     openWeb3Modal();
   };
 
+  const toggleSound = () => {
+    const newValue = !soundEnabled;
+    setSoundEnabled(newValue);
+    localStorage.setItem('rocketGameSound', newValue ? 'true' : 'false');
+  };
+
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Modern gradient mesh background */}
       <div className="fixed inset-0">
         <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
         <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-accent/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-warning/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
       <div className="relative z-10 min-h-screen pt-20 pb-8 px-4">
@@ -61,7 +73,20 @@ const Game = () => {
                 {/* Modern glass card */}
                 <div className="relative bg-card/30 backdrop-blur-xl border border-border/50 rounded-2xl overflow-hidden shadow-2xl">
                   {/* Top accent line */}
-                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/50 to-transparent" />
+                  
+                  {/* Sound Toggle Button */}
+                  <button
+                    onClick={toggleSound}
+                    className="absolute top-3 right-3 z-20 p-2.5 rounded-lg bg-card/60 backdrop-blur-sm border border-border/40 hover:bg-card/80 hover:border-warning/30 transition-all duration-200 group"
+                    title={soundEnabled ? 'Mute sounds' : 'Enable sounds'}
+                  >
+                    {soundEnabled ? (
+                      <Volume2 className="w-4 h-4 text-warning group-hover:scale-110 transition-transform" />
+                    ) : (
+                      <VolumeX className="w-4 h-4 text-muted-foreground group-hover:text-warning group-hover:scale-110 transition-all" />
+                    )}
+                  </button>
                   
                   {/* Game Screen */}
                   <div className="relative aspect-video bg-gradient-to-b from-background/80 to-background/40">

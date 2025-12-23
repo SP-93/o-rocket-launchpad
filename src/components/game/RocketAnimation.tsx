@@ -12,6 +12,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
   const rocketY = useRef(0);
   const trailParticles = useRef<Array<{ x: number; y: number; alpha: number; size: number }>>([]);
   const explosionParticles = useRef<Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }>>([]);
+  const orbitAngle = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,7 +35,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
 
     // Reset rocket position based on status
     if (status === 'betting' || status === 'countdown' || status === 'idle') {
-      rocketY.current = height - 120;
+      rocketY.current = height - 160;
       trailParticles.current = [];
     }
 
@@ -49,7 +50,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       return fallback;
     };
 
-    const primaryColor = getColor('--primary', '#8B5CF6');
+    const primaryColor = getColor('--primary', '#F59E0B');
     const successColor = getColor('--success', '#22C55E');
     const destructiveColor = getColor('--destructive', '#EF4444');
     const warningColor = getColor('--warning', '#F59E0B');
@@ -57,159 +58,306 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     const drawRocket = (x: number, y: number, shake: boolean = false) => {
       ctx.save();
       
-      const offsetX = shake ? (Math.random() - 0.5) * 3 : 0;
-      const offsetY = shake ? (Math.random() - 0.5) * 3 : 0;
+      const offsetX = shake ? (Math.random() - 0.5) * 4 : 0;
+      const offsetY = shake ? (Math.random() - 0.5) * 4 : 0;
       
       ctx.translate(x + offsetX, y + offsetY);
       
-      // Glow effect
-      ctx.shadowColor = primaryColor;
-      ctx.shadowBlur = 20;
+      // Orbit ring (behind rocket)
+      orbitAngle.current += 0.03;
+      ctx.save();
+      ctx.rotate(orbitAngle.current);
       
-      // Rocket body - modern sleek design
+      // Draw orbit ring - O'Rocket style
       ctx.beginPath();
-      ctx.moveTo(0, -40); // Tip
-      ctx.bezierCurveTo(-5, -30, -12, -10, -12, 15); // Left curve
-      ctx.lineTo(-12, 30);
-      ctx.lineTo(-8, 35);
-      ctx.lineTo(8, 35);
-      ctx.lineTo(12, 30);
-      ctx.lineTo(12, 15);
-      ctx.bezierCurveTo(12, -10, 5, -30, 0, -40); // Right curve
+      ctx.ellipse(0, 0, 85, 25, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#F97316';
+      ctx.lineWidth = 4;
+      ctx.shadowColor = '#F97316';
+      ctx.shadowBlur = 15;
+      ctx.stroke();
+      
+      // Second orbit for depth
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 85, 25, 0, Math.PI * 0.7, Math.PI * 1.3);
+      ctx.strokeStyle = '#FB923C';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+      
+      // Rocket glow
+      ctx.shadowColor = '#F59E0B';
+      ctx.shadowBlur = 40;
+      
+      // Main rocket body - O'Rocket style (larger, ~160px tall)
+      ctx.beginPath();
+      ctx.moveTo(0, -80); // Tip (pointy top)
+      ctx.bezierCurveTo(-8, -65, -20, -40, -22, 0); // Left upper curve
+      ctx.bezierCurveTo(-22, 30, -20, 50, -18, 60); // Left body
+      ctx.lineTo(-15, 70);
+      ctx.lineTo(-10, 75);
+      ctx.lineTo(10, 75);
+      ctx.lineTo(15, 70);
+      ctx.lineTo(18, 60);
+      ctx.bezierCurveTo(20, 50, 22, 30, 22, 0); // Right body
+      ctx.bezierCurveTo(20, -40, 8, -65, 0, -80); // Right upper curve
       ctx.closePath();
       
-      const bodyGradient = ctx.createLinearGradient(-15, -40, 15, 35);
-      bodyGradient.addColorStop(0, '#E0E7FF');
-      bodyGradient.addColorStop(0.3, '#C7D2FE');
-      bodyGradient.addColorStop(0.7, '#A5B4FC');
-      bodyGradient.addColorStop(1, '#818CF8');
+      // O'Rocket gradient - Orange to Yellow
+      const bodyGradient = ctx.createLinearGradient(-25, -80, 25, 75);
+      bodyGradient.addColorStop(0, '#FDE68A'); // Light yellow tip
+      bodyGradient.addColorStop(0.2, '#FBBF24'); // Golden
+      bodyGradient.addColorStop(0.5, '#F59E0B'); // Orange
+      bodyGradient.addColorStop(0.8, '#EA580C'); // Deep orange
+      bodyGradient.addColorStop(1, '#DC2626'); // Red bottom
       ctx.fillStyle = bodyGradient;
       ctx.fill();
       
-      // Subtle stroke
+      // Body highlight
       ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      
-      // Window
       ctx.beginPath();
-      ctx.arc(0, -5, 7, 0, Math.PI * 2);
-      const windowGradient = ctx.createRadialGradient(0, -5, 0, 0, -5, 7);
-      windowGradient.addColorStop(0, '#60A5FA');
-      windowGradient.addColorStop(0.5, '#3B82F6');
-      windowGradient.addColorStop(1, '#1D4ED8');
+      ctx.moveTo(-5, -75);
+      ctx.bezierCurveTo(-12, -50, -15, -20, -15, 10);
+      ctx.bezierCurveTo(-15, 30, -12, 50, -10, 60);
+      ctx.lineTo(-8, 60);
+      ctx.bezierCurveTo(-10, 50, -12, 30, -12, 10);
+      ctx.bezierCurveTo(-12, -20, -9, -50, -3, -73);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.fill();
+      
+      // Metallic stripe
+      ctx.beginPath();
+      ctx.moveTo(-18, 35);
+      ctx.lineTo(-18, 45);
+      ctx.lineTo(18, 45);
+      ctx.lineTo(18, 35);
+      ctx.closePath();
+      ctx.fillStyle = '#78716C';
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(-16, 37);
+      ctx.lineTo(-16, 43);
+      ctx.lineTo(16, 43);
+      ctx.lineTo(16, 37);
+      ctx.closePath();
+      ctx.fillStyle = '#A8A29E';
+      ctx.fill();
+      
+      // Main window - larger and more detailed
+      ctx.beginPath();
+      ctx.arc(0, -15, 16, 0, Math.PI * 2);
+      ctx.fillStyle = '#1E3A5F';
+      ctx.shadowColor = '#60A5FA';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      
+      // Window inner
+      ctx.beginPath();
+      ctx.arc(0, -15, 13, 0, Math.PI * 2);
+      const windowGradient = ctx.createRadialGradient(-3, -18, 0, 0, -15, 13);
+      windowGradient.addColorStop(0, '#93C5FD');
+      windowGradient.addColorStop(0.4, '#3B82F6');
+      windowGradient.addColorStop(0.8, '#1E40AF');
+      windowGradient.addColorStop(1, '#1E3A8A');
       ctx.fillStyle = windowGradient;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1.5;
+      
+      // Window frame
+      ctx.strokeStyle = '#FCD34D';
+      ctx.lineWidth = 2.5;
+      ctx.shadowBlur = 0;
       ctx.stroke();
       
       // Window glare
       ctx.beginPath();
-      ctx.arc(-2, -7, 2, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.arc(-4, -19, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
       ctx.fill();
       
-      // Fins - angular modern design
-      ctx.fillStyle = '#6366F1';
+      ctx.beginPath();
+      ctx.arc(3, -12, 2, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.fill();
+      
+      // Fins - Detailed O'Rocket style
+      const finGradient = ctx.createLinearGradient(-30, 40, -15, 85);
+      finGradient.addColorStop(0, '#F59E0B');
+      finGradient.addColorStop(0.5, '#EA580C');
+      finGradient.addColorStop(1, '#B91C1C');
       
       // Left fin
       ctx.beginPath();
-      ctx.moveTo(-12, 20);
-      ctx.lineTo(-22, 38);
-      ctx.lineTo(-12, 32);
+      ctx.moveTo(-18, 50);
+      ctx.lineTo(-35, 85);
+      ctx.lineTo(-28, 85);
+      ctx.lineTo(-15, 70);
       ctx.closePath();
+      ctx.fillStyle = finGradient;
+      ctx.fill();
+      
+      // Left fin highlight
+      ctx.beginPath();
+      ctx.moveTo(-18, 52);
+      ctx.lineTo(-30, 78);
+      ctx.lineTo(-25, 78);
+      ctx.lineTo(-16, 65);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.fill();
       
       // Right fin
+      const finGradientR = ctx.createLinearGradient(15, 40, 30, 85);
+      finGradientR.addColorStop(0, '#F59E0B');
+      finGradientR.addColorStop(0.5, '#EA580C');
+      finGradientR.addColorStop(1, '#B91C1C');
+      
       ctx.beginPath();
-      ctx.moveTo(12, 20);
-      ctx.lineTo(22, 38);
-      ctx.lineTo(12, 32);
+      ctx.moveTo(18, 50);
+      ctx.lineTo(35, 85);
+      ctx.lineTo(28, 85);
+      ctx.lineTo(15, 70);
       ctx.closePath();
+      ctx.fillStyle = finGradientR;
+      ctx.fill();
+      
+      // Center fin (back)
+      ctx.beginPath();
+      ctx.moveTo(0, 55);
+      ctx.lineTo(-8, 80);
+      ctx.lineTo(0, 75);
+      ctx.lineTo(8, 80);
+      ctx.closePath();
+      ctx.fillStyle = '#DC2626';
+      ctx.fill();
+      
+      // Engine nozzle
+      ctx.beginPath();
+      ctx.moveTo(-12, 72);
+      ctx.lineTo(-15, 82);
+      ctx.lineTo(15, 82);
+      ctx.lineTo(12, 72);
+      ctx.closePath();
+      ctx.fillStyle = '#57534E';
+      ctx.fill();
+      
+      ctx.beginPath();
+      ctx.moveTo(-10, 75);
+      ctx.lineTo(-12, 82);
+      ctx.lineTo(12, 82);
+      ctx.lineTo(10, 75);
+      ctx.closePath();
+      ctx.fillStyle = '#292524';
       ctx.fill();
       
       ctx.restore();
     };
 
     const drawFlame = (x: number, y: number, intensity: number) => {
-      const time = Date.now() * 0.01;
-      const baseHeight = 25 + intensity * 35;
+      const time = Date.now() * 0.015;
+      const baseHeight = 40 + intensity * 60;
       
-      // Add trail particles
+      // Add trail particles - Orange/Yellow theme
       if (status === 'flying') {
-        trailParticles.current.push({
-          x: x + (Math.random() - 0.5) * 10,
-          y: y + 40,
-          alpha: 0.8,
-          size: 3 + Math.random() * 4
-        });
+        for (let i = 0; i < 3; i++) {
+          trailParticles.current.push({
+            x: x + (Math.random() - 0.5) * 15,
+            y: y + 85,
+            alpha: 0.9,
+            size: 4 + Math.random() * 6
+          });
+        }
       }
       
-      // Draw trail
+      // Draw trail with orange colors
       trailParticles.current = trailParticles.current.filter(p => {
-        p.y += 3;
-        p.alpha -= 0.02;
+        p.y += 4;
+        p.alpha -= 0.025;
         if (p.alpha > 0) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size * p.alpha, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(139, 92, 246, ${p.alpha * 0.3})`;
+          const trailGradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * p.alpha);
+          trailGradient.addColorStop(0, `rgba(251, 191, 36, ${p.alpha * 0.6})`);
+          trailGradient.addColorStop(0.5, `rgba(249, 115, 22, ${p.alpha * 0.4})`);
+          trailGradient.addColorStop(1, `rgba(234, 88, 12, ${p.alpha * 0.1})`);
+          ctx.fillStyle = trailGradient;
           ctx.fill();
           return true;
         }
         return false;
       });
       
-      // Main flame
-      for (let i = 0; i < 3; i++) {
-        const flameWidth = 8 - i * 2;
-        const flameHeight = baseHeight + Math.sin(time + i) * 8;
-        const yOffset = i * 5;
+      // Flame layers
+      for (let i = 0; i < 4; i++) {
+        const flameWidth = 14 - i * 3;
+        const flameHeight = baseHeight + Math.sin(time * 3 + i * 0.5) * 15;
+        const yOffset = i * 8;
         
         ctx.beginPath();
-        ctx.moveTo(x - flameWidth, y + 35);
+        ctx.moveTo(x - flameWidth, y + 80);
+        
+        // More dynamic flame shape
+        const wobble1 = Math.sin(time * 4 + i) * 6;
+        const wobble2 = Math.sin(time * 5 + i * 2) * 4;
+        
         ctx.quadraticCurveTo(
-          x + Math.sin(time * 2 + i) * 3, 
-          y + 35 + flameHeight + yOffset, 
+          x - flameWidth/2 + wobble1, 
+          y + 80 + flameHeight * 0.6 + yOffset,
+          x + wobble2,
+          y + 80 + flameHeight + yOffset
+        );
+        ctx.quadraticCurveTo(
+          x + flameWidth/2 + wobble1, 
+          y + 80 + flameHeight * 0.6 + yOffset,
           x + flameWidth, 
-          y + 35
+          y + 80
         );
         
-        const gradient = ctx.createLinearGradient(x, y + 35, x, y + 35 + flameHeight + yOffset);
+        const gradient = ctx.createLinearGradient(x, y + 80, x, y + 80 + flameHeight + yOffset);
         if (i === 0) {
-          gradient.addColorStop(0, 'rgba(139, 92, 246, 1)');
-          gradient.addColorStop(0.5, 'rgba(168, 85, 247, 0.8)');
-          gradient.addColorStop(1, 'rgba(192, 132, 252, 0)');
+          gradient.addColorStop(0, 'rgba(249, 115, 22, 1)');
+          gradient.addColorStop(0.4, 'rgba(234, 88, 12, 0.9)');
+          gradient.addColorStop(0.7, 'rgba(220, 38, 38, 0.6)');
+          gradient.addColorStop(1, 'rgba(185, 28, 28, 0)');
         } else if (i === 1) {
-          gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-          gradient.addColorStop(0.3, 'rgba(196, 181, 253, 0.7)');
-          gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+          gradient.addColorStop(0, 'rgba(251, 191, 36, 1)');
+          gradient.addColorStop(0.3, 'rgba(249, 115, 22, 0.8)');
+          gradient.addColorStop(0.7, 'rgba(234, 88, 12, 0.4)');
+          gradient.addColorStop(1, 'rgba(220, 38, 38, 0)');
+        } else if (i === 2) {
+          gradient.addColorStop(0, 'rgba(254, 240, 138, 1)');
+          gradient.addColorStop(0.3, 'rgba(251, 191, 36, 0.8)');
+          gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
         } else {
           gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-          gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.5)');
-          gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          gradient.addColorStop(0.4, 'rgba(254, 240, 138, 0.6)');
+          gradient.addColorStop(1, 'rgba(251, 191, 36, 0)');
         }
         
         ctx.fillStyle = gradient;
+        ctx.shadowColor = '#F59E0B';
+        ctx.shadowBlur = 20;
         ctx.fill();
       }
+      
+      ctx.shadowBlur = 0;
     };
 
     const drawExplosion = (x: number, y: number) => {
-      // Add new particles
-      if (explosionParticles.current.length < 100) {
-        for (let i = 0; i < 8; i++) {
+      // Add new particles with orange/yellow colors
+      if (explosionParticles.current.length < 120) {
+        for (let i = 0; i < 10; i++) {
           const angle = Math.random() * Math.PI * 2;
-          const speed = 2 + Math.random() * 6;
+          const speed = 3 + Math.random() * 8;
           explosionParticles.current.push({
             x,
             y,
             vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed - 2,
+            vy: Math.sin(angle) * speed - 3,
             life: 1,
-            color: ['#EF4444', '#F97316', '#FBBF24', '#FDE047', '#8B5CF6'][Math.floor(Math.random() * 5)],
-            size: 3 + Math.random() * 6
+            color: ['#F59E0B', '#FBBF24', '#F97316', '#EF4444', '#FDE047', '#DC2626'][Math.floor(Math.random() * 6)],
+            size: 4 + Math.random() * 8
           });
         }
       }
@@ -219,16 +367,19 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
         p.x += p.vx;
         p.y += p.vy;
         p.vy += 0.15;
-        p.life -= 0.015;
-        p.size *= 0.98;
+        p.life -= 0.018;
+        p.size *= 0.97;
 
         if (p.life > 0) {
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
           ctx.fillStyle = p.color;
           ctx.globalAlpha = p.life;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 10;
           ctx.fill();
           ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
           return true;
         }
         return false;
@@ -236,22 +387,22 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     };
 
     const drawMultiplier = () => {
-      const centerY = height * 0.35;
+      const centerY = height * 0.32;
       
       // Multiplier value
-      ctx.font = 'bold 64px system-ui, -apple-system, sans-serif';
+      ctx.font = 'bold 72px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       
       let color = successColor;
-      if (multiplier >= 3) color = warningColor;
+      if (multiplier >= 3) color = '#FBBF24';
       if (multiplier >= 5) color = '#F97316';
       if (multiplier >= 8) color = destructiveColor;
       if (status === 'crashed') color = destructiveColor;
       
       // Glow
       ctx.shadowColor = color;
-      ctx.shadowBlur = 30;
+      ctx.shadowBlur = 40;
       ctx.fillStyle = color;
       ctx.fillText(`${multiplier.toFixed(2)}×`, width / 2, centerY);
       
@@ -259,8 +410,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       ctx.shadowBlur = 0;
       
       // Status text
-      ctx.font = '600 16px system-ui, -apple-system, sans-serif';
-      ctx.letterSpacing = '0.1em';
+      ctx.font = '600 18px system-ui, -apple-system, sans-serif';
       
       let statusText = '';
       let statusColor = 'rgba(148, 163, 184, 0.8)';
@@ -268,14 +418,14 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       switch (status) {
         case 'betting':
           statusText = 'PLACE YOUR BETS';
-          statusColor = primaryColor;
+          statusColor = '#FBBF24';
           break;
         case 'countdown':
           statusText = 'LAUNCHING...';
-          statusColor = warningColor;
+          statusColor = '#F97316';
           break;
         case 'flying':
-          statusText = 'TO THE MOON';
+          statusText = 'TO THE MOON 🚀';
           statusColor = successColor;
           break;
         case 'crashed':
@@ -291,7 +441,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       }
       
       ctx.fillStyle = statusColor;
-      ctx.fillText(statusText, width / 2, centerY + 45);
+      ctx.fillText(statusText, width / 2, centerY + 50);
     };
 
     const animate = () => {
@@ -305,21 +455,21 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       switch (status) {
         case 'betting':
         case 'idle':
-          rocketY.current = height - 120;
+          rocketY.current = height - 160;
           drawRocket(rocketX, rocketY.current, false);
           break;
           
         case 'countdown':
-          rocketY.current = height - 120;
+          rocketY.current = height - 160;
           drawRocket(rocketX, rocketY.current, true);
-          drawFlame(rocketX, rocketY.current, 0.4);
+          drawFlame(rocketX, rocketY.current, 0.5);
           break;
           
         case 'flying':
-          const targetY = height - 120 - (multiplier - 1) * 40;
-          rocketY.current = Math.max(height * 0.55, targetY);
+          const targetY = height - 160 - (multiplier - 1) * 50;
+          rocketY.current = Math.max(height * 0.52, targetY);
           drawRocket(rocketX, rocketY.current, true);
-          drawFlame(rocketX, rocketY.current, Math.min(multiplier / 3, 1.5));
+          drawFlame(rocketX, rocketY.current, Math.min(multiplier / 2.5, 1.8));
           break;
           
         case 'crashed':
