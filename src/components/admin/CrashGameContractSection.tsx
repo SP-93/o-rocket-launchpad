@@ -38,6 +38,7 @@ const CrashGameContractSection = () => {
   const [refillCurrency, setRefillCurrency] = useState<'wover' | 'usdt'>('wover');
   const [newPercentage, setNewPercentage] = useState(70);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
 
   // Get ethers signer from wallet client
   const getSigner = useCallback(async () => {
@@ -65,13 +66,19 @@ const CrashGameContractSection = () => {
       return;
     }
 
+    const parsedGas = Number(deployGasLimit);
+    const gasLimit = Number.isFinite(parsedGas) && parsedGas > 0 ? Math.floor(parsedGas) : undefined;
+
     try {
       await deployCrashGame(
         signer,
         TOKEN_ADDRESSES.WOVER,
         TOKEN_ADDRESSES.USDT,
         TREASURY_WALLET,
-        FACTORY_DEPLOYER_WALLET
+        FACTORY_DEPLOYER_WALLET,
+        {
+          gasLimit,
+        }
       );
       setDeployedContracts(getDeployedContracts());
       fetchContractState();
@@ -256,6 +263,21 @@ const CrashGameContractSection = () => {
               <p><strong>USDT Token:</strong> {truncateAddress(TOKEN_ADDRESSES.USDT)}</p>
               <p><strong>Treasury:</strong> {truncateAddress(TREASURY_WALLET)}</p>
               <p><strong>Factory Deployer:</strong> {truncateAddress(FACTORY_DEPLOYER_WALLET)}</p>
+            </div>
+
+            {/* Deploy gas controls */}
+            <div className="bg-background/30 rounded-lg p-4 border border-border/30 space-y-2">
+              <Label htmlFor="deployGasLimit" className="text-sm">Deploy Gas Limit</Label>
+              <Input
+                id="deployGasLimit"
+                inputMode="numeric"
+                placeholder="12000000"
+                value={deployGasLimit}
+                onChange={(e) => setDeployGasLimit(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                If deploy fails, try 15000000. If it still reverts, it may be opcode-incompatible bytecode.
+              </p>
             </div>
 
             <NeonButton 

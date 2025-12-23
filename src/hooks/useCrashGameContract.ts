@@ -45,30 +45,52 @@ export const useCrashGameContract = () => {
     woverToken: string,
     usdtToken: string,
     treasuryWallet: string,
-    factoryDeployerWallet: string
+    factoryDeployerWallet: string,
+    options?: {
+      gasLimit?: number;
+    }
   ) => {
     setIsDeploying(true);
     try {
+      const gasLimit = options?.gasLimit ?? 12_000_000;
+
       toast.info('Deploying CrashGame contract...');
-      
+
       const factory = new ContractFactory(CRASH_GAME_ABI, CRASH_GAME_BYTECODE, signer);
-      
+
       const contract = await factory.deploy(
         woverToken,
         usdtToken,
         treasuryWallet,
         factoryDeployerWallet,
         {
-          gasLimit: 5000000 // 5M gas - explicit limit to avoid gas estimation overflow
+          gasLimit,
         }
       );
-      
-      toast.info('Waiting for confirmation...');
+
+      const tx = contract.deployTransaction;
+      toast.info(`Deploy tx sent: ${tx.hash}`);
+      console.info('[CrashGame deploy] tx hash:', tx.hash);
+      console.info('[CrashGame deploy] gasLimit:', gasLimit);
+
+      const receipt = await tx.wait();
+      console.info('[CrashGame deploy] receipt:', {
+        status: receipt.status,
+        gasUsed: receipt.gasUsed?.toString?.() ?? String(receipt.gasUsed),
+        blockNumber: receipt.blockNumber,
+        contractAddress: receipt.contractAddress,
+      });
+
+      if (receipt.status !== 1) {
+        throw new Error('Deployment reverted (receipt.status != 1)');
+      }
+
+      // Ensure ethers has the final address
       await contract.deployed();
-      
+
       // Save deployment address
       saveDeployedContract('crashGame', contract.address);
-      
+
       toast.success(`CrashGame deployed at ${contract.address}`);
       return contract.address;
     } catch (error: any) {
