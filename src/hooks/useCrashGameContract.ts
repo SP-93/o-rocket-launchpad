@@ -57,7 +57,10 @@ export const useCrashGameContract = () => {
         woverToken,
         usdtToken,
         treasuryWallet,
-        factoryDeployerWallet
+        factoryDeployerWallet,
+        {
+          gasLimit: 5000000 // 5M gas - explicit limit to avoid gas estimation overflow
+        }
       );
       
       toast.info('Waiting for confirmation...');
