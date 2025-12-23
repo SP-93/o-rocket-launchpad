@@ -9,6 +9,63 @@ const corsHeaders = {
 // Ethereum address validation regex
 const ETH_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
+// Rate limiting configuration
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const MAX_REQUESTS_PER_WINDOW = 100; // 100 requests per minute for config (frequently called)
+
+// Check if IP is rate limited
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const record = rateLimitMap.get(ip);
+
+  if (!record) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+
+  if (now > record.resetTime) {
+    // Reset the window
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+
+  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+
+  record.count++;
+  return false;
+}
+
+// Get client IP from request headers
+function getClientIP(req: Request): string {
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  
+  const realIP = req.headers.get('x-real-ip');
+  if (realIP) {
+    return realIP;
+  }
+  
+  const cfConnectingIP = req.headers.get('cf-connecting-ip');
+  if (cfConnectingIP) {
+    return cfConnectingIP;
+  }
+  
+  return 'unknown';
+}
+
+// Get remaining time until rate limit reset
+function getRateLimitResetTime(ip: string): number {
+  const record = rateLimitMap.get(ip);
+  if (!record) return 0;
+  const remaining = Math.max(0, record.resetTime - Date.now());
+  return Math.ceil(remaining / 1000); // Return seconds
+}
+
 // Validate an Ethereum address
 function isValidAddress(address: string): boolean {
   return ETH_ADDRESS_REGEX.test(address);
@@ -33,6 +90,28 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Rate limiting check
+  const clientIP = getClientIP(req);
+  if (isRateLimited(clientIP)) {
+    const retryAfter = getRateLimitResetTime(clientIP);
+    console.warn(`get-protocol-config: Rate limit exceeded for IP: ${clientIP}`);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Too many requests', 
+        message: 'Rate limit exceeded. Please try again later.',
+        retryAfter 
+      }),
+      { 
+        status: 429, 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'Retry-After': String(retryAfter)
+        } 
+      }
+    );
+  }
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -50,7 +129,7 @@ serve(async (req) => {
       // No body or invalid JSON - return all public configs
     }
 
-    console.log('get-protocol-config: Fetching config, requested keys:', requestedKeys.length > 0 ? requestedKeys : 'all');
+    console.log('get-protocol-config: Fetching config, requested keys:', requestedKeys.length > 0 ? requestedKeys : 'all', 'IP:', clientIP);
 
     // Fetch configurations
     let query = supabase
