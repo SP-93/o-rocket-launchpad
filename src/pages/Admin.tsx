@@ -23,6 +23,8 @@ import {
 import PoolVerification from '@/components/admin/PoolVerification';
 import TreasurySection from '@/components/admin/TreasurySection';
 import WalletLinkSection from '@/components/admin/WalletLinkSection';
+import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
+import AuditLogSection from '@/components/admin/AuditLogSection';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -1172,6 +1174,8 @@ const Admin = () => {
             {/* Security Tab */}
             <TabsContent value="security" className="space-y-6">
               <WalletLinkSection />
+              <ProtocolConfigSection />
+              <AuditLogSection />
             </TabsContent>
           </Tabs>
         </div>
