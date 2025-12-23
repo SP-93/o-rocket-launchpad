@@ -27,6 +27,7 @@ import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
 import AuditLogSection from '@/components/admin/AuditLogSection';
 import GameManagementSection from '@/components/admin/GameManagementSection';
 import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
+import OnChainRoundManagement from '@/components/admin/OnChainRoundManagement';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -1010,8 +1011,20 @@ const Admin = () => {
 
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
-              {/* Smart Contract Section */}
+              {/* Smart Contract Deployment */}
               <CrashGameContractSection />
+              
+              {/* On-Chain Round Control */}
+              <div className="border-t border-border/30 pt-6">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Rocket className="w-5 h-5 text-primary" />
+                  On-Chain Round Control
+                </h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Start rounds, control flight phase, and trigger crash on the blockchain
+                </p>
+                <OnChainRoundManagement />
+              </div>
               
               {/* Database Management Section */}
               <div className="border-t border-border/30 pt-6">

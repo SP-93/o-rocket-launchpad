@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 interface NeonButtonProps {
   children: ReactNode;
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "ghost" | "destructive";
+  size?: "sm" | "md" | "lg";
   className?: string;
   disabled?: boolean;
 }
@@ -13,16 +14,31 @@ const NeonButton = ({
   children, 
   onClick, 
   variant = "primary", 
+  size = "md",
   className,
   disabled = false 
 }: NeonButtonProps) => {
+  const variantClasses = {
+    primary: "btn-primary",
+    secondary: "btn-secondary",
+    ghost: "bg-transparent hover:bg-muted/50 border border-transparent hover:border-border/50 text-foreground",
+    destructive: "bg-destructive/10 hover:bg-destructive/20 border border-destructive/30 hover:border-destructive/50 text-destructive",
+  };
+
+  const sizeClasses = {
+    sm: "px-2 py-1 text-xs",
+    md: "px-4 py-2 text-sm",
+    lg: "px-6 py-3 text-base",
+  };
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        variant === "primary" ? "btn-primary" : "btn-secondary",
-        "relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed",
+        variantClasses[variant],
+        sizeClasses[size],
+        "relative overflow-hidden group disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-all duration-200",
         className
       )}
     >
