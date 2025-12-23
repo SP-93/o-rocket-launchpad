@@ -99,6 +99,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "game_bets_round_id_fkey"
+            columns: ["round_id"]
+            isOneToOne: false
+            referencedRelation: "game_rounds_secure"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "game_bets_ticket_id_fkey"
             columns: ["ticket_id"]
             isOneToOne: false
@@ -281,6 +288,13 @@ export type Database = {
             referencedRelation: "game_rounds"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fk_used_in_round"
+            columns: ["used_in_round"]
+            isOneToOne: false
+            referencedRelation: "game_rounds_secure"
+            referencedColumns: ["id"]
+          },
         ]
       }
       profiles: {
@@ -381,9 +395,61 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      game_rounds_secure: {
+        Row: {
+          crash_point: number | null
+          crashed_at: string | null
+          created_at: string | null
+          id: string | null
+          round_number: number | null
+          server_seed: string | null
+          server_seed_hash: string | null
+          started_at: string | null
+          status: string | null
+          total_bets: number | null
+          total_payouts: number | null
+          total_wagered: number | null
+        }
+        Insert: {
+          crash_point?: never
+          crashed_at?: string | null
+          created_at?: string | null
+          id?: string | null
+          round_number?: number | null
+          server_seed?: never
+          server_seed_hash?: string | null
+          started_at?: string | null
+          status?: string | null
+          total_bets?: number | null
+          total_payouts?: number | null
+          total_wagered?: number | null
+        }
+        Update: {
+          crash_point?: never
+          crashed_at?: string | null
+          created_at?: string | null
+          id?: string | null
+          round_number?: number | null
+          server_seed?: never
+          server_seed_hash?: string | null
+          started_at?: string | null
+          status?: string | null
+          total_bets?: number | null
+          total_payouts?: number | null
+          total_wagered?: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      get_visible_crash_point: {
+        Args: { actual_crash_point: number; round_status: string }
+        Returns: number
+      }
+      get_visible_server_seed: {
+        Args: { actual_seed: string; round_status: string }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
