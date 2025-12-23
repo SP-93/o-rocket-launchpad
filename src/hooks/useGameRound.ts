@@ -36,10 +36,11 @@ export function useGameRound() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch current or most recent round
+  // SECURITY: Use game_rounds_secure view which hides server_seed until crashed
   const fetchCurrentRound = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('game_rounds')
+        .from('game_rounds_secure')
         .select('*')
         .in('status', ['betting', 'countdown', 'flying'])
         .order('created_at', { ascending: false })
@@ -59,10 +60,11 @@ export function useGameRound() {
   }, []);
 
   // Fetch round history (last 10 crashed rounds)
+  // SECURITY: Use secure view - crashed rounds will show server_seed for verification
   const fetchRoundHistory = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('game_rounds')
+        .from('game_rounds_secure')
         .select('*')
         .eq('status', 'crashed')
         .order('created_at', { ascending: false })
