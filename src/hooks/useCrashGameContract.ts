@@ -140,13 +140,18 @@ export const useCrashGameContract = () => {
     const contract = await getContract(signer);
     if (!contract) throw new Error('Contract not deployed');
 
-    // Hash the server seed for pre-commitment
-    const seedHash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(serverSeed));
+    // Convert to bytes32 format (matching crashRound)
+    const seedBytes32 = ethers.utils.formatBytes32String(serverSeed.slice(0, 31));
+    
+    // Hash the server seed for pre-commitment using abi.encodePacked like contract does
+    const seedHash = ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(['bytes32'], [seedBytes32])
+    );
     
     const tx = await contract.startRound(seedHash);
     await tx.wait();
     
-    return seedHash;
+    return { seedHash, seedBytes32 };
   }, [getContract]);
 
   const startFlying = useCallback(async (signer: ethers.Signer) => {
@@ -165,11 +170,13 @@ export const useCrashGameContract = () => {
     const contract = await getContract(signer);
     if (!contract) throw new Error('Contract not deployed');
 
-    const seedBytes = ethers.utils.toUtf8Bytes(serverSeed);
-    const seedHash = ethers.utils.keccak256(seedBytes);
+    // Convert serverSeed string to bytes32 format
+    // The contract expects the RAW serverSeed, not the hash!
+    // Contract verifies: keccak256(abi.encodePacked(_serverSeed)) == seedHash
+    const seedBytes32 = ethers.utils.formatBytes32String(serverSeed.slice(0, 31));
     
     // crashPoint is multiplier * 100 (e.g., 250 = 2.50x)
-    const tx = await contract.crashRound(seedHash, crashPoint);
+    const tx = await contract.crashRound(seedBytes32, crashPoint);
     await tx.wait();
   }, [getContract]);
 
