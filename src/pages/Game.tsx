@@ -7,6 +7,7 @@ import Leaderboard from '@/components/game/Leaderboard';
 import FlightBackground3D from '@/components/game/FlightBackground3D';
 import CountdownOverlay from '@/components/game/CountdownOverlay';
 import WinConfetti from '@/components/game/WinConfetti';
+import ProvablyFairModal from '@/components/game/ProvablyFairModal';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
@@ -143,18 +144,39 @@ const Game = () => {
                   {/* Top accent line */}
                   <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/50 to-transparent" />
                   
-                  {/* Sound Toggle Button */}
-                  <button
-                    onClick={toggleSound}
-                    className="absolute top-3 right-3 z-20 p-2.5 rounded-lg bg-card/60 backdrop-blur-sm border border-border/40 hover:bg-card/80 hover:border-warning/30 transition-all duration-200 group"
-                    title={soundEnabled ? 'Mute sounds' : 'Enable sounds'}
-                  >
-                    {soundEnabled ? (
-                      <Volume2 className="w-4 h-4 text-warning group-hover:scale-110 transition-transform" />
-                    ) : (
-                      <VolumeX className="w-4 h-4 text-muted-foreground group-hover:text-warning group-hover:scale-110 transition-all" />
-                    )}
-                  </button>
+                  {/* Top Controls */}
+                  <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+                    {/* Provably Fair Button */}
+                    <ProvablyFairModal 
+                      currentRound={currentRound ? {
+                        roundNumber: currentRound.round_number,
+                        seedHash: currentRound.server_seed_hash || '',
+                        serverSeed: currentRound.server_seed || undefined,
+                        crashPoint: currentRound.crash_point ? Math.round(currentRound.crash_point * 100) : undefined,
+                        status: currentRound.status || 'idle'
+                      } : null}
+                      roundHistory={roundHistory.map(r => ({
+                        roundNumber: r.round_number,
+                        seedHash: r.server_seed_hash || '',
+                        serverSeed: r.server_seed || undefined,
+                        crashPoint: r.crash_point ? Math.round(r.crash_point * 100) : undefined,
+                        status: r.status || 'crashed'
+                      }))}
+                    />
+                    
+                    {/* Sound Toggle Button */}
+                    <button
+                      onClick={toggleSound}
+                      className="p-2.5 rounded-lg bg-card/60 backdrop-blur-sm border border-border/40 hover:bg-card/80 hover:border-warning/30 transition-all duration-200 group"
+                      title={soundEnabled ? 'Mute sounds' : 'Enable sounds'}
+                    >
+                      {soundEnabled ? (
+                        <Volume2 className="w-4 h-4 text-warning group-hover:scale-110 transition-transform" />
+                      ) : (
+                        <VolumeX className="w-4 h-4 text-muted-foreground group-hover:text-warning group-hover:scale-110 transition-all" />
+                      )}
+                    </button>
+                  </div>
                   
                   {/* Game Screen */}
                   <div className="relative aspect-video bg-gradient-to-b from-background/80 to-background/40">
