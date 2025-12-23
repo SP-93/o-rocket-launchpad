@@ -1,18 +1,16 @@
-import { useEffect, useState, Suspense, lazy, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
 import CrashHistory from '@/components/game/CrashHistory';
 import Leaderboard from '@/components/game/Leaderboard';
+import FlightBackground3D from '@/components/game/FlightBackground3D';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import useGameSounds from '@/hooks/useGameSounds';
-
-// Lazy load 3D background for performance
-const FlightBackground3D = lazy(() => import('@/components/game/FlightBackground3D'));
 
 const Game = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -94,10 +92,8 @@ const Game = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* 3D Flight Background */}
-      <Suspense fallback={null}>
-        <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
-      </Suspense>
+      {/* Flight Background Effect */}
+      <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
 
       {/* Gradient overlay for readability */}
       <div className="fixed inset-0 pointer-events-none">

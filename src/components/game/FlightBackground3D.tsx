@@ -1,132 +1,4 @@
-import { useRef, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Stars } from '@react-three/drei';
-import * as THREE from 'three';
-
-interface StarFieldProps {
-  count?: number;
-  speed: number;
-}
-
-const FlyingStars = ({ count = 500, speed }: StarFieldProps) => {
-  const meshRef = useRef<THREE.Points>(null);
-  
-  const particles = useMemo(() => {
-    const positions = new Float32Array(count * 3);
-    const velocities = new Float32Array(count);
-    
-    for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 100;
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
-      positions[i * 3 + 2] = Math.random() * -100;
-      velocities[i] = 0.5 + Math.random() * 1.5;
-    }
-    
-    return { positions, velocities };
-  }, [count]);
-
-  useFrame(() => {
-    if (!meshRef.current) return;
-    
-    const positions = meshRef.current.geometry.attributes.position.array as Float32Array;
-    
-    for (let i = 0; i < count; i++) {
-      positions[i * 3 + 2] += particles.velocities[i] * speed * 0.5;
-      
-      if (positions[i * 3 + 2] > 10) {
-        positions[i * 3 + 2] = -100;
-        positions[i * 3] = (Math.random() - 0.5) * 100;
-        positions[i * 3 + 1] = (Math.random() - 0.5) * 100;
-      }
-    }
-    
-    meshRef.current.geometry.attributes.position.needsUpdate = true;
-  });
-
-  return (
-    <points ref={meshRef}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={count}
-          array={particles.positions}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.3}
-        color="#fbbf24"
-        transparent
-        opacity={0.8}
-        sizeAttenuation
-      />
-    </points>
-  );
-};
-
-const SpeedLines = ({ count = 100, speed }: StarFieldProps) => {
-  const linesRef = useRef<THREE.Group>(null);
-  
-  const lines = useMemo(() => {
-    const linesData = [];
-    for (let i = 0; i < count; i++) {
-      linesData.push({
-        x: (Math.random() - 0.5) * 60,
-        y: (Math.random() - 0.5) * 60,
-        z: Math.random() * -80,
-        length: 2 + Math.random() * 6,
-        speed: 0.8 + Math.random() * 1.2,
-      });
-    }
-    return linesData;
-  }, [count]);
-
-  useFrame(() => {
-    if (!linesRef.current) return;
-    
-    linesRef.current.children.forEach((line, i) => {
-      line.position.z += lines[i].speed * speed * 0.8;
-      
-      if (line.position.z > 10) {
-        line.position.z = -80;
-        line.position.x = (Math.random() - 0.5) * 60;
-        line.position.y = (Math.random() - 0.5) * 60;
-      }
-    });
-  });
-
-  return (
-    <group ref={linesRef}>
-      {lines.map((line, i) => (
-        <mesh key={i} position={[line.x, line.y, line.z]}>
-          <boxGeometry args={[0.02, 0.02, line.length]} />
-          <meshBasicMaterial color="#f97316" transparent opacity={0.6} />
-        </mesh>
-      ))}
-    </group>
-  );
-};
-
-const Nebula = () => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  
-  useFrame(({ clock }) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.z = clock.getElapsedTime() * 0.02;
-    }
-  });
-
-  return (
-    <mesh ref={meshRef} position={[0, 0, -50]}>
-      <planeGeometry args={[120, 120]} />
-      <meshBasicMaterial 
-        color="#1e1b4b" 
-        transparent 
-        opacity={0.3}
-      />
-    </mesh>
-  );
-};
+import { useMemo } from 'react';
 
 interface FlightBackground3DProps {
   isFlying: boolean;
@@ -134,37 +6,161 @@ interface FlightBackground3DProps {
 }
 
 const FlightBackground3D = ({ isFlying, multiplier }: FlightBackground3DProps) => {
-  const speed = isFlying ? Math.min(multiplier * 0.5, 3) : 0.1;
-  
+  // Generate random stars
+  const stars = useMemo(() => {
+    return Array.from({ length: 150 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      top: Math.random() * 100,
+      size: 1 + Math.random() * 2,
+      delay: Math.random() * 3,
+      duration: 0.5 + Math.random() * 1.5,
+    }));
+  }, []);
+
+  // Speed lines for flight effect
+  const speedLines = useMemo(() => {
+    return Array.from({ length: 40 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      length: 50 + Math.random() * 150,
+      delay: Math.random() * 2,
+      duration: 0.3 + Math.random() * 0.5,
+    }));
+  }, []);
+
+  const animationSpeed = isFlying ? Math.max(0.2, 1 - multiplier * 0.05) : 1;
+
   return (
-    <div className="absolute inset-0 -z-10">
-      <Canvas
-        camera={{ position: [0, 0, 5], fov: 75 }}
-        style={{ background: 'transparent' }}
-        gl={{ alpha: true, antialias: true }}
-      >
-        <ambientLight intensity={0.3} />
-        
-        {/* Static background stars */}
-        <Stars
-          radius={100}
-          depth={50}
-          count={2000}
-          factor={4}
-          saturation={0}
-          fade
-          speed={0.5}
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      {/* Deep space gradient */}
+      <div 
+        className="absolute inset-0 transition-all duration-1000"
+        style={{
+          background: isFlying 
+            ? 'radial-gradient(ellipse at center, hsl(var(--background)) 0%, hsl(220 30% 5%) 50%, hsl(240 30% 3%) 100%)'
+            : 'radial-gradient(ellipse at center, hsl(var(--background)) 0%, hsl(var(--background)) 100%)'
+        }}
+      />
+
+      {/* Static stars layer */}
+      <div className="absolute inset-0">
+        {stars.map((star) => (
+          <div
+            key={star.id}
+            className="absolute rounded-full bg-white"
+            style={{
+              left: `${star.left}%`,
+              top: `${star.top}%`,
+              width: `${star.size}px`,
+              height: `${star.size}px`,
+              opacity: 0.3 + Math.random() * 0.4,
+              animation: `twinkle ${2 + star.delay}s ease-in-out infinite`,
+              animationDelay: `${star.delay}s`,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Flying stars effect - only when flying */}
+      {isFlying && (
+        <div className="absolute inset-0">
+          {stars.slice(0, 80).map((star) => (
+            <div
+              key={`fly-${star.id}`}
+              className="absolute rounded-full"
+              style={{
+                left: `${star.left}%`,
+                top: '50%',
+                width: `${star.size * 1.5}px`,
+                height: `${star.size * 1.5}px`,
+                background: `radial-gradient(circle, hsl(var(--warning)) 0%, transparent 70%)`,
+                animation: `flyToward ${star.duration * animationSpeed}s linear infinite`,
+                animationDelay: `${star.delay * animationSpeed}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Speed lines - only when flying */}
+      {isFlying && (
+        <div className="absolute inset-0">
+          {speedLines.map((line) => (
+            <div
+              key={`line-${line.id}`}
+              className="absolute origin-center"
+              style={{
+                left: `${line.left}%`,
+                top: '50%',
+                width: `${line.length}px`,
+                height: '1px',
+                background: `linear-gradient(90deg, transparent 0%, hsl(var(--warning) / 0.6) 50%, hsl(var(--warning)) 100%)`,
+                transform: `translateX(-50%) rotate(${(line.left - 50) * 1.5}deg)`,
+                animation: `speedLine ${line.duration * animationSpeed}s linear infinite`,
+                animationDelay: `${line.delay * animationSpeed}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Center glow effect when flying */}
+      {isFlying && (
+        <div 
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-all duration-500"
+          style={{
+            width: `${200 + multiplier * 20}px`,
+            height: `${200 + multiplier * 20}px`,
+            background: `radial-gradient(circle, hsl(var(--warning) / ${0.1 + multiplier * 0.02}) 0%, transparent 70%)`,
+            filter: 'blur(40px)',
+          }}
         />
+      )}
+
+      {/* Vignette effect */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'radial-gradient(ellipse at center, transparent 40%, hsl(var(--background) / 0.8) 100%)',
+        }}
+      />
+
+      {/* CSS Animations */}
+      <style>{`
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.2); }
+        }
         
-        {/* Flying stars (speed lines effect) */}
-        <FlyingStars count={400} speed={speed} />
+        @keyframes flyToward {
+          0% {
+            transform: translateY(-50%) scale(0.1);
+            opacity: 0;
+          }
+          20% {
+            opacity: 1;
+          }
+          100% {
+            transform: translateY(-50%) scale(3) translateZ(100px);
+            opacity: 0;
+          }
+        }
         
-        {/* Speed lines */}
-        {isFlying && <SpeedLines count={80} speed={speed} />}
-        
-        {/* Background nebula */}
-        <Nebula />
-      </Canvas>
+        @keyframes speedLine {
+          0% {
+            opacity: 0;
+            transform: translateX(-200%) scaleX(0.5);
+          }
+          30% {
+            opacity: 0.8;
+          }
+          100% {
+            opacity: 0;
+            transform: translateX(100vw) scaleX(2);
+          }
+        }
+      `}</style>
     </div>
   );
 };
