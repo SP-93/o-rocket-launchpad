@@ -8,6 +8,7 @@ import { useGameTickets, type GameTicket } from '@/hooks/useGameTickets';
 import { useGameBetting } from '@/hooks/useGameBetting';
 import type { GameRound, GameBet } from '@/hooks/useGameRound';
 import { toast } from '@/hooks/use-toast';
+import useGameSounds from '@/hooks/useGameSounds';
 
 interface BettingPanelProps {
   walletAddress: string | undefined;
@@ -33,6 +34,10 @@ const BettingPanel = ({
   
   const { availableTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
+  
+  // Sound effects
+  const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
+  const { playSound } = useGameSounds(soundEnabled);
 
   const canBet = currentRound?.status === 'betting' && !myBet && isConnected;
   const canCashOut = currentRound?.status === 'flying' && myBet?.status === 'active';
@@ -50,6 +55,9 @@ const BettingPanel = ({
     try {
       const autoCashoutValue = autoCashout === 'x2' ? 2 : autoCashout === 'x10' ? 10 : null;
       await placeBet(selectedTicket, autoCashoutValue);
+      
+      // Play bet sound
+      playSound('bet');
       
       toast({
         title: "Bet Placed!",
@@ -72,6 +80,9 @@ const BettingPanel = ({
 
     try {
       const result = await cashOut(myBet.id, currentMultiplier);
+      
+      // Play cashout sound
+      playSound('cashout');
       
       toast({
         title: "Cashed Out! 🎉",

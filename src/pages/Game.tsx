@@ -1,4 +1,4 @@
-import { useEffect, useState, Suspense, lazy } from 'react';
+import { useEffect, useState, Suspense, lazy, useRef } from 'react';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
@@ -9,6 +9,7 @@ import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import useGameSounds from '@/hooks/useGameSounds';
 
 // Lazy load 3D background for performance
 const FlightBackground3D = lazy(() => import('@/components/game/FlightBackground3D'));
@@ -24,8 +25,51 @@ const Game = () => {
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
+  
+  // Sound effects
+  const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext } = useGameSounds(soundEnabled);
+  const prevStatusRef = useRef<string | null>(null);
 
   const isFlying = currentRound?.status === 'flying';
+
+  // Handle game status changes for sounds
+  useEffect(() => {
+    const currentStatus = currentRound?.status;
+    const prevStatus = prevStatusRef.current;
+
+    if (currentStatus !== prevStatus) {
+      // Status changed
+      if (currentStatus === 'countdown' && prevStatus !== 'countdown') {
+        playSound('tick');
+      }
+      
+      if (currentStatus === 'flying' && prevStatus !== 'flying') {
+        playSound('launch');
+        startFlyingSound();
+      }
+      
+      if (currentStatus === 'crashed' && prevStatus === 'flying') {
+        stopFlyingSound();
+        playSound('crash');
+      }
+      
+      if (currentStatus === 'payout' && prevStatus === 'crashed') {
+        // Check if user won
+        if (myBet?.status === 'won') {
+          playSound('win');
+        }
+      }
+      
+      prevStatusRef.current = currentStatus || null;
+    }
+  }, [currentRound?.status, myBet?.status, playSound, startFlyingSound, stopFlyingSound]);
+
+  // Update flying sound pitch based on multiplier
+  useEffect(() => {
+    if (isFlying) {
+      updateFlyingSound(currentMultiplier);
+    }
+  }, [isFlying, currentMultiplier, updateFlyingSound]);
 
   useEffect(() => {
     if (currentRound?.id) {
@@ -35,12 +79,17 @@ const Game = () => {
 
   const handleConnect = () => {
     openWeb3Modal();
+    // Initialize audio context on user interaction
+    initAudioContext();
   };
 
   const toggleSound = () => {
     const newValue = !soundEnabled;
     setSoundEnabled(newValue);
     localStorage.setItem('rocketGameSound', newValue ? 'true' : 'false');
+    if (!newValue) {
+      stopFlyingSound();
+    }
   };
 
   return (
