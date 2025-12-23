@@ -11,3 +11,24 @@ verify_jwt = false
 
 [functions.update-protocol-config]
 verify_jwt = true
+
+[functions.game-buy-ticket]
+verify_jwt = false
+
+[functions.game-place-bet]
+verify_jwt = false
+
+[functions.game-cashout]
+verify_jwt = false
+
+[functions.game-round-manager]
+verify_jwt = false
+
+[functions.game-payout]
+verify_jwt = true
+
+[functions.game-admin-distribute]
+verify_jwt = true
+
+[functions.game-leaderboard]
+verify_jwt = false
