@@ -6,6 +6,7 @@ import CrashHistory from '@/components/game/CrashHistory';
 import Leaderboard from '@/components/game/Leaderboard';
 import FlightBackground3D from '@/components/game/FlightBackground3D';
 import CountdownOverlay from '@/components/game/CountdownOverlay';
+import WinConfetti from '@/components/game/WinConfetti';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
@@ -20,6 +21,8 @@ const Game = () => {
     }
     return true;
   });
+  const [showWinConfetti, setShowWinConfetti] = useState(false);
+  const [winMultiplier, setWinMultiplier] = useState(1);
   const { address, isConnected } = useWallet();
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
@@ -54,8 +57,14 @@ const Game = () => {
       
       if (currentStatus === 'payout' && prevStatus === 'crashed') {
         // Check if user won
-        if (myBet?.status === 'won') {
+        if (myBet?.status === 'won' && myBet?.cashed_out_at) {
           playSound('win');
+          // Trigger confetti for wins with 3x+ multiplier
+          if (myBet.cashed_out_at >= 3) {
+            setWinMultiplier(myBet.cashed_out_at);
+            setShowWinConfetti(true);
+            setTimeout(() => setShowWinConfetti(false), 4000);
+          }
         }
       }
       
@@ -93,6 +102,9 @@ const Game = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
+      {/* Win Confetti Effect */}
+      <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
+
       {/* Flight Background Effect */}
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
 
