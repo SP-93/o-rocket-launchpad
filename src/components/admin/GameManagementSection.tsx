@@ -46,6 +46,8 @@ interface RoundStats {
   avg_crash_point: number;
 }
 
+const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
+
 const GameManagementSection = () => {
   const [pool, setPool] = useState<GamePool | null>(null);
   const [revenue, setRevenue] = useState<GameRevenue | null>(null);
@@ -65,8 +67,10 @@ const GameManagementSection = () => {
     avg_crash_point: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [isDistributing, setIsDistributing] = useState(false);
+  const [isDistributingWover, setIsDistributingWover] = useState(false);
+  const [isDistributingUsdt, setIsDistributingUsdt] = useState(false);
   const [refillAmount, setRefillAmount] = useState('');
+  const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
 
   useEffect(() => {
     fetchData();
@@ -155,26 +159,56 @@ const GameManagementSection = () => {
     }
   };
 
-  const handleDistributeRevenue = async () => {
-    if (!revenue?.pending_wover && !revenue?.pending_usdt) {
-      toast.error('No pending revenue to distribute');
+  const handleDistributeWover = async () => {
+    if (!revenue?.pending_wover || revenue.pending_wover <= 0) {
+      toast.error('No pending WOVER to distribute');
       return;
     }
     
-    setIsDistributing(true);
+    setIsDistributingWover(true);
     try {
       const { error } = await supabase.functions.invoke('game-admin-distribute', {
-        body: { action: 'distribute' },
+        body: { 
+          currency: 'WOVER',
+          prize_pool_percentage: prizePoolPercentage
+        },
       });
       
       if (error) throw error;
       
-      toast.success('Revenue distributed successfully!');
+      const prizeAmount = (revenue.pending_wover * prizePoolPercentage / 100).toFixed(2);
+      const platformAmount = (revenue.pending_wover * (100 - prizePoolPercentage) / 100).toFixed(2);
+      toast.success(`Distributed: ${prizeAmount} WOVER → Pool, ${platformAmount} WOVER → Platform`);
       fetchData();
     } catch (error: any) {
-      toast.error('Distribution failed: ' + error.message);
+      toast.error('WOVER distribution failed: ' + error.message);
     } finally {
-      setIsDistributing(false);
+      setIsDistributingWover(false);
+    }
+  };
+
+  const handleDistributeUsdt = async () => {
+    if (!revenue?.pending_usdt || revenue.pending_usdt <= 0) {
+      toast.error('No pending USDT to distribute');
+      return;
+    }
+    
+    setIsDistributingUsdt(true);
+    try {
+      const { error } = await supabase.functions.invoke('game-admin-distribute', {
+        body: { 
+          currency: 'USDT'
+        },
+      });
+      
+      if (error) throw error;
+      
+      toast.success(`Distributed: ${revenue.pending_usdt} USDT → Factory Deployer`);
+      fetchData();
+    } catch (error: any) {
+      toast.error('USDT distribution failed: ' + error.message);
+    } finally {
+      setIsDistributingUsdt(false);
     }
   };
 
@@ -346,62 +380,115 @@ const GameManagementSection = () => {
           </div>
         </GlowCard>
 
-        {/* Revenue Distribution */}
+        {/* WOVER Distribution */}
         <GlowCard className="p-6" glowColor="purple">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-success" />
-            Pending Revenue
+            <TrendingUp className="w-5 h-5 text-warning" />
+            WOVER Distribution
           </h3>
           
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-background/50 rounded-lg p-4 border border-warning/30">
-                <p className="text-xs text-muted-foreground mb-1">WOVER</p>
-                <p className="text-xl font-bold text-warning">
-                  {revenue?.pending_wover?.toLocaleString() || 0}
-                </p>
-              </div>
-              <div className="bg-background/50 rounded-lg p-4 border border-success/30">
-                <p className="text-xs text-muted-foreground mb-1">USDT</p>
-                <p className="text-xl font-bold text-success">
-                  {revenue?.pending_usdt?.toLocaleString() || 0}
-                </p>
-              </div>
+            <div className="bg-background/50 rounded-lg p-4 border border-warning/30">
+              <p className="text-xs text-muted-foreground mb-1">Pending WOVER</p>
+              <p className="text-2xl font-bold text-warning">
+                {revenue?.pending_wover?.toLocaleString() || 0}
+              </p>
             </div>
 
-            <div className="bg-background/30 rounded-lg p-3">
-              <p className="text-xs text-muted-foreground mb-2">Distribution Split</p>
-              <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="bg-primary/10 rounded p-2">
-                  <p className="font-semibold">40%</p>
-                  <p className="text-muted-foreground">Team</p>
-                </div>
-                <div className="bg-success/10 rounded p-2">
-                  <p className="font-semibold">30%</p>
-                  <p className="text-muted-foreground">Liquidity</p>
-                </div>
-                <div className="bg-warning/10 rounded p-2">
-                  <p className="font-semibold">30%</p>
-                  <p className="text-muted-foreground">Future</p>
+            {/* Prize Pool Percentage Slider */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-primary font-medium">Prize Pool</span>
+                <span className="text-accent font-medium">Platform</span>
+              </div>
+              
+              <div className="relative">
+                <input
+                  type="range"
+                  min="20"
+                  max="80"
+                  value={prizePoolPercentage}
+                  onChange={(e) => setPrizePoolPercentage(parseInt(e.target.value))}
+                  className="w-full h-2 bg-gradient-to-r from-primary to-accent rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                  <span>Min 20%</span>
+                  <span className="font-bold text-foreground">{prizePoolPercentage}% / {100 - prizePoolPercentage}%</span>
+                  <span>Max 80%</span>
                 </div>
               </div>
+
+              {/* Preview */}
+              {revenue?.pending_wover && revenue.pending_wover > 0 && (
+                <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                  <div className="bg-primary/10 rounded p-2 border border-primary/20">
+                    <p className="font-bold text-primary">
+                      {(revenue.pending_wover * prizePoolPercentage / 100).toFixed(2)} WOVER
+                    </p>
+                    <p className="text-muted-foreground">→ Prize Pool</p>
+                  </div>
+                  <div className="bg-accent/10 rounded p-2 border border-accent/20">
+                    <p className="font-bold text-accent">
+                      {(revenue.pending_wover * (100 - prizePoolPercentage) / 100).toFixed(2)} WOVER
+                    </p>
+                    <p className="text-muted-foreground">→ Platform</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <NeonButton 
-              onClick={handleDistributeRevenue} 
-              disabled={isDistributing || (!revenue?.pending_wover && !revenue?.pending_usdt)}
+              onClick={handleDistributeWover} 
+              disabled={isDistributingWover || !revenue?.pending_wover || revenue.pending_wover <= 0}
               className="w-full"
             >
-              {isDistributing ? (
+              {isDistributingWover ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <DollarSign className="w-4 h-4 mr-2" />
               )}
-              Distribute Revenue
+              Distribute WOVER
             </NeonButton>
           </div>
         </GlowCard>
       </div>
+
+      {/* USDT Distribution */}
+      <GlowCard className="p-6" glowColor="cyan">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-success" />
+          USDT Distribution
+        </h3>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-background/50 rounded-lg p-4 border border-success/30">
+            <p className="text-xs text-muted-foreground mb-1">Pending USDT</p>
+            <p className="text-2xl font-bold text-success">
+              {revenue?.pending_usdt?.toLocaleString() || 0}
+            </p>
+          </div>
+          
+          <div className="bg-background/30 rounded-lg p-4">
+            <p className="text-xs text-muted-foreground mb-2">100% → Factory Deployer Wallet</p>
+            <p className="text-xs font-mono text-muted-foreground break-all">
+              {FACTORY_DEPLOYER_WALLET}
+            </p>
+          </div>
+        </div>
+        
+        <NeonButton 
+          onClick={handleDistributeUsdt} 
+          disabled={isDistributingUsdt || !revenue?.pending_usdt || revenue.pending_usdt <= 0}
+          className="w-full mt-4"
+        >
+          {isDistributingUsdt ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <DollarSign className="w-4 h-4 mr-2" />
+          )}
+          Distribute USDT
+        </NeonButton>
+      </GlowCard>
 
       {/* Game Controls & Config */}
       <GlowCard className="p-6" glowColor="cyan">
