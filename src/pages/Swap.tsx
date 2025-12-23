@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import logger from "@/lib/logger";
 import { ArrowDownUp, Settings, Info, ChevronDown, Check, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PriceImpactWarning, PriceImpactBadge } from "@/components/swap/PriceImpactWarning";
+import { SwapConfirmationDialog } from "@/components/swap/SwapConfirmationDialog";
+import { 
+  assessSwapRisk, 
+  checkSwapLimit, 
+  checkRateLimit, 
+  recordSwap,
+  DEFAULT_ORACLE_CONFIG,
+  type SwapRiskAssessment 
+} from "@/lib/oracleProtection";
 
 const TOKENS = [
   { symbol: "USDT", name: "Tether USD" },
@@ -55,6 +65,23 @@ const Swap = () => {
   
   // NOVO: Globalni state za multi-step operacije - drži dugme disabled tokom cele operacije
   const [isSwapping, setIsSwapping] = useState(false);
+  
+  // Oracle Protection state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmedHighRisk, setConfirmedHighRisk] = useState(false);
+  
+  // Proceni rizik swapa
+  const swapRisk: SwapRiskAssessment = useMemo(() => {
+    if (!quote || !fromAmount || parseFloat(fromAmount) === 0) {
+      return { level: 'safe', priceImpact: 0, message: '', requiresConfirmation: false, blocked: false };
+    }
+    return assessSwapRisk(quote.priceImpact, DEFAULT_ORACLE_CONFIG);
+  }, [quote, fromAmount]);
+  
+  // Reset confirmation kada se promeni amount
+  useEffect(() => {
+    setConfirmedHighRisk(false);
+  }, [fromAmount, fromToken.symbol, toToken.symbol]);
 
   // Reset unrelated state when switching tabs to prevent confusion
   useEffect(() => {
@@ -134,6 +161,26 @@ const Swap = () => {
   };
 
   const handleSwap = async () => {
+    // Oracle Protection: Check if confirmation is required
+    if (swapRisk.requiresConfirmation && !confirmedHighRisk) {
+      setShowConfirmDialog(true);
+      return;
+    }
+    
+    // Oracle Protection: Check rate limiting
+    const rateCheck = checkRateLimit();
+    if (!rateCheck.allowed) {
+      toast.error(`Rate limit reached. Please wait ${rateCheck.waitSeconds} seconds.`);
+      return;
+    }
+    
+    // Oracle Protection: Check swap limits
+    const limitCheck = checkSwapLimit(parseFloat(fromAmount), fromToken.symbol);
+    if (!limitCheck.allowed) {
+      toast.error(limitCheck.reason);
+      return;
+    }
+    
     // NOVO: Zaključaj dugme na početku cele operacije
     setIsSwapping(true);
     
@@ -224,11 +271,15 @@ const Swap = () => {
           }
         }
         
+        // Record successful swap for rate limiting
+        recordSwap();
+        
         toast.success("Swap successful!", {
           description: `Swapped ${fromAmount} ${fromToken.symbol} for ${toAmount} ${toToken.symbol}`,
         });
         setFromAmount("");
         setToAmount("");
+        setConfirmedHighRisk(false);
         reset();
       } else if (error) {
         toast.error("Swap failed", { description: error });
@@ -237,6 +288,14 @@ const Swap = () => {
       // NOVO: Uvek otključaj dugme na kraju, bez obzira na uspeh ili grešku
       setIsSwapping(false);
     }
+  };
+
+  // Handler za potvrdu visoko-rizičnog swapa iz dialoga
+  const handleConfirmHighRiskSwap = () => {
+    setConfirmedHighRisk(true);
+    setShowConfirmDialog(false);
+    // Pokreni swap ponovo - sada će proći jer je confirmedHighRisk true
+    setTimeout(() => handleSwap(), 100);
   };
 
   const handleWrapUnwrap = async () => {
@@ -541,16 +600,9 @@ const Swap = () => {
                   </div>
                 </div>
 
-                {/* High Price Impact Warning */}
-                {quote && quote.priceImpact > 10 && (
-                  <Alert variant="destructive" className="mb-4">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Warning:</strong> Price impact is {quote.priceImpact.toFixed(2)}%! 
-                      This means the pool has very low liquidity. Consider using a smaller amount 
-                      or adding liquidity first.
-                    </AlertDescription>
-                  </Alert>
+                {/* Oracle Protection: Price Impact Warning */}
+                {swapRisk.level !== 'safe' && (
+                  <PriceImpactWarning risk={swapRisk} className="mb-4" />
                 )}
 
                 {/* Info Section */}
@@ -558,18 +610,17 @@ const Swap = () => {
                   <div className="space-y-2 mb-6 text-sm">
                     <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
                       <span className="text-muted-foreground">Price</span>
-                      <span className="font-medium">
-                        1 {fromToken.symbol} = {(parseFloat(toAmount) / parseFloat(fromAmount)).toFixed(6)} {toToken.symbol}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">
+                          1 {fromToken.symbol} = {(parseFloat(toAmount) / parseFloat(fromAmount)).toFixed(6)} {toToken.symbol}
+                        </span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
                       <span className="text-muted-foreground">Price Impact</span>
-                      <span className={`font-medium ${
-                        quote.priceImpact < 1 ? 'text-success' : 
-                        quote.priceImpact < 5 ? 'text-warning' : 'text-destructive'
-                      }`}>
-                        {quote.priceImpact < 0.01 ? '<0.01' : quote.priceImpact.toFixed(2)}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <PriceImpactBadge priceImpact={quote.priceImpact} level={swapRisk.level} />
+                      </div>
                     </div>
                     <div className="flex items-center justify-between p-3 bg-muted/10 rounded-lg">
                       <span className="text-muted-foreground">Liquidity Provider Fee</span>
@@ -747,6 +798,18 @@ const Swap = () => {
       <ConnectWalletModal 
         open={showWalletModal} 
         onOpenChange={setShowWalletModal} 
+      />
+      
+      {/* Oracle Protection: High Risk Swap Confirmation Dialog */}
+      <SwapConfirmationDialog
+        open={showConfirmDialog}
+        onOpenChange={setShowConfirmDialog}
+        onConfirm={handleConfirmHighRiskSwap}
+        risk={swapRisk}
+        fromAmount={fromAmount}
+        fromToken={fromToken.symbol}
+        toAmount={toAmount}
+        toToken={toToken.symbol}
       />
     </SpaceBackground>
   );
