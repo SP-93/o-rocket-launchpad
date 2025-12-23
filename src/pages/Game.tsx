@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense, lazy } from 'react';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
@@ -9,6 +9,9 @@ import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
 import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+// Lazy load 3D background for performance
+const FlightBackground3D = lazy(() => import('@/components/game/FlightBackground3D'));
 
 const Game = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -21,6 +24,8 @@ const Game = () => {
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
+
+  const isFlying = currentRound?.status === 'flying';
 
   useEffect(() => {
     if (currentRound?.id) {
@@ -40,11 +45,16 @@ const Game = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Modern gradient mesh background */}
-      <div className="fixed inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-background via-background to-background" />
-        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-warning/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+      {/* 3D Flight Background */}
+      <Suspense fallback={null}>
+        <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
+      </Suspense>
+
+      {/* Gradient overlay for readability */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-background/30 to-background/70" />
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-warning/5 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
       <div className="relative z-10 min-h-screen pt-20 pb-8 px-4">

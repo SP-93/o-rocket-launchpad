@@ -18,13 +18,14 @@ import {
   Shield, Rocket, Database, Settings, Wallet, AlertTriangle, ExternalLink, 
   Copy, Users, CheckCircle, Clock, XCircle, Loader2, RefreshCw, Download, Trash2,
   Calculator, Edit3, DollarSign, TrendingUp, TrendingDown, EyeOff, ShieldCheck,
-  Upload, Smartphone, Monitor, Clipboard
+  Upload, Smartphone, Monitor, Clipboard, Gamepad2
 } from 'lucide-react';
 import PoolVerification from '@/components/admin/PoolVerification';
 import TreasurySection from '@/components/admin/TreasurySection';
 import WalletLinkSection from '@/components/admin/WalletLinkSection';
 import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
 import AuditLogSection from '@/components/admin/AuditLogSection';
+import GameManagementSection from '@/components/admin/GameManagementSection';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -437,18 +438,21 @@ const Admin = () => {
           </GlowCard>
 
           <Tabs defaultValue="deploy" className="space-y-6">
-            <TabsList className="glass-card p-1 w-full md:w-auto">
+            <TabsList className="glass-card p-1 w-full md:w-auto flex-wrap">
               <TabsTrigger value="deploy" className="flex items-center gap-2">
-                <Rocket className="w-4 h-4" /> Deploy Contracts
+                <Rocket className="w-4 h-4" /> Deploy
               </TabsTrigger>
               <TabsTrigger value="pools" className="flex items-center gap-2">
-                <Database className="w-4 h-4" /> Create Pools
+                <Database className="w-4 h-4" /> Pools
+              </TabsTrigger>
+              <TabsTrigger value="game" className="flex items-center gap-2">
+                <Gamepad2 className="w-4 h-4" /> Game
               </TabsTrigger>
               <TabsTrigger value="treasury" className="flex items-center gap-2">
                 <Wallet className="w-4 h-4" /> Treasury
               </TabsTrigger>
               <TabsTrigger value="verify" className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4" /> Verify Pools
+                <ShieldCheck className="w-4 h-4" /> Verify
               </TabsTrigger>
               <TabsTrigger value="security" className="flex items-center gap-2">
                 <Shield className="w-4 h-4" /> Security
@@ -1001,6 +1005,11 @@ const Admin = () => {
                   </div>
                 </GlowCard>
               )}
+            </TabsContent>
+
+            {/* Game Management Tab */}
+            <TabsContent value="game" className="space-y-6">
+              <GameManagementSection />
             </TabsContent>
 
             {/* Treasury Tab */}
