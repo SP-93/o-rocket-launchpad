@@ -5,6 +5,7 @@ import BettingPanel from '@/components/game/BettingPanel';
 import CrashHistory from '@/components/game/CrashHistory';
 import Leaderboard from '@/components/game/Leaderboard';
 import FlightBackground3D from '@/components/game/FlightBackground3D';
+import CountdownOverlay from '@/components/game/CountdownOverlay';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
@@ -158,6 +159,11 @@ const Game = () => {
                       status={currentRound?.status || 'idle'}
                       multiplier={currentMultiplier}
                       crashPoint={currentRound?.crash_point}
+                    />
+                    
+                    {/* Countdown Overlay */}
+                    <CountdownOverlay 
+                      status={currentRound?.status || 'idle'}
                     />
                   </div>
 
