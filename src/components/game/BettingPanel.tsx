@@ -241,11 +241,19 @@ const BettingPanel = ({
     <div className="glass-card overflow-hidden">
       <div className="relative px-4 py-3 border-b border-border/20">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/20">
-            <Target className="w-4 h-4 text-primary" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/20">
+              <Target className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm">Place Bet</span>
           </div>
-          <span className="font-semibold text-sm">Place Bet</span>
+          {isConnected && availableTickets.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-success/20 border border-success/30">
+              <Ticket className="w-3 h-3 text-success" />
+              <span className="text-xs font-bold text-success">{availableTickets.length}</span>
+            </div>
+          )}
         </div>
       </div>
       
@@ -262,15 +270,39 @@ const BettingPanel = ({
             <p className="text-xs text-primary">Buy tickets to play!</p>
           </div>
         ) : !canBet ? (
-          <div className="text-center py-6 text-muted-foreground">
-            <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">
-              {currentRound?.status === 'flying' 
-                ? '🚀 Round in progress...'
-                : currentRound?.status === 'crashed'
-                ? '💥 Round ended. Next round soon...'
-                : '⏳ Waiting for betting phase...'}
-            </p>
+          <div className="text-center py-6">
+            {availableTickets.length > 0 ? (
+              <>
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-success/20 border border-success/30 flex items-center justify-center">
+                  <Ticket className="w-6 h-6 text-success" />
+                </div>
+                <p className="text-sm font-medium text-success mb-1">
+                  ✓ {availableTickets.length} ticket{availableTickets.length > 1 ? 's' : ''} ready!
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {currentRound?.status === 'flying' 
+                    ? '🚀 Wait for this round to end...'
+                    : currentRound?.status === 'crashed'
+                    ? '💥 Processing payouts... Next round soon!'
+                    : currentRound?.status === 'payout'
+                    ? '💰 Payouts in progress... Almost there!'
+                    : currentRound?.status === 'countdown'
+                    ? '🚀 Launching soon...'
+                    : '⏳ Next betting phase coming soon...'}
+                </p>
+              </>
+            ) : (
+              <>
+                <TrendingUp className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+                <p className="text-sm text-muted-foreground">
+                  {currentRound?.status === 'flying' 
+                    ? '🚀 Round in progress...'
+                    : currentRound?.status === 'crashed'
+                    ? '💥 Round ended. Next round soon...'
+                    : '⏳ Waiting for betting phase...'}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <>
