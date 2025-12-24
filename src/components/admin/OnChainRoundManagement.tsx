@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
+import { Button } from '@/components/ui/button';
 import { 
   Rocket, Play, Square, Zap, RefreshCw, Clock, 
   AlertTriangle, CheckCircle, Loader2, Copy, Shield,
-  Hash, Target
+  Hash, Target, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { useWallet } from '@/hooks/useWallet';
 import { getDeployedContracts } from '@/contracts/storage';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RoundInfo {
   roundNumber: number;
@@ -47,8 +49,10 @@ const OnChainRoundManagement = () => {
   const [isStartingRound, setIsStartingRound] = useState(false);
   const [isStartingFlight, setIsStartingFlight] = useState(false);
   const [isCrashing, setIsCrashing] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [seedHistory, setSeedHistory] = useState<{ seed: string; hash: string; roundId: number }[]>([]);
   const [isContractDeployed, setIsContractDeployed] = useState(false);
+  const [stuckRounds, setStuckRounds] = useState<number>(0);
 
   useEffect(() => {
     const contracts = getDeployedContracts();
@@ -56,8 +60,24 @@ const OnChainRoundManagement = () => {
     if (contracts.crashGame) {
       fetchRoundInfo();
       fetchContractState();
+      checkStuckRounds();
     }
   }, []);
+
+  const checkStuckRounds = async () => {
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { count } = await supabase
+        .from('game_rounds')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['betting', 'flying', 'countdown'])
+        .lt('created_at', fiveMinutesAgo);
+      
+      setStuckRounds(count || 0);
+    } catch (error) {
+      console.error('Error checking stuck rounds:', error);
+    }
+  };
 
   const getSigner = async () => {
     const provider = await getProvider();
@@ -89,7 +109,6 @@ const OnChainRoundManagement = () => {
   };
 
   const generateServerSeed = () => {
-    // Generate a random 31-character string (max for bytes32)
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let seed = '';
     for (let i = 0; i < 31; i++) {
@@ -97,6 +116,35 @@ const OnChainRoundManagement = () => {
     }
     setServerSeed(seed);
     toast.success('New server seed generated - SAVE THIS BEFORE STARTING ROUND!');
+  };
+
+  const handleRecoverStuckRounds = async () => {
+    setIsRecovering(true);
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      
+      const { data, error } = await supabase
+        .from('game_rounds')
+        .update({
+          status: 'crashed',
+          crash_point: 1.00,
+          crashed_at: new Date().toISOString(),
+        })
+        .in('status', ['betting', 'flying', 'countdown'])
+        .lt('created_at', fiveMinutesAgo)
+        .select();
+
+      if (error) throw error;
+
+      toast.success(`Recovered ${data?.length || 0} stuck rounds`);
+      setStuckRounds(0);
+      fetchRoundInfo();
+      fetchContractState();
+    } catch (error: any) {
+      toast.error('Failed to recover rounds: ' + error.message);
+    } finally {
+      setIsRecovering(false);
+    }
   };
 
   const handleStartRound = async () => {
@@ -110,7 +158,6 @@ const OnChainRoundManagement = () => {
       const signer = await getSigner();
       const result = await startRound(signer, serverSeed);
       
-      // Save seed to history for later use
       const currentRoundId = (contractState?.currentRoundId || 0) + 1;
       setSeedHistory(prev => [...prev, { 
         seed: serverSeed, 
@@ -119,7 +166,7 @@ const OnChainRoundManagement = () => {
       }]);
       
       toast.success(`Round started! Seed hash: ${result.seedHash.slice(0, 10)}...`);
-      setServerSeed(''); // Clear for next round
+      setServerSeed('');
       fetchRoundInfo();
       fetchContractState();
     } catch (error: any) {
@@ -146,7 +193,6 @@ const OnChainRoundManagement = () => {
   };
 
   const handleCrashRound = async () => {
-    // Find the seed for current round from history
     const savedSeed = seedHistory.find(s => s.roundId === currentRound?.roundNumber);
     const seedToUse = savedSeed?.seed || serverSeed;
     
@@ -186,6 +232,18 @@ const OnChainRoundManagement = () => {
     return new Date(timestamp * 1000).toLocaleTimeString();
   };
 
+  // Determine button states with clear reasons
+  const canStartNewRound = !currentRound || currentRound.status >= 2;
+  const canStartFlying = currentRound?.status === 0;
+  const canCrash = currentRound?.status === 1;
+
+  const getStartRoundDisabledReason = () => {
+    if (!serverSeed) return 'Generate a server seed first';
+    if (currentRound?.status === 0) return 'Current round is in betting phase - start flying first';
+    if (currentRound?.status === 1) return 'Current round is flying - crash it first';
+    return null;
+  };
+
   if (!isContractDeployed) {
     return (
       <GlowCard className="p-6" glowColor="purple">
@@ -202,7 +260,39 @@ const OnChainRoundManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* Info Banner - Detailed Explanation */}
+      {/* Stuck Rounds Recovery */}
+      {stuckRounds > 0 && (
+        <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive" />
+              <div>
+                <p className="font-medium text-destructive">
+                  {stuckRounds} stuck round(s) detected
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Rounds older than 5 minutes that never completed
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleRecoverStuckRounds}
+              disabled={isRecovering}
+            >
+              {isRecovering ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <RotateCcw className="w-4 h-4 mr-2" />
+              )}
+              Recover All
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Info Banner */}
       <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
         <div className="flex items-start gap-3">
           <Shield className="w-5 h-5 text-primary mt-0.5" />
@@ -216,21 +306,15 @@ const OnChainRoundManagement = () => {
         
         <div className="bg-background/50 rounded-lg p-3 text-xs space-y-2">
           <div>
-            <span className="font-medium text-primary">🎯 Crash Point (Multiplier):</span>
+            <span className="font-medium text-primary">🎯 Crash Point:</span>
             <span className="text-muted-foreground ml-1">
-              Tačka pada - množilac pri kojem raketa eksplodira. Npr. 2.50x znači da igrači koji cashout-uju pre toga dobijaju 2.5x ulog.
+              Množilac pri kojem raketa pada. 2.50x = igrači dobijaju 2.5x ulog ako cashout pre toga.
             </span>
           </div>
           <div>
-            <span className="font-medium text-primary">🔐 Zašto 3 koraka?</span>
+            <span className="font-medium text-primary">🔐 3 koraka:</span>
             <span className="text-muted-foreground ml-1">
-              Provably Fair zahteva: (1) Seed hash commit pre opklada, (2) Faza leta, (3) Reveal seed + crash point. Ovo dokazuje da ishod nije manipulisan.
-            </span>
-          </div>
-          <div>
-            <span className="font-medium text-success">⚡ Produkcija:</span>
-            <span className="text-muted-foreground ml-1">
-              U produkciji će backend automatski: generisati seed, pokrenuti rundu, čekati betting period, aktivirati let, i crash-ovati na random tačku.
+              (1) Start Round + commit seed hash, (2) Start Flying, (3) Crash + reveal seed.
             </span>
           </div>
         </div>
@@ -243,7 +327,7 @@ const OnChainRoundManagement = () => {
             <Rocket className="w-5 h-5 text-primary" />
             On-Chain Round Control
           </h3>
-          <NeonButton variant="ghost" size="sm" onClick={() => { fetchRoundInfo(); fetchContractState(); }}>
+          <NeonButton variant="ghost" size="sm" onClick={() => { fetchRoundInfo(); fetchContractState(); checkStuckRounds(); }}>
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </NeonButton>
         </div>
@@ -360,7 +444,7 @@ const OnChainRoundManagement = () => {
             
             <NeonButton 
               onClick={handleStartRound}
-              disabled={isStartingRound || !serverSeed || currentRound?.status === 0 || currentRound?.status === 1}
+              disabled={isStartingRound || !canStartNewRound || !serverSeed}
               className="w-full"
             >
               {isStartingRound ? (
@@ -371,10 +455,10 @@ const OnChainRoundManagement = () => {
               Start Round
             </NeonButton>
             
-            {currentRound?.status === 0 && (
+            {getStartRoundDisabledReason() && (
               <p className="text-[10px] text-warning flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
-                Current round is in betting phase
+                {getStartRoundDisabledReason()}
               </p>
             )}
           </div>
@@ -401,7 +485,7 @@ const OnChainRoundManagement = () => {
             
             <NeonButton 
               onClick={handleStartFlying}
-              disabled={isStartingFlight || currentRound?.status !== 0}
+              disabled={isStartingFlight || !canStartFlying}
               className="w-full"
             >
               {isStartingFlight ? (
@@ -412,12 +496,19 @@ const OnChainRoundManagement = () => {
               Start Flying 🚀
             </NeonButton>
             
-            {currentRound?.status !== 0 && (
-              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <CheckCircle className="w-3 h-3 text-success" />
-                {currentRound?.status === 1 ? 'Already flying' : 'Round must be in betting phase'}
-              </p>
-            )}
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+              {canStartFlying ? (
+                <>
+                  <CheckCircle className="w-3 h-3 text-success" />
+                  Ready - round is in betting phase
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3 h-3" />
+                  {currentRound?.status === 1 ? 'Already flying' : 'Start a round first'}
+                </>
+              )}
+            </p>
           </div>
         </GlowCard>
 
@@ -437,63 +528,65 @@ const OnChainRoundManagement = () => {
                   value={crashPointInput}
                   onChange={(e) => setCrashPointInput(e.target.value)}
                   placeholder="2.00"
+                  className="text-xs font-mono"
                   step="0.01"
                   min="1.00"
-                  className="text-xs font-mono"
                 />
-                <div className="flex items-center gap-1 px-2 bg-background/30 rounded text-xs">
-                  <Target className="w-3 h-3" />
-                  <span>x</span>
-                </div>
+                <NeonButton variant="ghost" size="sm" onClick={() => {
+                  const random = (1 + Math.random() * 9).toFixed(2);
+                  setCrashPointInput(random);
+                }}>
+                  <Target className="w-4 h-4" />
+                </NeonButton>
               </div>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Min 1.00x. This ends the round and reveals the server seed.
+              </p>
             </div>
             
             <NeonButton 
               onClick={handleCrashRound}
-              disabled={isCrashing || currentRound?.status !== 1}
-              variant="destructive"
-              className="w-full"
+              disabled={isCrashing || !canCrash}
+              className="w-full bg-destructive/20 hover:bg-destructive/30 text-destructive"
             >
               {isCrashing ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
                 <Square className="w-4 h-4 mr-2" />
               )}
-              Crash! 💥
+              Crash @ {crashPointInput}x 💥
             </NeonButton>
-            
-            {currentRound?.status !== 1 && (
-              <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                {currentRound?.status === 0 ? (
-                  <>
-                    <Clock className="w-3 h-3" />
-                    Start flying first
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-3 h-3 text-success" />
-                    Round already crashed
-                  </>
-                )}
-              </p>
-            )}
+
+            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+              {canCrash ? (
+                <>
+                  <CheckCircle className="w-3 h-3 text-success" />
+                  Ready - round is flying
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-3 h-3" />
+                  {currentRound?.status === 0 ? 'Start flying first' : 'Start a new round first'}
+                </>
+              )}
+            </p>
           </div>
         </GlowCard>
       </div>
 
-      {/* Saved Seeds History */}
+      {/* Seed History */}
       {seedHistory.length > 0 && (
         <GlowCard className="p-4" glowColor="purple">
           <h4 className="font-semibold mb-3 flex items-center gap-2">
             <Shield className="w-4 h-4 text-primary" />
-            Saved Seeds (This Session)
+            Saved Seeds (this session)
           </h4>
-          <div className="space-y-2 max-h-32 overflow-y-auto">
-            {seedHistory.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs bg-background/30 rounded p-2">
-                <span className="font-medium">Round #{item.roundId}</span>
+          <div className="space-y-2">
+            {seedHistory.slice(-5).reverse().map((item, index) => (
+              <div key={index} className="flex items-center justify-between text-xs bg-background/30 rounded p-2">
+                <span className="text-muted-foreground">Round #{item.roundId}</span>
                 <div className="flex items-center gap-2">
-                  <code className="font-mono text-muted-foreground">{item.seed.slice(0, 10)}...</code>
+                  <code className="font-mono">{item.seed.slice(0, 10)}...</code>
                   <button onClick={() => copyToClipboard(item.seed, 'Seed')}>
                     <Copy className="w-3 h-3 text-muted-foreground hover:text-foreground" />
                   </button>
@@ -501,9 +594,6 @@ const OnChainRoundManagement = () => {
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-muted-foreground mt-2">
-            ⚠️ Seeds are only stored in browser memory. Save them externally for verification!
-          </p>
         </GlowCard>
       )}
     </div>

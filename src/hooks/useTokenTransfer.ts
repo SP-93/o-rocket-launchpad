@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useWalletClient, usePublicClient } from 'wagmi';
-import { parseUnits, encodeFunctionData } from 'viem';
+import { parseUnits } from 'viem';
 import { overProtocol } from '@/config/web3modal';
 import { toast } from '@/hooks/use-toast';
 
@@ -52,12 +52,41 @@ export interface TransferResult {
   success: boolean;
   txHash?: string;
   error?: string;
+  status?: 'pending' | 'confirmed' | 'failed';
 }
 
 export function useTokenTransfer() {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
   const [isPending, setIsPending] = useState(false);
+  const [pendingTxHash, setPendingTxHash] = useState<string | null>(null);
+
+  // Poll for transaction receipt with longer timeout
+  const waitForReceipt = useCallback(async (
+    hash: `0x${string}`,
+    maxAttempts: number = 120, // 10 minutes with 5s intervals
+    intervalMs: number = 5000
+  ): Promise<'success' | 'failed' | 'pending'> => {
+    if (!publicClient) return 'pending';
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const receipt = await publicClient.getTransactionReceipt({ hash });
+        if (receipt) {
+          return receipt.status === 'success' ? 'success' : 'failed';
+        }
+      } catch (error) {
+        // Transaction not yet mined, continue polling
+        console.log(`[TokenTransfer] Polling attempt ${attempt + 1}/${maxAttempts}...`);
+      }
+      
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs));
+      }
+    }
+    
+    return 'pending'; // Still pending after all attempts
+  }, [publicClient]);
 
   const transferToken = useCallback(async (
     tokenSymbol: 'WOVER' | 'USDT',
@@ -73,13 +102,21 @@ export function useTokenTransfer() {
     }
 
     setIsPending(true);
+    setPendingTxHash(null);
     
     try {
       // Get token decimals (WOVER has 18, USDT usually has 6)
       const decimals = tokenSymbol === 'WOVER' ? 18 : 6;
       const amountInWei = parseUnits(amount.toString(), decimals);
 
-      // Use writeContract for ERC20 transfer (cleaner approach)
+      console.log('[TokenTransfer] Initiating transfer:', {
+        token: tokenSymbol,
+        amount,
+        decimals,
+        to: TREASURY_WALLET,
+      });
+
+      // Use writeContract for ERC20 transfer
       const hash = await walletClient.writeContract({
         address: tokenAddress,
         abi: ERC20_ABI,
@@ -90,28 +127,32 @@ export function useTokenTransfer() {
       });
 
       console.log('[TokenTransfer] Transaction sent:', hash);
+      setPendingTxHash(hash);
 
-      // Wait for confirmation
-      if (publicClient) {
-        const receipt = await publicClient.waitForTransactionReceipt({ 
-          hash,
-          timeout: 60_000, // 60 seconds timeout
-        });
-        
-        if (receipt.status === 'success') {
-          console.log('[TokenTransfer] Transaction confirmed:', receipt);
-          return { success: true, txHash: hash };
-        } else {
-          return { success: false, error: 'Transaction failed', txHash: hash };
-        }
+      // Show pending toast
+      toast({
+        title: "Transaction Sent",
+        description: "Waiting for confirmation... This may take a few minutes.",
+      });
+
+      // Wait for confirmation with extended polling
+      const status = await waitForReceipt(hash);
+      
+      if (status === 'success') {
+        console.log('[TokenTransfer] Transaction confirmed!');
+        return { success: true, txHash: hash, status: 'confirmed' };
+      } else if (status === 'failed') {
+        return { success: false, error: 'Transaction failed on-chain', txHash: hash, status: 'failed' };
+      } else {
+        // Still pending - return success with pending status so user can use tx hash
+        console.log('[TokenTransfer] Transaction still pending, but hash is valid');
+        return { success: true, txHash: hash, status: 'pending' };
       }
-
-      return { success: true, txHash: hash };
     } catch (error: any) {
       console.error('[TokenTransfer] Error:', error);
       
       // Parse common errors
-      if (error.message?.includes('rejected')) {
+      if (error.message?.includes('rejected') || error.message?.includes('denied')) {
         return { success: false, error: 'Transaction rejected by user' };
       }
       if (error.message?.includes('insufficient')) {
@@ -122,7 +163,7 @@ export function useTokenTransfer() {
     } finally {
       setIsPending(false);
     }
-  }, [walletClient, publicClient]);
+  }, [walletClient, waitForReceipt]);
 
   const getTokenBalance = useCallback(async (
     tokenSymbol: 'WOVER' | 'USDT',
@@ -149,9 +190,37 @@ export function useTokenTransfer() {
     }
   }, [publicClient]);
 
+  // Manual verification for pending transactions
+  const verifyTransaction = useCallback(async (txHash: string): Promise<TransferResult> => {
+    if (!publicClient) {
+      return { success: false, error: 'No provider available' };
+    }
+
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ 
+        hash: txHash as `0x${string}` 
+      });
+      
+      if (receipt) {
+        if (receipt.status === 'success') {
+          return { success: true, txHash, status: 'confirmed' };
+        } else {
+          return { success: false, txHash, status: 'failed', error: 'Transaction failed' };
+        }
+      } else {
+        return { success: true, txHash, status: 'pending' };
+      }
+    } catch (error) {
+      console.error('[TokenTransfer] Verify error:', error);
+      return { success: false, error: 'Could not verify transaction' };
+    }
+  }, [publicClient]);
+
   return {
     transferToken,
     getTokenBalance,
+    verifyTransaction,
     isPending,
+    pendingTxHash,
   };
 }
