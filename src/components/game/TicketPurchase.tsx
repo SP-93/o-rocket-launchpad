@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles } from 'lucide-react';
+import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink } from 'lucide-react';
 import { useGameTickets } from '@/hooks/useGameTickets';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
-import { useTokenTransfer } from '@/hooks/useTokenTransfer';
+import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { toast } from '@/hooks/use-toast';
 
 interface TicketPurchaseProps {
@@ -14,16 +15,21 @@ interface TicketPurchaseProps {
 
 const TICKET_VALUES = [1, 2, 3, 4, 5];
 
+type TxStatus = 'idle' | 'confirming' | 'pending' | 'saving' | 'success' | 'manual';
+
 const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => {
   const [selectedValue, setSelectedValue] = useState<number>(1);
   const [selectedCurrency, setSelectedCurrency] = useState<'WOVER' | 'USDT'>('WOVER');
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const [txStatus, setTxStatus] = useState<'idle' | 'confirming' | 'saving'>('idle');
+  const [txStatus, setTxStatus] = useState<TxStatus>('idle');
   const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [manualTxHash, setManualTxHash] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
   const { buyTicket, availableTickets, refetch } = useGameTickets(walletAddress);
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
-  const { transferToken, getTokenBalance, isPending: isTransferPending } = useTokenTransfer();
+  const { transferToken, getTokenBalance, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
 
   const usdtAmount = selectedCurrency === 'USDT' && woverPrice 
     ? (selectedValue * woverPrice).toFixed(4)
@@ -62,6 +68,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
 
     setIsPurchasing(true);
     setTxStatus('confirming');
+    setShowManualInput(false);
 
     try {
       // Step 1: Execute blockchain transfer
@@ -72,24 +79,41 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
 
       const result = await transferToken(selectedCurrency, paymentAmount);
 
-      if (!result.success) {
+      if (!result.success && !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      setTxStatus('saving');
+      setLastTxHash(result.txHash || null);
 
-      // Step 2: Register ticket in database with tx hash
-      await buyTicket(selectedValue, selectedCurrency, paymentAmount, result.txHash);
-      
-      toast({
-        title: "Ticket Purchased! 🎫",
-        description: `${selectedValue} WOVER ticket added to your collection`,
-      });
-      
-      // Refresh data
-      await refetch();
-      if (walletAddress) {
-        getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+      // Handle different status outcomes
+      if (result.status === 'pending') {
+        setTxStatus('pending');
+        toast({
+          title: "Transaction Pending",
+          description: "Your transaction is being processed. You can wait or enter TX hash manually.",
+        });
+        setShowManualInput(true);
+        setIsPurchasing(false);
+        return;
+      }
+
+      if (result.status === 'confirmed' && result.txHash) {
+        setTxStatus('saving');
+
+        // Step 2: Register ticket in database with tx hash
+        await buyTicket(selectedValue, selectedCurrency, paymentAmount, result.txHash);
+        
+        setTxStatus('success');
+        toast({
+          title: "Ticket Purchased! 🎫",
+          description: `${selectedValue} WOVER ticket added to your collection`,
+        });
+        
+        // Refresh data
+        await refetch();
+        if (walletAddress) {
+          getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+        }
       }
     } catch (error) {
       toast({
@@ -97,13 +121,81 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         description: error instanceof Error ? error.message : "Failed to purchase ticket",
         variant: "destructive",
       });
+      setShowManualInput(true);
     } finally {
       setIsPurchasing(false);
-      setTxStatus('idle');
+      if (txStatus !== 'pending') {
+        setTimeout(() => setTxStatus('idle'), 2000);
+      }
+    }
+  };
+
+  // Handle manual TX hash submission
+  const handleManualSubmit = async () => {
+    const txHash = manualTxHash.trim();
+    if (!txHash || !txHash.startsWith('0x')) {
+      toast({
+        title: "Invalid TX Hash",
+        description: "Please enter a valid transaction hash starting with 0x",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!walletAddress) return;
+
+    setTxStatus('manual');
+    setIsPurchasing(true);
+
+    try {
+      // Verify the transaction first
+      const verification = await verifyTransaction(txHash);
+      
+      if (verification.status === 'failed') {
+        throw new Error('Transaction failed on-chain');
+      }
+
+      // Register ticket (backend will verify the TX)
+      const paymentAmount = selectedCurrency === 'WOVER' 
+        ? selectedValue 
+        : parseFloat(usdtAmount || '0');
+
+      await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash);
+      
+      setTxStatus('success');
+      toast({
+        title: "Ticket Registered! 🎫",
+        description: `${selectedValue} WOVER ticket verified and added`,
+      });
+      
+      setManualTxHash('');
+      setShowManualInput(false);
+      await refetch();
+      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+    } catch (error) {
+      toast({
+        title: "Verification Failed",
+        description: error instanceof Error ? error.message : "Could not verify transaction",
+        variant: "destructive",
+      });
+    } finally {
+      setIsPurchasing(false);
+      setTimeout(() => setTxStatus('idle'), 2000);
     }
   };
 
   const isLoading = isPurchasing || isTransferPending;
+
+  const getStatusMessage = () => {
+    switch (txStatus) {
+      case 'confirming': return 'Confirm in Wallet...';
+      case 'pending': return 'Waiting for confirmation...';
+      case 'saving': return 'Saving Ticket...';
+      case 'manual': return 'Verifying TX...';
+      case 'success': return 'Success!';
+      default: return 'Processing...';
+    }
+  };
 
   return (
     <div className="glass-card overflow-hidden">
@@ -174,90 +266,145 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           </div>
         )}
 
+        {/* Pending Transaction Banner */}
+        {(txStatus === 'pending' || lastTxHash) && showManualInput && (
+          <div className="p-3 rounded-xl bg-warning/10 border border-warning/20 space-y-2">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 text-warning animate-spin" />
+              <span className="text-sm font-medium text-warning">Transaction Pending</span>
+            </div>
+            {lastTxHash && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="font-mono">{lastTxHash.slice(0, 16)}...{lastTxHash.slice(-8)}</span>
+                <a 
+                  href={`https://over.network/tx/${lastTxHash}`} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Manual TX Hash Input */}
+        {showManualInput && (
+          <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              If your transaction confirmed but wasn't detected, paste the TX hash:
+            </p>
+            <div className="flex gap-2">
+              <Input
+                value={manualTxHash}
+                onChange={(e) => setManualTxHash(e.target.value)}
+                placeholder="0x..."
+                className="text-xs font-mono"
+              />
+              <Button 
+                size="sm" 
+                onClick={handleManualSubmit}
+                disabled={!manualTxHash || isLoading}
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Success State */}
+        {txStatus === 'success' && (
+          <div className="p-3 rounded-xl bg-success/10 border border-success/20 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-success" />
+            <span className="text-sm font-medium text-success">Ticket purchased successfully!</span>
+          </div>
+        )}
+
         {/* Currency Selection */}
-        <Tabs value={selectedCurrency} onValueChange={(v) => setSelectedCurrency(v as 'WOVER' | 'USDT')}>
-          <TabsList className="grid w-full grid-cols-2 bg-card/50 h-9">
-            <TabsTrigger value="WOVER" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              WOVER
-            </TabsTrigger>
-            <TabsTrigger value="USDT" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-              USDT
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {txStatus !== 'success' && (
+          <>
+            <Tabs value={selectedCurrency} onValueChange={(v) => setSelectedCurrency(v as 'WOVER' | 'USDT')}>
+              <TabsList className="grid w-full grid-cols-2 bg-card/50 h-9">
+                <TabsTrigger value="WOVER" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+                  WOVER
+                </TabsTrigger>
+                <TabsTrigger value="USDT" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
+                  USDT
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
 
-        {/* Ticket Value Selection */}
-        <div className="grid grid-cols-5 gap-2">
-          {TICKET_VALUES.map((value) => (
+            {/* Ticket Value Selection */}
+            <div className="grid grid-cols-5 gap-2">
+              {TICKET_VALUES.map((value) => (
+                <Button
+                  key={value}
+                  variant={selectedValue === value ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSelectedValue(value)}
+                  className={`h-10 text-sm font-bold transition-all duration-200 ${
+                    selectedValue === value 
+                      ? "bg-primary shadow-lg shadow-primary/30 scale-105 border-0" 
+                      : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
+                  }`}
+                >
+                  {value}
+                </Button>
+              ))}
+            </div>
+
+            {/* Price Display */}
+            <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground text-xs">You Pay</span>
+                <span className="font-bold text-base">
+                  {selectedCurrency === 'WOVER' ? (
+                    `${selectedValue} WOVER`
+                  ) : isPriceLoading ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    `${usdtAmount} USDT`
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" />
+                  Valid for 15 days
+                </div>
+                <span>Ticket value: {selectedValue} WOVER</span>
+              </div>
+            </div>
+
+            {/* Purchase Button */}
             <Button
-              key={value}
-              variant={selectedValue === value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedValue(value)}
-              className={`h-10 text-sm font-bold transition-all duration-200 ${
-                selectedValue === value 
-                  ? "bg-primary shadow-lg shadow-primary/30 scale-105 border-0" 
-                  : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
-              }`}
+              onClick={handlePurchase}
+              disabled={!isConnected || isLoading}
+              className="w-full btn-primary h-11 text-sm font-semibold"
             >
-              {value}
-            </Button>
-          ))}
-        </div>
-
-        {/* Price Display */}
-        <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-muted-foreground text-xs">You Pay</span>
-            <span className="font-bold text-base">
-              {selectedCurrency === 'WOVER' ? (
-                `${selectedValue} WOVER`
-              ) : isPriceLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>{getStatusMessage()}</span>
+                </div>
+              ) : !isConnected ? (
+                "Connect Wallet"
               ) : (
-                `${usdtAmount} USDT`
+                <div className="flex items-center gap-2">
+                  <Ticket className="w-4 h-4" />
+                  Buy Ticket
+                </div>
               )}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Clock className="w-2.5 h-2.5" />
-              Valid for 15 days
-            </div>
-            <span>Ticket value: {selectedValue} WOVER</span>
-          </div>
-        </div>
+            </Button>
 
-        {/* Purchase Button */}
-        <Button
-          onClick={handlePurchase}
-          disabled={!isConnected || isLoading}
-          className="w-full btn-primary h-11 text-sm font-semibold"
-        >
-          {isLoading ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>
-                {txStatus === 'confirming' && 'Confirm in Wallet...'}
-                {txStatus === 'saving' && 'Saving Ticket...'}
-                {txStatus === 'idle' && 'Processing...'}
-              </span>
+            {/* Info */}
+            <div className="flex items-start gap-2 p-2 rounded-lg bg-warning/5 border border-warning/10 text-[10px] text-warning">
+              <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+              <span>Tokens sent to treasury ({TREASURY_WALLET.slice(0, 6)}...{TREASURY_WALLET.slice(-4)}). TX verified on-chain.</span>
             </div>
-          ) : !isConnected ? (
-            "Connect Wallet"
-          ) : (
-            <div className="flex items-center gap-2">
-              <Ticket className="w-4 h-4" />
-              Buy Ticket
-            </div>
-          )}
-        </Button>
-
-        {/* Info */}
-        <div className="flex items-start gap-2 p-2 rounded-lg bg-warning/5 border border-warning/10 text-[10px] text-warning">
-          <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>Tokens are transferred to the game treasury. Transaction required.</span>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
