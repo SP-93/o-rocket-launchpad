@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface QuickCashoutOverlayProps {
+  walletAddress: string | undefined;
   myBet: {
     id: string;
     bet_amount: number;
@@ -18,11 +19,11 @@ interface QuickCashoutOverlayProps {
   onCashout?: () => void;
 }
 
-const QuickCashoutOverlay = ({ myBet, currentMultiplier, roundStatus, onCashout }: QuickCashoutOverlayProps) => {
+const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundStatus, onCashout }: QuickCashoutOverlayProps) => {
   const [isCashingOut, setIsCashingOut] = useState(false);
   const [justCashedOut, setJustCashedOut] = useState(false);
 
-  const canCashOut = myBet && 
+  const canCashOut = walletAddress && myBet && 
     myBet.status === 'active' && 
     roundStatus === 'flying' && 
     !myBet.cashed_out_at;
@@ -30,16 +31,24 @@ const QuickCashoutOverlay = ({ myBet, currentMultiplier, roundStatus, onCashout 
   const potentialWin = myBet ? Math.floor(myBet.bet_amount * currentMultiplier) : 0;
 
   const handleCashOut = async () => {
-    if (!myBet || !canCashOut) return;
+    if (!myBet || !canCashOut || !walletAddress) return;
     
     setIsCashingOut(true);
     try {
-      const { error } = await supabase.functions.invoke('game-cashout', {
-        body: { bet_id: myBet.id, multiplier: currentMultiplier }
+      const { data, error } = await supabase.functions.invoke('game-cashout', {
+        body: { 
+          wallet_address: walletAddress,
+          bet_id: myBet.id, 
+          current_multiplier: currentMultiplier 
+        }
       });
+      
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      
       setJustCashedOut(true);
-      toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${potentialWin} WOVER`);
+      const actualWin = data?.cashout?.winnings || potentialWin;
+      toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin.toFixed(2)} WOVER`);
       onCashout?.();
     } catch (error: any) {
       toast.error(error.message || 'Failed to cash out');

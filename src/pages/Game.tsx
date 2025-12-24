@@ -10,6 +10,8 @@ import WinConfetti from '@/components/game/WinConfetti';
 import ProvablyFairModal from '@/components/game/ProvablyFairModal';
 import GameTimer from '@/components/game/GameTimer';
 import LiveBetsFeed from '@/components/game/LiveBetsFeed';
+import QuickCashoutOverlay from '@/components/game/QuickCashoutOverlay';
+import MobileBetBar from '@/components/game/MobileBetBar';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
@@ -317,6 +319,15 @@ const Game = () => {
                       crashPoint={currentRound?.crash_point}
                     />
                     
+                    {/* Quick Cashout Overlay - positioned over rocket */}
+                    <QuickCashoutOverlay
+                      walletAddress={address}
+                      myBet={myBet}
+                      currentMultiplier={currentMultiplier}
+                      roundStatus={currentRound?.status || 'idle'}
+                      onCashout={refetchBets}
+                    />
+                    
                     <CountdownOverlay status={currentRound?.status || 'idle'} />
                   </div>
 
@@ -431,6 +442,18 @@ const Game = () => {
           </div>
         </div>
       </div>
+
+      {/* Mobile Bet Bar - Fixed bottom on mobile */}
+      {isConnected && (
+        <MobileBetBar
+          walletAddress={address}
+          isConnected={isConnected}
+          currentRound={currentRound}
+          myBet={myBet}
+          currentMultiplier={currentMultiplier}
+          onBetPlaced={refetchBets}
+        />
+      )}
     </div>
   );
 };
