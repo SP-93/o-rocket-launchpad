@@ -10,6 +10,7 @@ import {
   Cloud, HardDrive, Download, Upload, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { getDeployedContracts, getDeployedContractsAsync, clearCrashGameAddress, saveDeployedContract } from '@/contracts/storage';
 import { useWallet } from '@/hooks/useWallet';
@@ -200,6 +201,39 @@ const CrashGameContractSection = () => {
     }
   };
 
+  // Helper to sync DB with contract state
+  const syncDbWithContract = async () => {
+    try {
+      if (!localAddress) return;
+      
+      const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
+      const contract = new ethers.Contract(localAddress, CRASH_GAME_ABI, provider);
+      
+      const stats = await contract.getStats();
+      const contractBalance = parseFloat(ethers.utils.formatEther(stats.prizePool || stats[0] || 0));
+      const totalDeposited = parseFloat(ethers.utils.formatEther(stats.totalDeposited || stats[1] || 0));
+      const totalClaimed = parseFloat(ethers.utils.formatEther(stats.totalClaimed || stats[2] || 0));
+
+      // Update game_pool in Supabase
+      const { error } = await supabase
+        .from('game_pool')
+        .upsert({
+          current_balance: contractBalance,
+          total_deposits: totalDeposited,
+          total_payouts: totalClaimed,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (error) {
+        console.error('[CrashGame] Failed to sync DB:', error);
+      } else {
+        console.log('[CrashGame] DB synced with contract:', { contractBalance, totalDeposited, totalClaimed });
+      }
+    } catch (error) {
+      console.error('[CrashGame] Sync error:', error);
+    }
+  };
+
   const handleRefill = async () => {
     const signer = await getSigner();
     if (!signer || !refillAmount) {
@@ -212,6 +246,10 @@ const CrashGameContractSection = () => {
       await refillPrizePool(signer, refillAmount);
       setRefillAmount('');
       fetchContractState();
+      
+      // Auto-sync DB after successful refill
+      await syncDbWithContract();
+      toast.success('Prize pool refilled and database synced');
     } catch (error: any) {
       toast.error('Refill failed: ' + error.message);
     } finally {
@@ -235,6 +273,10 @@ const CrashGameContractSection = () => {
       await emergencyWithdraw(signer, withdrawAmount);
       setWithdrawAmount('');
       fetchContractState();
+      
+      // Auto-sync DB after successful withdraw
+      await syncDbWithContract();
+      toast.success('Withdrawn and database synced');
     } catch (error: any) {
       toast.error('Withdraw failed: ' + error.message);
     } finally {
