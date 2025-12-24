@@ -171,6 +171,8 @@ const Game = () => {
         engineStatus={engineStatus}
         roundStatus={currentRound?.status || null}
         roundNumber={currentRound?.round_number || null}
+        gamePaused={gamePaused}
+        pauseReason={pauseReason}
       />
 
       {/* Background effects */}
