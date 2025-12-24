@@ -23,7 +23,7 @@ export interface GroupedTicket {
 
 export function useGameTickets(walletAddress: string | undefined) {
   const [tickets, setTickets] = useState<GameTicket[]>([]);
-  const [availableTickets, setAvailableTickets] = useState<GameTicket[]>();
+  const [availableTickets, setAvailableTickets] = useState<GameTicket[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,7 +160,7 @@ export function useGameTickets(walletAddress: string | undefined) {
 
   // Group available tickets by value
   const groupedTickets = useMemo<GroupedTicket[]>(() => {
-    if (!availableTickets || availableTickets.length === 0) return [];
+    if (availableTickets.length === 0) return [];
     
     const groups = new Map<number, GameTicket[]>();
     
@@ -181,7 +181,7 @@ export function useGameTickets(walletAddress: string | undefined) {
 
   return {
     tickets,
-    availableTickets: availableTickets || [],
+    availableTickets,
     groupedTickets,
     isLoading,
     error,
