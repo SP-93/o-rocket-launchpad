@@ -223,6 +223,11 @@ export function useGameBets(roundId: string | undefined, walletAddress: string |
     }
   }, [roundId, walletAddress]);
 
+  // IMPORTANT: Reset myBet immediately when roundId changes to prevent stale UI
+  useEffect(() => {
+    setMyBet(null);
+  }, [roundId]);
+
   useEffect(() => {
     fetchBets();
 

@@ -130,8 +130,11 @@ const BettingPanel = ({
     }
   };
 
-  // Active bet view
-  if (myBet && currentRound) {
+  // Active bet view - only show if myBet is for the CURRENT round
+  // This prevents showing stale bet info after a round ends
+  const isMyBetForCurrentRound = myBet && currentRound && myBet.round_id === currentRound.id;
+  
+  if (isMyBetForCurrentRound) {
     const potentialWin = myBet.bet_amount * currentMultiplier;
     
     return (
