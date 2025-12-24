@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { supabase } from '@/integrations/supabase/client';
 import GlowCard from '@/components/ui/GlowCard';
@@ -7,7 +7,7 @@ import {
   Rocket, Play, Pause, RefreshCw, DollarSign, 
   Users, TrendingUp, Clock, AlertTriangle, CheckCircle,
   Loader2, Settings, Wallet, PlayCircle, StopCircle,
-  Zap, Timer, Target
+  Zap, Timer, Target, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -100,6 +100,13 @@ const GameManagementSection = () => {
   const [refillAmount, setRefillAmount] = useState('');
   const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
+
+  // Auto-cycling state
+  const [isAutoCycling, setIsAutoCycling] = useState(false);
+  const [roundDelay, setRoundDelay] = useState(5); // seconds between rounds
+  const [nextRoundCountdown, setNextRoundCountdown] = useState<number | null>(null);
+  const autoCycleRef = useRef<boolean>(false);
+  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -355,6 +362,162 @@ const GameManagementSection = () => {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Auto-cycling functions
+  const runAutoCycle = useCallback(async () => {
+    if (!autoCycleRef.current || !gameStatus.active) {
+      console.log('[AUTO] Stopping: autoCycleRef=', autoCycleRef.current, 'gameActive=', gameStatus.active);
+      setIsAutoCycling(false);
+      return;
+    }
+
+    console.log('[AUTO] Starting new round cycle...');
+    setIsRunningRound(true);
+
+    try {
+      // Phase 1: Start round
+      setRoundPhase('Starting round...');
+      const { data: startData, error: startError } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'start_round' },
+      });
+      
+      if (startError || !startData?.success) {
+        throw new Error(startError?.message || startData?.error || 'Failed to start round');
+      }
+
+      const roundId = startData.round.id;
+      const roundNumber = startData.round.round_number;
+      console.log(`[AUTO] Round #${roundNumber} started`);
+
+      // Phase 2: Betting phase
+      const bettingDuration = config.betting_duration || 15;
+      setRoundPhase(`Betting (${bettingDuration}s)...`);
+      await sleep(bettingDuration * 1000);
+
+      if (!autoCycleRef.current) return;
+
+      // Phase 3: Countdown
+      setRoundPhase('Countdown...');
+      await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'start_countdown', round_id: roundId },
+      });
+      await sleep(3000);
+
+      if (!autoCycleRef.current) return;
+
+      // Phase 4: Flying
+      setRoundPhase('Flying! 🚀');
+      await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'start_flying', round_id: roundId },
+      });
+
+      // Simulate flying (2-10 seconds)
+      const flyDuration = 2000 + Math.random() * 8000;
+      await sleep(flyDuration);
+
+      if (!autoCycleRef.current) return;
+
+      // Phase 5: Crash
+      setRoundPhase('Crashing...');
+      const { data: crashData } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'crash', round_id: roundId },
+      });
+      console.log(`[AUTO] Round #${roundNumber} crashed at ${crashData?.crash_point}x`);
+
+      // Phase 6: Payouts
+      setRoundPhase('Payouts...');
+      await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'process_payouts', round_id: roundId },
+      });
+
+      setRoundPhase(null);
+      setIsRunningRound(false);
+
+      // Wait before next round
+      if (autoCycleRef.current) {
+        console.log(`[AUTO] Waiting ${roundDelay}s before next round...`);
+        setNextRoundCountdown(roundDelay);
+        
+        // Start countdown
+        let countdown = roundDelay;
+        countdownIntervalRef.current = setInterval(() => {
+          countdown--;
+          setNextRoundCountdown(countdown);
+          if (countdown <= 0) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+            }
+            setNextRoundCountdown(null);
+          }
+        }, 1000);
+
+        await sleep(roundDelay * 1000);
+        
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+        setNextRoundCountdown(null);
+
+        // Start next round if still active
+        if (autoCycleRef.current && gameStatus.active) {
+          runAutoCycle();
+        }
+      }
+
+    } catch (error: any) {
+      console.error('[AUTO] Round cycle error:', error);
+      toast.error('Auto-cycle error: ' + error.message);
+      setRoundPhase(null);
+      setIsRunningRound(false);
+      
+      // Stop auto-cycling on error
+      autoCycleRef.current = false;
+      setIsAutoCycling(false);
+    }
+  }, [config.betting_duration, roundDelay, gameStatus.active]);
+
+  const handleStartAutoCycle = async () => {
+    if (!gameStatus.active) {
+      toast.error('Game is paused. Resume it first.');
+      return;
+    }
+
+    console.log('[AUTO] Starting auto-cycle...');
+    autoCycleRef.current = true;
+    setIsAutoCycling(true);
+    
+    // Save to database
+    await handleUpdateConfig('auto_cycling_enabled', true);
+    
+    toast.success('Auto-cycling started! Game will run continuously.');
+    runAutoCycle();
+  };
+
+  const handleStopAutoCycle = async () => {
+    console.log('[AUTO] Stopping auto-cycle...');
+    autoCycleRef.current = false;
+    setIsAutoCycling(false);
+    setNextRoundCountdown(null);
+    
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+    
+    // Save to database
+    await handleUpdateConfig('auto_cycling_enabled', false);
+    
+    toast.info('Auto-cycling stopped. Current round will finish.');
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      autoCycleRef.current = false;
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleDistributeWover = async () => {
     if (!revenue?.pending_wover || revenue.pending_wover <= 0) {
       toast.error('No pending WOVER to distribute');
@@ -527,7 +690,7 @@ const GameManagementSection = () => {
           <div className="flex flex-wrap gap-3">
             <NeonButton 
               onClick={handleToggleGame}
-              disabled={isTogglingGame}
+              disabled={isTogglingGame || isAutoCycling}
               variant={gameStatus.active ? 'destructive' : 'primary'}
               className="min-w-[140px]"
             >
@@ -541,39 +704,99 @@ const GameManagementSection = () => {
               {gameStatus.active ? 'Pause Game' : 'Resume Game'}
             </NeonButton>
 
-            <NeonButton 
-              onClick={handleRunRoundCycle}
-              disabled={isRunningRound || !gameStatus.active}
-              className="min-w-[160px]"
-            >
-              {isRunningRound ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {roundPhase || 'Running...'}
-                </>
-              ) : (
-                <>
-                  <Zap className="w-4 h-4 mr-2" />
-                  Run Round Cycle
-                </>
-              )}
-            </NeonButton>
-
             <NeonButton variant="ghost" onClick={() => { fetchData(); fetchGameStatus(); }}>
               <RefreshCw className="w-4 h-4" />
             </NeonButton>
           </div>
         </div>
 
-        {/* Round Cycle Progress */}
-        {roundPhase && (
-          <div className="mt-4 p-3 bg-primary/10 rounded-lg border border-primary/30">
-            <div className="flex items-center gap-2 text-primary">
-              <Timer className="w-4 h-4 animate-pulse" />
-              <span className="text-sm font-medium">{roundPhase}</span>
+        {/* Auto-Cycling Controls */}
+        <div className="mt-4 p-4 bg-card/50 rounded-lg border border-border/50">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                isAutoCycling ? 'bg-success/20' : 'bg-muted/20'
+              }`}>
+                <RotateCcw className={`w-5 h-5 ${isAutoCycling ? 'text-success animate-spin' : 'text-muted-foreground'}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Auto-Cycling</span>
+                  <Badge variant={isAutoCycling ? 'default' : 'outline'} className={isAutoCycling ? 'bg-success text-success-foreground' : ''}>
+                    {isAutoCycling ? 'LIVE' : 'OFF'}
+                  </Badge>
+                </div>
+                {isAutoCycling && nextRoundCountdown !== null && (
+                  <p className="text-xs text-muted-foreground">
+                    Next round in {nextRoundCountdown}s...
+                  </p>
+                )}
+                {isAutoCycling && roundPhase && (
+                  <p className="text-xs text-primary">
+                    {roundPhase}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-muted-foreground whitespace-nowrap">Delay:</Label>
+                <Input
+                  type="number"
+                  min="3"
+                  max="30"
+                  value={roundDelay}
+                  onChange={(e) => setRoundDelay(Math.max(3, Math.min(30, parseInt(e.target.value) || 5)))}
+                  className="w-16 h-8 text-center"
+                  disabled={isAutoCycling}
+                />
+                <span className="text-xs text-muted-foreground">sec</span>
+              </div>
+
+              {isAutoCycling ? (
+                <NeonButton 
+                  onClick={handleStopAutoCycle}
+                  variant="destructive"
+                  className="min-w-[140px]"
+                >
+                  <StopCircle className="w-4 h-4 mr-2" />
+                  Stop Auto
+                </NeonButton>
+              ) : (
+                <NeonButton 
+                  onClick={handleStartAutoCycle}
+                  disabled={!gameStatus.active || isRunningRound}
+                  className="min-w-[140px] bg-success hover:bg-success/90"
+                >
+                  <PlayCircle className="w-4 h-4 mr-2" />
+                  Start Auto
+                </NeonButton>
+              )}
+
+              {!isAutoCycling && (
+                <NeonButton 
+                  onClick={handleRunRoundCycle}
+                  disabled={isRunningRound || !gameStatus.active}
+                  variant="ghost"
+                  className="min-w-[130px]"
+                >
+                  {isRunningRound ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {roundPhase || 'Running...'}
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 mr-2" />
+                      Run 1 Round
+                    </>
+                  )}
+                </NeonButton>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </GlowCard>
 
       {/* Quick Stats */}
