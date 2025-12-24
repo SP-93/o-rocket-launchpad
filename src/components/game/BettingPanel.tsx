@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Loader2, Zap, Hand, Target, Ticket, TrendingUp } from 'lucide-react';
+import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, ExternalLink } from 'lucide-react';
 import { useGameTickets, type GameTicket } from '@/hooks/useGameTickets';
 import { useGameBetting } from '@/hooks/useGameBetting';
+import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import type { GameRound, GameBet } from '@/hooks/useGameRound';
 import { toast } from '@/hooks/use-toast';
 import useGameSounds from '@/hooks/useGameSounds';
+
 
 interface BettingPanelProps {
   walletAddress: string | undefined;
@@ -33,12 +35,35 @@ const BettingPanel = ({
   
   const { availableTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
+  const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount } = useClaimWinnings(walletAddress);
   
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
 
   const canBet = currentRound?.status === 'betting' && !myBet && isConnected;
   const canCashOut = currentRound?.status === 'flying' && myBet?.status === 'active';
+  
+  // Check if player can claim winnings when they won
+  useEffect(() => {
+    if (myBet?.status === 'won' && currentRound?.round_number) {
+      checkCanClaim(currentRound.round_number);
+    }
+  }, [myBet?.status, currentRound?.round_number, checkCanClaim]);
+
+  const handleClaimWinnings = async () => {
+    if (!currentRound?.round_number || !window.ethereum) return;
+    
+    try {
+      const { ethers } = await import('ethers');
+      const provider = new ethers.providers.Web3Provider(window.ethereum as any);
+      const signer = provider.getSigner();
+      
+      await claimWinnings(signer, currentRound.round_number);
+      playSound('cashout');
+    } catch (error) {
+      // Error already handled in hook
+    }
+  };
 
   const handlePlaceBet = async () => {
     if (!selectedTicket) {
@@ -136,6 +161,9 @@ const BettingPanel = ({
                   <span className="text-muted-foreground text-sm">Won</span>
                   <span className="font-bold text-lg text-success">+{myBet.winnings?.toFixed(2)} WOVER</span>
                 </div>
+                {canClaim && (
+                  <p className="text-xs text-primary mt-1">Click below to claim on-chain!</p>
+                )}
               </div>
             )}
             
@@ -158,6 +186,24 @@ const BettingPanel = ({
                 <div className="flex items-center gap-2">
                   <Hand className="w-5 h-5" />
                   <span>CASH OUT {potentialWin.toFixed(2)}</span>
+                </div>
+              )}
+            </Button>
+          )}
+
+          {/* Claim Winnings Button - shows when player won */}
+          {myBet.status === 'won' && canClaim && (
+            <Button
+              onClick={handleClaimWinnings}
+              disabled={isClaiming}
+              className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30"
+            >
+              {isClaiming ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Wallet className="w-5 h-5" />
+                  <span>CLAIM {pendingAmount} WOVER</span>
                 </div>
               )}
             </Button>
