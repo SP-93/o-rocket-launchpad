@@ -128,13 +128,27 @@ const AutoGameControl = () => {
           )}
         </div>
 
+        {/* Last Action - helpful for debugging */}
+        {state.lastAction && state.isRunning && (
+          <div className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>Last action: <code className="bg-background/50 px-1 rounded">{state.lastAction}</code></span>
+          </div>
+        )}
+
         {/* Error Display */}
         {state.error && (
           <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="w-4 h-4" />
-              <span className="text-sm">{state.error}</span>
+            <div className="flex items-start gap-2 text-destructive">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="text-sm font-medium">Error</span>
+                <p className="text-xs mt-0.5 opacity-80">{state.error}</p>
+              </div>
             </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              Will auto-retry in 5 seconds if still running...
+            </p>
           </div>
         )}
 

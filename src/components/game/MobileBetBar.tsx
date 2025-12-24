@@ -52,7 +52,7 @@ const MobileBetBar = ({
     
     setIsPlacingBet(true);
     try {
-      const { error } = await supabase.functions.invoke('game-place-bet', {
+      const response = await supabase.functions.invoke('game-place-bet', {
         body: {
           wallet_address: walletAddress,
           ticket_id: ticket.id,
@@ -61,7 +61,9 @@ const MobileBetBar = ({
         }
       });
       
-      if (error) throw error;
+      if (response.error) throw response.error;
+      if (response.data?.error) throw new Error(response.data.error);
+      
       toast.success('Bet placed!');
       setIsOpen(false);
       onBetPlaced?.();
@@ -77,16 +79,19 @@ const MobileBetBar = ({
     
     setIsCashingOut(true);
     try {
-      const { error } = await supabase.functions.invoke('game-cashout', {
+      const response = await supabase.functions.invoke('game-cashout', {
         body: {
+          wallet_address: walletAddress,
           bet_id: myBet.id,
-          cashout_multiplier: currentMultiplier,
-          wallet_address: walletAddress
+          current_multiplier: currentMultiplier
         }
       });
       
-      if (error) throw error;
-      toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x!`);
+      if (response.error) throw response.error;
+      if (response.data?.error) throw new Error(response.data.error);
+      
+      const actualWin = response.data?.cashout?.winnings;
+      toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin?.toFixed(2) || ''} WOVER`);
     } catch (error: any) {
       toast.error(error.message || 'Failed to cash out');
     } finally {
