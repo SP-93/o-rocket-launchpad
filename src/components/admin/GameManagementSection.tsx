@@ -630,10 +630,24 @@ const GameManagementSection = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Prize Pool Management */}
         <GlowCard className="p-6" glowColor="cyan">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-warning" />
-            Prize Pool
-          </h3>
+          <div className="flex items-start justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-warning" />
+              Prize Pool
+            </h3>
+            <div className="group relative">
+              <Badge variant="outline" className="text-xs cursor-help">
+                Hybrid Mode
+              </Badge>
+              <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  <strong className="text-foreground block mb-1">On-Chain vs Off-Chain:</strong>
+                  <span className="block mb-1">• <strong>On-Chain:</strong> Real token balances & payouts via smart contract</span>
+                  <span className="block">• <strong>Off-Chain:</strong> Game logic, statistics, and round management for speed</span>
+                </p>
+              </div>
+            </div>
+          </div>
           
           <div className="space-y-4">
             <div className="bg-success/10 rounded-lg p-4 border border-success/30">

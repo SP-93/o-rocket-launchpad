@@ -11,9 +11,10 @@ import ProvablyFairModal from '@/components/game/ProvablyFairModal';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX } from 'lucide-react';
+import { Wallet, Trophy, TrendingUp, Zap, Volume2, VolumeX, Pause, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import useGameSounds from '@/hooks/useGameSounds';
+import { supabase } from '@/integrations/supabase/client';
 
 const Game = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -24,6 +25,8 @@ const Game = () => {
   });
   const [showWinConfetti, setShowWinConfetti] = useState(false);
   const [winMultiplier, setWinMultiplier] = useState(1);
+  const [gamePaused, setGamePaused] = useState(false);
+  const [pauseReason, setPauseReason] = useState<string | null>(null);
   const { address, isConnected } = useWallet();
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
@@ -32,13 +35,45 @@ const Game = () => {
   // Sound effects
   const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext } = useGameSounds(soundEnabled);
   const prevStatusRef = useRef<string | null>(null);
+  const initialLoadRef = useRef(true);
 
   const isFlying = currentRound?.status === 'flying';
+  const isWaitingForRound = !currentRound || currentRound?.status === 'crashed' || currentRound?.status === 'payout';
+
+  // Fetch game status (paused/active)
+  useEffect(() => {
+    const fetchGameStatus = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('game-round-manager', {
+          body: { action: 'get_status' },
+        });
+        if (!error && data) {
+          setGamePaused(!data.game_active);
+          setPauseReason(data.game_paused_reason || null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch game status:', err);
+      }
+    };
+    fetchGameStatus();
+    // Poll every 30 seconds
+    const interval = setInterval(fetchGameStatus, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle game status changes for sounds
   useEffect(() => {
     const currentStatus = currentRound?.status;
     const prevStatus = prevStatusRef.current;
+
+    // On initial load, if already flying, start the sound immediately
+    if (initialLoadRef.current && currentStatus === 'flying') {
+      initAudioContext();
+      startFlyingSound();
+      initialLoadRef.current = false;
+      prevStatusRef.current = currentStatus || null;
+      return;
+    }
 
     if (currentStatus !== prevStatus) {
       // Status changed
@@ -70,8 +105,9 @@ const Game = () => {
       }
       
       prevStatusRef.current = currentStatus || null;
+      initialLoadRef.current = false;
     }
-  }, [currentRound?.status, myBet?.status, playSound, startFlyingSound, stopFlyingSound]);
+  }, [currentRound?.status, myBet?.status, playSound, startFlyingSound, stopFlyingSound, initAudioContext]);
 
   // Update flying sound pitch based on multiplier
   useEffect(() => {
@@ -178,28 +214,55 @@ const Game = () => {
                     </button>
                   </div>
                   
-                  {/* Game Screen */}
-                  <div className="relative aspect-video bg-gradient-to-b from-background/80 to-background/40">
-                    {/* Subtle grid overlay */}
-                    <div 
-                      className="absolute inset-0 opacity-[0.02]" 
-                      style={{
-                        backgroundImage: 'linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)',
-                        backgroundSize: '50px 50px'
-                      }}
-                    />
-                    
-                    <RocketAnimation
-                      status={currentRound?.status || 'idle'}
-                      multiplier={currentMultiplier}
-                      crashPoint={currentRound?.crash_point}
-                    />
-                    
-                    {/* Countdown Overlay */}
-                    <CountdownOverlay 
-                      status={currentRound?.status || 'idle'}
-                    />
-                  </div>
+                    {/* Game Screen */}
+                    <div className="relative aspect-video bg-gradient-to-b from-background/80 to-background/40">
+                      {/* Subtle grid overlay */}
+                      <div 
+                        className="absolute inset-0 opacity-[0.02]" 
+                        style={{
+                          backgroundImage: 'linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)',
+                          backgroundSize: '50px 50px'
+                        }}
+                      />
+                      
+                      {/* Game Paused Overlay */}
+                      {gamePaused && (
+                        <div className="absolute inset-0 z-30 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+                          <div className="text-center p-6">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-warning/20 flex items-center justify-center">
+                              <Pause className="w-8 h-8 text-warning" />
+                            </div>
+                            <h3 className="text-xl font-bold mb-2">Game Paused</h3>
+                            <p className="text-muted-foreground text-sm">
+                              {pauseReason || 'The game is currently paused. Please wait for the next round.'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Waiting for Round Overlay */}
+                      {!gamePaused && isWaitingForRound && !isLoading && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center">
+                          <div className="text-center p-6">
+                            <Loader2 className="w-10 h-10 mx-auto mb-3 text-primary animate-spin" />
+                            <p className="text-muted-foreground text-sm">
+                              Waiting for next round...
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      <RocketAnimation
+                        status={currentRound?.status || 'idle'}
+                        multiplier={currentMultiplier}
+                        crashPoint={currentRound?.crash_point}
+                      />
+                      
+                      {/* Countdown Overlay */}
+                      <CountdownOverlay 
+                        status={currentRound?.status || 'idle'}
+                      />
+                    </div>
 
                   {/* Bottom info bar */}
                   <div className="border-t border-border/30 bg-card/50 backdrop-blur-sm">
