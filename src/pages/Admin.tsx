@@ -28,6 +28,7 @@ import AuditLogSection from '@/components/admin/AuditLogSection';
 import GameManagementSection from '@/components/admin/GameManagementSection';
 import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
 import OnChainRoundManagement from '@/components/admin/OnChainRoundManagement';
+import AutoGameControl from '@/components/admin/AutoGameControl';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -1011,17 +1012,29 @@ const Admin = () => {
 
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
+              {/* Auto Game Loop - Primary Control */}
+              <div className="border-b border-border/30 pb-6">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Rocket className="w-5 h-5 text-success" />
+                  Automatic Game Loop
+                </h2>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Start automatic gameplay - rounds cycle continuously (betting → flying → crash → payout)
+                </p>
+                <AutoGameControl />
+              </div>
+              
               {/* Smart Contract Deployment */}
               <CrashGameContractSection />
               
-              {/* On-Chain Round Control */}
+              {/* On-Chain Round Control (Manual) */}
               <div className="border-t border-border/30 pt-6">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                   <Rocket className="w-5 h-5 text-primary" />
-                  On-Chain Round Control
+                  Manual On-Chain Round Control
                 </h2>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Start rounds, control flight phase, and trigger crash on the blockchain
+                  Manual control for testing - start rounds, control flight phase, and trigger crash
                 </p>
                 <OnChainRoundManagement />
               </div>
