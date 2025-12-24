@@ -64,10 +64,9 @@ serve(async (req) => {
       );
     }
 
-    // Calculate expected winnings
-    const betAmount = bet.bet_amount || 0;
-    const cashedOutAt = bet.cashed_out_at || 1;
-    const expectedWinnings = betAmount * (cashedOutAt / 100);
+    // Use stored winnings or calculate from bet amount * multiplier
+    // Note: cashed_out_at is already the multiplier (e.g., 1.45x), not a percentage
+    const expectedWinnings = bet.winnings || (bet.bet_amount * bet.cashed_out_at);
 
     // Verify amount matches
     const requestedAmount = parseFloat(amount);
