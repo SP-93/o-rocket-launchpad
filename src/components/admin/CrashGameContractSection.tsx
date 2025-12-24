@@ -218,10 +218,11 @@ const CrashGameContractSection = () => {
                     <Copy className="w-4 h-4" />
                   </button>
                   <a 
-                    href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/address/${deployedContracts.crashGame}`}
+                    href={`https://scan.over.network/address/${deployedContracts.crashGame}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary"
+                    className="text-muted-foreground hover:text-primary flex items-center gap-1"
+                    title="Open in Over Network Explorer"
                   >
                     <ExternalLink className="w-4 h-4" />
                   </a>
@@ -409,6 +410,18 @@ const CrashGameContractSection = () => {
               <p className="text-[10px] text-muted-foreground mt-1">
                 All player payouts are in WOVER tokens
               </p>
+            </div>
+
+            {/* Debug Info - Token Addresses */}
+            <div className="bg-background/30 rounded-lg p-3 mb-4 border border-border/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Database className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-medium">Contract Token Config</span>
+              </div>
+              <div className="grid gap-1 text-[10px] font-mono">
+                <p><span className="text-muted-foreground">WOVER: </span>{TOKEN_ADDRESSES.WOVER}</p>
+                <p><span className="text-muted-foreground">USDT: </span>{TOKEN_ADDRESSES.USDT}</p>
+              </div>
             </div>
 
             {/* Refill Pool - WOVER only */}
