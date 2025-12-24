@@ -5,6 +5,10 @@
 
 export interface BytecodeAnalysis {
   hasPush0: boolean;
+  /** Number of actual PUSH0 opcodes found in the opcode stream (not inside PUSH data) */
+  push0Count: number;
+  /** Byte offset (0-based) of the first PUSH0 opcode in the opcode stream, if any */
+  firstPush0ByteOffset: number | null;
   evmVersion: 'paris' | 'shanghai' | 'unknown';
   warnings: string[];
   recommendations: string[];
@@ -19,39 +23,34 @@ export interface BytecodeAnalysis {
 export function analyzeBytecode(bytecode: string): BytecodeAnalysis {
   const warnings: string[] = [];
   const recommendations: string[] = [];
-  
+
   // Remove 0x prefix if present
   const cleanBytecode = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
-  
-  // Check for PUSH0 opcode (0x5f)
-  // PUSH0 is a single-byte opcode that pushes 0 onto the stack
-  // It appears in bytecode compiled with Solidity 0.8.20+ targeting Shanghai
-  
-  // Simple heuristic: look for 5f patterns that are likely PUSH0
-  // In valid bytecode, 5f as PUSH0 would typically appear:
-  // - At even positions (byte boundaries)
-  // - Not as part of PUSH data
-  
-  let hasPush0 = false;
-  
+
   // Convert to bytes array for analysis
   const bytes: number[] = [];
-  for (let i = 0; i < cleanBytecode.length; i += 2) {
-    bytes.push(parseInt(cleanBytecode.slice(i, i + 2), 16));
+  for (let bi = 0; bi < cleanBytecode.length; bi += 2) {
+    bytes.push(parseInt(cleanBytecode.slice(bi, bi + 2), 16));
   }
-  
-  // Scan through bytecode looking for 0x5f opcode
-  // Skip PUSH1-PUSH32 data
+
+  // Scan through bytecode looking for 0x5f opcode.
+  // IMPORTANT: skip PUSH1-PUSH32 immediate data so we don't false-positive on data bytes.
+  let push0Count = 0;
+  let firstPush0ByteOffset: number | null = null;
+
   let i = 0;
   while (i < bytes.length) {
     const opcode = bytes[i];
-    
+
     // PUSH0 = 0x5f
     if (opcode === 0x5f) {
-      hasPush0 = true;
-      break;
+      push0Count += 1;
+      if (firstPush0ByteOffset === null) firstPush0ByteOffset = i;
+      // continue scanning to count all occurrences
+      i += 1;
+      continue;
     }
-    
+
     // PUSH1 (0x60) through PUSH32 (0x7f) - skip the data bytes
     if (opcode >= 0x60 && opcode <= 0x7f) {
       const pushSize = opcode - 0x60 + 1;
@@ -60,22 +59,26 @@ export function analyzeBytecode(bytecode: string): BytecodeAnalysis {
       i += 1;
     }
   }
-  
+
+  const hasPush0 = push0Count > 0;
+
   // Determine likely EVM version
   let evmVersion: 'paris' | 'shanghai' | 'unknown' = 'unknown';
-  
+
   if (hasPush0) {
     evmVersion = 'shanghai';
-    warnings.push('Bytecode contains PUSH0 opcode (Shanghai/Solidity 0.8.20+)');
-    warnings.push('This opcode may not be supported on Over Protocol');
+    warnings.push('Bytecode contains PUSH0 opcode (Shanghai / Solidity 0.8.20+)');
+    warnings.push('Over Protocol may not support PUSH0 yet; deployments can fail');
     recommendations.push('Recompile with Remix using EVM Version: Paris');
-    recommendations.push('Or downgrade to Solidity 0.8.19');
+    recommendations.push('Copy BYTECODE → object (creation bytecode), not deployed/runtime');
   } else {
     evmVersion = 'paris';
   }
-  
+
   return {
     hasPush0,
+    push0Count,
+    firstPush0ByteOffset,
     evmVersion,
     warnings,
     recommendations,

@@ -61,9 +61,10 @@ const CrashGameContractSection = () => {
   }, [address, contractOwner]);
 
   // Analyze bytecode for PUSH0 compatibility
+  // Note: depend on CRASH_GAME_BYTECODE so HMR / rebuilds always reflect the latest artifacts.
   const bytecodeAnalysis = useMemo(() => {
     return analyzeBytecode(CRASH_GAME_BYTECODE);
-  }, []);
+  }, [CRASH_GAME_BYTECODE]);
 
   // Get ethers signer from wallet client
   const getSigner = useCallback(async () => {
@@ -500,6 +501,15 @@ const CrashGameContractSection = () => {
                     {bytecodeAnalysis.hasPush0 ? 'Present ⚠️' : 'Not found ✓'}
                   </span>
                 </div>
+
+                {bytecodeAnalysis.hasPush0 && (
+                  <div className="col-span-2 text-muted-foreground">
+                    Found <span className="font-medium">{bytecodeAnalysis.push0Count}</span> PUSH0 opcode(s)
+                    {bytecodeAnalysis.firstPush0ByteOffset !== null && (
+                      <> (first at byte <span className="font-medium">#{bytecodeAnalysis.firstPush0ByteOffset}</span>)</>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
