@@ -25,7 +25,7 @@ export interface GameBet {
   auto_cashout_at: number | null;
   cashed_out_at: number | null;
   winnings: number;
-  status: 'active' | 'won' | 'lost';
+  status: 'active' | 'won' | 'lost' | 'claiming' | 'claimed';
   created_at: string;
 }
 

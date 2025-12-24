@@ -70,7 +70,18 @@ serve(async (req) => {
       );
     }
 
-    // Verify amount matches
+    // CRITICAL: Verify nonce matches what was set during sign-claim
+    // This prevents replay attacks and ensures claim integrity
+    const dbNonce = bet.claim_nonce;
+    if (!dbNonce || dbNonce !== nonce) {
+      console.error('[game-confirm-claim] Nonce mismatch:', { requestNonce: nonce, dbNonce });
+      return new Response(
+        JSON.stringify({ error: 'Nonce mismatch - claim session invalid' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify amount matches expected winnings
     const expectedWinnings = bet.winnings || (bet.bet_amount * bet.cashed_out_at);
     const requestedAmount = parseFloat(amount);
     if (Math.abs(requestedAmount - expectedWinnings) > 0.01) {
@@ -133,7 +144,7 @@ serve(async (req) => {
       // Reset to 'won' so user can try again
       await supabase
         .from('game_bets')
-        .update({ status: 'won', claiming_started_at: null })
+        .update({ status: 'won', claiming_started_at: null, claim_nonce: null })
         .eq('id', bet.id);
       
       return new Response(
@@ -155,6 +166,8 @@ serve(async (req) => {
     const iface = new ethers.utils.Interface(CRASH_GAME_ABI);
     const roundIdHash = ethers.utils.id(roundId);
     let foundValidEvent = false;
+    let eventAmountWei: ethers.BigNumber | null = null;
+    let eventNonceValue: number | null = null;
 
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== contractAddress.toLowerCase()) {
@@ -165,18 +178,18 @@ serve(async (req) => {
         const parsedLog = iface.parseLog(log);
         if (parsedLog.name === 'WinningsClaimed') {
           const eventPlayer = parsedLog.args.player.toLowerCase();
-          const eventAmount = parsedLog.args.amount;
+          eventAmountWei = parsedLog.args.amount;
           const eventRoundId = parsedLog.args.roundId;
-          const eventNonce = parsedLog.args.nonce.toNumber();
+          eventNonceValue = parsedLog.args.nonce.toNumber();
 
           console.log('[game-confirm-claim] Found WinningsClaimed event:', {
             player: eventPlayer,
-            amount: ethers.utils.formatEther(eventAmount),
+            amount: ethers.utils.formatEther(eventAmountWei!),
             roundId: eventRoundId,
-            nonce: eventNonce,
+            nonce: eventNonceValue,
           });
 
-          // Verify event data matches
+          // Verify all event data matches
           if (
             eventPlayer === walletAddress.toLowerCase() &&
             eventRoundId === roundIdHash
@@ -190,10 +203,29 @@ serve(async (req) => {
       }
     }
 
-    if (!foundValidEvent) {
+    if (!foundValidEvent || !eventAmountWei || eventNonceValue === null) {
       console.error('[game-confirm-claim] No matching WinningsClaimed event found');
       return new Response(
         JSON.stringify({ error: 'No valid claim event found in transaction' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // CRITICAL: Verify event nonce matches database nonce
+    if (eventNonceValue !== dbNonce) {
+      console.error('[game-confirm-claim] Event nonce mismatch:', { eventNonce: eventNonceValue, dbNonce });
+      return new Response(
+        JSON.stringify({ error: 'Event nonce does not match claim session' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // CRITICAL: Verify event amount matches expected winnings
+    const eventAmountEther = parseFloat(ethers.utils.formatEther(eventAmountWei));
+    if (Math.abs(eventAmountEther - expectedWinnings) > 0.01) {
+      console.error('[game-confirm-claim] Event amount mismatch:', { eventAmount: eventAmountEther, expectedWinnings });
+      return new Response(
+        JSON.stringify({ error: 'Event amount does not match expected winnings' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -204,7 +236,6 @@ serve(async (req) => {
       .update({
         status: 'claimed',
         claim_tx_hash: txHash,
-        claim_nonce: nonce,
         claimed_at: new Date().toISOString(),
       })
       .eq('id', bet.id);
