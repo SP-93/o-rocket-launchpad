@@ -31,26 +31,50 @@ export function useGameTickets(walletAddress: string | undefined) {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
-        .from('game_tickets')
-        .select('*')
-        .eq('wallet_address', walletAddress.toLowerCase())
-        .order('created_at', { ascending: false });
+      // Use edge function to bypass RLS issues
+      const response = await supabase.functions.invoke('game-get-tickets', {
+        body: { wallet_address: walletAddress },
+      });
 
-      if (fetchError) throw fetchError;
+      if (response.error) {
+        throw new Error(response.error.message || 'Failed to fetch tickets');
+      }
 
-      const allTickets = (data || []) as GameTicket[];
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      const allTickets = (response.data?.tickets || []) as GameTicket[];
+      const available = (response.data?.availableTickets || []) as GameTicket[];
+      
       setTickets(allTickets);
-
-      // Filter available tickets (not used, not expired)
-      const now = new Date();
-      const available = allTickets.filter(
-        t => !t.is_used && new Date(t.expires_at) > now
-      );
       setAvailableTickets(available);
     } catch (err) {
       console.error('Error fetching tickets:', err);
       setError('Failed to fetch tickets');
+      
+      // Fallback to direct query (may fail due to RLS)
+      try {
+        const { data, error: fetchError } = await supabase
+          .from('game_tickets')
+          .select('*')
+          .eq('wallet_address', walletAddress.toLowerCase())
+          .order('created_at', { ascending: false });
+
+        if (!fetchError && data) {
+          const allTickets = data as GameTicket[];
+          setTickets(allTickets);
+          
+          const now = new Date();
+          const available = allTickets.filter(
+            t => !t.is_used && new Date(t.expires_at) > now
+          );
+          setAvailableTickets(available);
+          setError(null);
+        }
+      } catch {
+        // Ignore fallback error
+      }
     } finally {
       setIsLoading(false);
     }
