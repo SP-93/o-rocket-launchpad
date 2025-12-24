@@ -282,11 +282,11 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     return { action: 'paused', details: { reason: gameStatus?.config_value?.reason || 'Game paused' } };
   }
 
-  // Get current round
+  // Get current round - include 'payout' status too
   const { data: currentRound } = await supabase
     .from('game_rounds')
     .select('*')
-    .in('status', ['betting', 'countdown', 'flying', 'crashed'])
+    .in('status', ['betting', 'countdown', 'flying', 'crashed', 'payout'])
     .order('created_at', { ascending: false })
     .limit(1)
     .single();
@@ -300,7 +300,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     // Check prize pool balance first
     const { data: pool } = await supabase
       .from('game_pool')
-      .select('current_balance')
+      .select('id, current_balance')
       .limit(1)
       .single();
 
@@ -352,8 +352,22 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     return { action: 'round_started', details: { roundId: newRound.id, roundNumber: newRound.round_number } };
   }
 
-  const startedAt = currentRound.started_at ? new Date(currentRound.started_at).getTime() : now;
-  const elapsed = (now - startedAt) / 1000;
+  // Use effective start time with proper fallback chain
+  const getEffectiveStartTime = (): number => {
+    if (currentRound.status === 'crashed' && currentRound.crashed_at) {
+      return new Date(currentRound.crashed_at).getTime();
+    }
+    if (currentRound.started_at) {
+      return new Date(currentRound.started_at).getTime();
+    }
+    if (currentRound.crashed_at) {
+      return new Date(currentRound.crashed_at).getTime();
+    }
+    return new Date(currentRound.created_at).getTime();
+  };
+
+  const effectiveStart = getEffectiveStartTime();
+  const elapsed = (now - effectiveStart) / 1000;
 
   // Handle based on current status
   switch (currentRound.status) {
@@ -428,6 +442,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
 
       // Check if should crash
       if (currentMultiplier >= crashPoint) {
+        const crashedAt = new Date().toISOString();
         // Update round with crash info
         await supabase
           .from('game_rounds')
@@ -435,8 +450,8 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
             status: 'crashed',
             crash_point: crashPoint,
             server_seed: seedData.serverSeed,
-            crashed_at: new Date().toISOString(),
-            started_at: new Date().toISOString(), // Reset for crash display timer
+            crashed_at: crashedAt,
+            started_at: crashedAt, // Use crashed_at as started_at for payout timer
           })
           .eq('id', currentRound.id);
 
@@ -458,7 +473,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     }
 
     case 'crashed': {
-      // After crash display duration, process payouts and prepare next round
+      // After crash display duration, process payouts
       if (elapsed >= GAME_CONFIG.crashDisplayDuration) {
         // Calculate totals
         const { data: bets } = await supabase
@@ -469,7 +484,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
         const totalWagered = (bets || []).reduce((sum: number, b: any) => sum + (b.bet_amount || 0), 0);
         const totalPayouts = (bets || []).filter((b: any) => b.status === 'won').reduce((sum: number, b: any) => sum + (b.winnings || 0), 0);
 
-        // Update round stats
+        // Update round stats and mark as payout (completed)
         await supabase
           .from('game_rounds')
           .update({
@@ -480,11 +495,11 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
           })
           .eq('id', currentRound.id);
 
-        // Update pool balance
+        // Update pool balance with proper ID filter
         const netChange = totalWagered - totalPayouts;
         const { data: pool } = await supabase
           .from('game_pool')
-          .select('current_balance, total_payouts')
+          .select('id, current_balance, total_payouts')
           .limit(1)
           .single();
 
@@ -496,15 +511,26 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
               total_payouts: (pool.total_payouts || 0) + totalPayouts,
               last_payout_at: new Date().toISOString(),
             })
-            .limit(1);
+            .eq('id', pool.id);
+          console.log(`[${requestId}] Pool updated: balance ${pool.current_balance} → ${pool.current_balance + netChange}`);
         }
 
-        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} payouts processed (net: ${netChange})`);
-        
-        // Immediately start new round (tick will be called again)
-        return { action: 'payout_complete', details: { totalWagered, totalPayouts, netChange } };
+        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} → payout (net: ${netChange})`);
+        return { action: 'payout_started', details: { totalWagered, totalPayouts, netChange } };
       }
       return { action: 'crashed_display', details: { timeRemaining: Math.ceil(GAME_CONFIG.crashDisplayDuration - elapsed) } };
+    }
+
+    case 'payout': {
+      // Payout round is complete, next tick will start new round since no active rounds in query
+      // Mark round as truly completed so it doesn't appear in active query
+      await supabase
+        .from('game_rounds')
+        .update({ status: 'completed' })
+        .eq('id', currentRound.id);
+
+      console.log(`[${requestId}] TICK: Round ${currentRound.round_number} completed, next round will start`);
+      return { action: 'round_completed', details: { roundId: currentRound.id } };
     }
 
     default:
