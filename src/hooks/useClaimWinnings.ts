@@ -84,6 +84,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
   const claimWinnings = useCallback(async (
     signer: ethers.Signer,
     roundId: string,
+    amount: string | number,
     nonce: number = Date.now()
   ): Promise<string> => {
     if (!walletAddress) {
@@ -94,11 +95,12 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
     try {
       // First, get claim data from backend
+      const claimAmount = typeof amount === 'number' ? amount.toString() : amount;
       const { data: claimResponse, error: claimError } = await supabase.functions.invoke('game-sign-claim', {
         body: {
           walletAddress,
           roundId,
-          amount: claimState.pendingAmount,
+          amount: claimAmount,
           nonce,
         },
       });
@@ -190,7 +192,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       toast({
         title: "Winnings Claimed! 🎉",
-        description: `Successfully claimed ${claimState.pendingAmount} WOVER`,
+        description: `Successfully claimed ${claimAmount} WOVER`,
       });
 
       return tx.hash;
@@ -220,7 +222,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       throw new Error(errorMessage);
     }
-  }, [walletAddress, getContract, claimState.pendingAmount]);
+  }, [walletAddress, getContract]);
 
   return {
     ...claimState,
