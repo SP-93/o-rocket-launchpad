@@ -58,6 +58,10 @@ export type Database = {
           auto_cashout_at: number | null
           bet_amount: number
           cashed_out_at: number | null
+          claim_nonce: number | null
+          claim_tx_hash: string | null
+          claimed_at: string | null
+          claiming_started_at: string | null
           created_at: string | null
           id: string
           round_id: string | null
@@ -70,6 +74,10 @@ export type Database = {
           auto_cashout_at?: number | null
           bet_amount: number
           cashed_out_at?: number | null
+          claim_nonce?: number | null
+          claim_tx_hash?: string | null
+          claimed_at?: string | null
+          claiming_started_at?: string | null
           created_at?: string | null
           id?: string
           round_id?: string | null
@@ -82,6 +90,10 @@ export type Database = {
           auto_cashout_at?: number | null
           bet_amount?: number
           cashed_out_at?: number | null
+          claim_nonce?: number | null
+          claim_tx_hash?: string | null
+          claimed_at?: string | null
+          claiming_started_at?: string | null
           created_at?: string | null
           id?: string
           round_id?: string | null

@@ -186,12 +186,28 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         throw new Error('Claim transaction failed');
       }
 
-      // Update database
-      await supabase
-        .from('game_bets')
-        .update({ status: 'claimed' })
-        .eq('round_id', roundId)
-        .ilike('wallet_address', walletAddress);
+      // IMPORTANT: Call backend to verify and finalize the claim
+      // This prevents double-claiming by verifying tx on-chain before updating status
+      console.log('[ClaimWinnings] Confirming claim with backend...');
+      const { data: confirmResponse, error: confirmError } = await supabase.functions.invoke('game-confirm-claim', {
+        body: {
+          walletAddress,
+          roundId,
+          txHash: tx.hash,
+          nonce,
+          amount: claimAmount,
+        },
+      });
+
+      if (confirmError || !confirmResponse?.success) {
+        console.error('[ClaimWinnings] Confirm error:', confirmError || confirmResponse?.error);
+        // Transaction succeeded on-chain, but backend update failed
+        // Show warning but don't throw - the claim was successful
+        toast({
+          title: "Claim Successful",
+          description: "Blockchain confirmed. Status sync may take a moment.",
+        });
+      }
 
       setClaimState({
         isClaiming: false,

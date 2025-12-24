@@ -8,28 +8,31 @@ interface PendingWin {
   cashed_out_at: number;
   winnings: number;
   created_at: string;
+  status: 'won' | 'claiming' | 'claimed';
 }
 
 export const usePendingWinnings = (walletAddress: string | undefined) => {
   const [pendingWinnings, setPendingWinnings] = useState<PendingWin[]>([]);
+  const [claimingWinnings, setClaimingWinnings] = useState<PendingWin[]>([]);
   const [totalPending, setTotalPending] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchPendingWinnings = useCallback(async () => {
     if (!walletAddress) {
       setPendingWinnings([]);
+      setClaimingWinnings([]);
       setTotalPending(0);
       return;
     }
 
     setIsLoading(true);
     try {
-      // Fetch bets with 'won' status (claimable) - exclude 'claiming' and 'claimed'
+      // Fetch bets with 'won' or 'claiming' status
       const { data, error } = await supabase
         .from('game_bets')
         .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at, status')
         .ilike('wallet_address', walletAddress)
-        .eq('status', 'won')  // Only 'won' status is claimable
+        .in('status', ['won', 'claiming'])
         .gt('winnings', 0)
         .order('created_at', { ascending: false });
 
@@ -38,9 +41,13 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
         return;
       }
 
-      const wins = (data || []) as PendingWin[];
-      setPendingWinnings(wins);
-      setTotalPending(wins.reduce((sum, w) => sum + (w.winnings || 0), 0));
+      const allWins = (data || []) as PendingWin[];
+      const claimable = allWins.filter(w => w.status === 'won');
+      const inProgress = allWins.filter(w => w.status === 'claiming');
+      
+      setPendingWinnings(claimable);
+      setClaimingWinnings(inProgress);
+      setTotalPending(claimable.reduce((sum, w) => sum + (w.winnings || 0), 0));
     } catch (err) {
       console.error('[usePendingWinnings] Error:', err);
     } finally {
@@ -78,6 +85,7 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
 
   return {
     pendingWinnings,
+    claimingWinnings,
     totalPending,
     isLoading,
     refetch: fetchPendingWinnings,

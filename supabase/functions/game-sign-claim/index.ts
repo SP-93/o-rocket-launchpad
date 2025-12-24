@@ -95,9 +95,14 @@ serve(async (req) => {
 
     // ATOMIC LOCK: Change status to 'claiming' ONLY if still 'won'
     // This prevents race conditions where multiple signatures could be generated
+    // Also store the nonce and timestamp for tracking
     const { data: lockResult, error: lockError } = await supabase
       .from('game_bets')
-      .update({ status: 'claiming' })
+      .update({ 
+        status: 'claiming',
+        claim_nonce: nonce,
+        claiming_started_at: new Date().toISOString()
+      })
       .eq('id', bet.id)
       .eq('status', 'won')  // Critical: Only update if status is still 'won'
       .select();
@@ -119,7 +124,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('[game-sign-claim] Successfully locked bet for claiming:', bet.id);
+    console.log('[game-sign-claim] Successfully locked bet for claiming:', bet.id, 'with nonce:', nonce);
 
     // Get private key for signing
     const privateKey = Deno.env.get('CLAIM_SINGER_KEY');
