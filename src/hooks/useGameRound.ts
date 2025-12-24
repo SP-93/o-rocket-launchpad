@@ -108,7 +108,7 @@ export function useGameRound() {
       const elapsed = (Date.now() - startTime) / 1000;
       // Exponential growth formula
       const multiplier = Math.pow(1.0718, elapsed);
-      const capped = Math.min(multiplier, 100.00);
+      const capped = Math.min(multiplier, 10.00);
       setCurrentMultiplier(Math.round(capped * 100) / 100);
     }, 50);
   }, []);
