@@ -1,6 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { GameTicket } from './useGameTickets';
+
+// Callback to refresh tickets after bet
+type RefreshCallback = () => void;
+let ticketRefreshCallback: RefreshCallback | null = null;
+
+export function setTicketRefreshCallback(callback: RefreshCallback | null) {
+  ticketRefreshCallback = callback;
+}
 
 export function useGameBetting(walletAddress: string | undefined) {
   const [isPlacingBet, setIsPlacingBet] = useState(false);
@@ -33,6 +41,11 @@ export function useGameBetting(walletAddress: string | undefined) {
 
       if (response.data?.error) {
         throw new Error(response.data.error);
+      }
+
+      // Trigger ticket refresh immediately after successful bet
+      if (ticketRefreshCallback) {
+        ticketRefreshCallback();
       }
 
       return response.data;
