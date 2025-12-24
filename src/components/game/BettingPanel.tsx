@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, Gift } from 'lucide-react';
-import { useGameTickets, type GameTicket } from '@/hooks/useGameTickets';
+import { useGameTickets, type GameTicket, type GroupedTicket } from '@/hooks/useGameTickets';
 import { useGameBetting } from '@/hooks/useGameBetting';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import { usePendingWinnings } from '@/hooks/usePendingWinnings';
@@ -34,7 +34,7 @@ const BettingPanel = ({
   const [selectedTicket, setSelectedTicket] = useState<GameTicket | null>(null);
   const [autoCashout, setAutoCashout] = useState<AutoCashout>('off');
   
-  const { availableTickets } = useGameTickets(walletAddress);
+  const { availableTickets, groupedTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
   const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount } = useClaimWinnings(walletAddress);
   const { pendingWinnings, claimingWinnings, totalPending, isLoading: isPendingLoading, refetch: refetchPending } = usePendingWinnings(walletAddress);
@@ -420,25 +420,30 @@ const BettingPanel = ({
           </div>
         ) : (
           <>
-            {/* Ticket Selection */}
+            {/* Ticket Selection - Grouped by Value */}
             <div className="space-y-2">
               <label className="text-xs text-muted-foreground font-medium">Select Ticket</label>
               <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto pr-1">
-                {availableTickets.map((ticket) => (
-                  <Button
-                    key={ticket.id}
-                    variant={selectedTicket?.id === ticket.id ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedTicket(ticket)}
-                    className={`h-10 justify-center font-bold transition-all ${
-                      selectedTicket?.id === ticket.id 
-                        ? "bg-primary shadow-lg shadow-primary/30 border-0" 
-                        : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
-                    }`}
-                  >
-                    {ticket.ticket_value} WOVER
-                  </Button>
-                ))}
+                {groupedTickets.map((group) => {
+                  const isSelected = selectedTicket?.ticket_value === group.value;
+                  return (
+                    <Button
+                      key={group.value}
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedTicket(group.tickets[0])}
+                      className={`h-10 justify-center font-bold transition-all ${
+                        isSelected 
+                          ? "bg-primary shadow-lg shadow-primary/30 border-0" 
+                          : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
+                      }`}
+                    >
+                      <span>{group.value}</span>
+                      <span className="mx-1 text-muted-foreground">×</span>
+                      <span className="text-xs opacity-80">{group.count}</span>
+                    </Button>
+                  );
+                })}
               </div>
             </div>
 

@@ -27,7 +27,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
-  const { buyTicket, availableTickets, refetch } = useGameTickets(walletAddress);
+  const { buyTicket, groupedTickets, refetch } = useGameTickets(walletAddress);
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
   const { transferToken, getTokenBalance, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
 
@@ -222,28 +222,32 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Available Tickets Display */}
+        {/* Available Tickets Display - Grouped by Value */}
         {isConnected && (
           <div className="relative">
             <div className="flex flex-wrap gap-2 p-3 bg-card/50 rounded-xl min-h-[70px] items-center justify-center border border-border/20">
-              {availableTickets.length > 0 ? (
+              {groupedTickets.length > 0 ? (
                 <>
-                  {availableTickets.slice(0, 6).map((ticket, index) => (
+                  {groupedTickets.slice(0, 6).map((group, index) => (
                     <div
-                      key={ticket.id}
+                      key={group.value}
                       className="relative group cursor-pointer animate-fade-in"
                       style={{ animationDelay: `${index * 80}ms` }}
                     >
-                      <div className="relative w-11 h-14 bg-gradient-to-br from-primary/40 via-primary/25 to-primary/10 rounded-lg border border-primary/40 shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:border-primary/60 group-hover:-translate-y-1">
+                      <div className="relative w-14 h-14 bg-gradient-to-br from-primary/40 via-primary/25 to-primary/10 rounded-lg border border-primary/40 shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:border-primary/60 group-hover:-translate-y-1">
                         {/* Perforated edge */}
                         <div className="absolute left-0.5 top-1.5 bottom-1.5 w-0.5 flex flex-col justify-around">
                           {[...Array(3)].map((_, i) => (
                             <div key={i} className="w-1 h-1 rounded-full bg-background/80" />
                           ))}
                         </div>
-                        {/* Value */}
+                        {/* Value x Count */}
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-base font-bold text-primary">{ticket.ticket_value}</span>
+                          <div className="flex items-center gap-0.5">
+                            <span className="text-base font-bold text-primary">{group.value}</span>
+                            <span className="text-xs text-muted-foreground">×</span>
+                            <span className="text-sm font-semibold text-primary/80">{group.count}</span>
+                          </div>
                           <span className="text-[7px] text-muted-foreground uppercase tracking-wider">WOVER</span>
                         </div>
                         {/* Shine */}
@@ -253,11 +257,6 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
                       <div className="absolute inset-0 blur-lg bg-primary/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
                     </div>
                   ))}
-                  {availableTickets.length > 6 && (
-                    <div className="flex items-center justify-center w-11 h-14 rounded-lg border border-dashed border-primary/30 text-xs text-muted-foreground">
-                      +{availableTickets.length - 6}
-                    </div>
-                  )}
                 </>
               ) : (
                 <div className="text-center py-2">
