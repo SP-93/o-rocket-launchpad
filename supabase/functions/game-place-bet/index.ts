@@ -56,11 +56,11 @@ serve(async (req) => {
       );
     }
 
-    // Validate auto_cashout_at if provided (must be 2 or 10, or null for manual)
+    // Validate auto_cashout_at if provided (must be 2, 5, or 10, or null for manual)
     if (auto_cashout_at !== null && auto_cashout_at !== undefined) {
-      if (![2, 10].includes(auto_cashout_at)) {
+      if (![2, 5, 10].includes(auto_cashout_at)) {
         return new Response(
-          JSON.stringify({ error: 'Auto cash-out must be x2, x10, or OFF (null)' }),
+          JSON.stringify({ error: 'Auto cash-out must be x2, x5, x10, or OFF (null)' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

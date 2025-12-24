@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -15,9 +15,15 @@ export interface GameTicket {
   created_at: string;
 }
 
+export interface GroupedTicket {
+  value: number;
+  count: number;
+  tickets: GameTicket[];
+}
+
 export function useGameTickets(walletAddress: string | undefined) {
   const [tickets, setTickets] = useState<GameTicket[]>([]);
-  const [availableTickets, setAvailableTickets] = useState<GameTicket[]>([]);
+  const [availableTickets, setAvailableTickets] = useState<GameTicket[]>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -152,9 +158,31 @@ export function useGameTickets(walletAddress: string | undefined) {
     return response.data;
   }, [walletAddress, fetchTickets]);
 
+  // Group available tickets by value
+  const groupedTickets = useMemo<GroupedTicket[]>(() => {
+    if (!availableTickets || availableTickets.length === 0) return [];
+    
+    const groups = new Map<number, GameTicket[]>();
+    
+    for (const ticket of availableTickets) {
+      const existing = groups.get(ticket.ticket_value) || [];
+      existing.push(ticket);
+      groups.set(ticket.ticket_value, existing);
+    }
+    
+    return Array.from(groups.entries())
+      .map(([value, tickets]) => ({
+        value,
+        count: tickets.length,
+        tickets,
+      }))
+      .sort((a, b) => a.value - b.value);
+  }, [availableTickets]);
+
   return {
     tickets,
-    availableTickets,
+    availableTickets: availableTickets || [],
+    groupedTickets,
     isLoading,
     error,
     buyTicket,
