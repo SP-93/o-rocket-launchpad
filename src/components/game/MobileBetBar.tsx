@@ -45,29 +45,52 @@ const MobileBetBar = ({
 
   const handlePlaceBet = async () => {
     const ticket = availableTickets.find(t => t.id === selectedTicketId) || availableTickets[0];
-    if (!ticket) {
+    if (!ticket || !currentRound) {
       toast.error('No ticket selected');
       return;
     }
     
+    setIsPlacingBet(true);
     try {
-      await placeBet(ticket, null);
+      const { error } = await supabase.functions.invoke('game-place-bet', {
+        body: {
+          wallet_address: walletAddress,
+          ticket_id: ticket.id,
+          round_id: currentRound.id,
+          auto_cashout_at: null
+        }
+      });
+      
+      if (error) throw error;
       toast.success('Bet placed!');
       setIsOpen(false);
       onBetPlaced?.();
     } catch (error: any) {
       toast.error(error.message || 'Failed to place bet');
+    } finally {
+      setIsPlacingBet(false);
     }
   };
 
   const handleCashOut = async () => {
     if (!myBet) return;
     
+    setIsCashingOut(true);
     try {
-      await cashOut(myBet.id, currentMultiplier);
+      const { error } = await supabase.functions.invoke('game-cashout', {
+        body: {
+          bet_id: myBet.id,
+          cashout_multiplier: currentMultiplier,
+          wallet_address: walletAddress
+        }
+      });
+      
+      if (error) throw error;
       toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x!`);
     } catch (error: any) {
       toast.error(error.message || 'Failed to cash out');
+    } finally {
+      setIsCashingOut(false);
     }
   };
 
