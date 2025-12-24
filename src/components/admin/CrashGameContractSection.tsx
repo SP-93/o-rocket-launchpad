@@ -518,15 +518,46 @@ const CrashGameContractSection = () => {
               </p>
             </div>
 
+            {/* Local Bytecode PUSH0 Check - Critical Pre-Deploy Status */}
+            <div className={`rounded-lg p-4 border ${
+              bytecodeAnalysis.hasPush0 
+                ? 'bg-destructive/10 border-destructive/50' 
+                : 'bg-success/10 border-success/50'
+            }`}>
+              <div className="flex items-center gap-3">
+                {bytecodeAnalysis.hasPush0 ? (
+                  <XCircle className="w-6 h-6 text-destructive" />
+                ) : (
+                  <CheckCircle className="w-6 h-6 text-success" />
+                )}
+                <div>
+                  <p className="font-bold text-sm">
+                    Local Bytecode PUSH0: {bytecodeAnalysis.hasPush0 ? 'FOUND ❌' : 'NOT FOUND ✅'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {bytecodeAnalysis.hasPush0 
+                      ? 'Deploy BLOCKED - Recompile with Remix EVM Version: Paris'
+                      : 'Ready for Over Protocol deployment'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <NeonButton 
               onClick={handleDeploy} 
-              disabled={isDeploying}
+              disabled={isDeploying || bytecodeAnalysis.hasPush0}
               className="w-full"
             >
               {isDeploying ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Deploying...
+                </>
+              ) : bytecodeAnalysis.hasPush0 ? (
+                <>
+                  <XCircle className="w-4 h-4 mr-2" />
+                  Deploy Blocked (PUSH0 Detected)
                 </>
               ) : (
                 <>
