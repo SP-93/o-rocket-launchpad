@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { supabase } from '@/integrations/supabase/client';
 import GlowCard from '@/components/ui/GlowCard';
@@ -6,12 +6,14 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Rocket, Play, Pause, RefreshCw, DollarSign, 
   Users, TrendingUp, Clock, AlertTriangle, CheckCircle,
-  Loader2, Settings, History, Wallet
+  Loader2, Settings, Wallet, PlayCircle, StopCircle,
+  Zap, Timer, Target
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { useWallet } from '@/hooks/useWallet';
 import { getDeployedContracts } from '@/contracts/storage';
@@ -42,6 +44,11 @@ interface GameConfig {
   instant_crash_probability: number;
 }
 
+interface GameStatus {
+  active: boolean;
+  reason?: string;
+}
+
 interface RoundStats {
   total_rounds: number;
   total_bets: number;
@@ -50,11 +57,19 @@ interface RoundStats {
   avg_crash_point: number;
 }
 
+interface CurrentRound {
+  id: string;
+  round_number: number;
+  status: string;
+  server_seed_hash?: string;
+  crash_point?: number;
+}
+
 const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
 
 const GameManagementSection = () => {
   const { getProvider } = useWallet();
-  const { refillPrizePool, fetchContractState, contractState } = useCrashGameContract();
+  const { refillPrizePool, fetchContractState } = useCrashGameContract();
   
   const [pool, setPool] = useState<GamePool | null>(null);
   const [revenue, setRevenue] = useState<GameRevenue | null>(null);
@@ -66,6 +81,8 @@ const GameManagementSection = () => {
     max_multiplier: 100,
     instant_crash_probability: 3,
   });
+  const [gameStatus, setGameStatus] = useState<GameStatus>({ active: false, reason: 'Unknown' });
+  const [currentRound, setCurrentRound] = useState<CurrentRound | null>(null);
   const [stats, setStats] = useState<RoundStats>({
     total_rounds: 0,
     total_bets: 0,
@@ -77,22 +94,42 @@ const GameManagementSection = () => {
   const [isDistributingWover, setIsDistributingWover] = useState(false);
   const [isDistributingUsdt, setIsDistributingUsdt] = useState(false);
   const [isRefilling, setIsRefilling] = useState(false);
+  const [isTogglingGame, setIsTogglingGame] = useState(false);
+  const [isRunningRound, setIsRunningRound] = useState(false);
+  const [roundPhase, setRoundPhase] = useState<string | null>(null);
   const [refillAmount, setRefillAmount] = useState('');
   const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
-  const [isSyncingChain, setIsSyncingChain] = useState(false);
 
   useEffect(() => {
     fetchData();
     fetchOnChainBalance();
+    fetchGameStatus();
   }, []);
+
+  const fetchGameStatus = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'get_status' },
+      });
+
+      if (!error && data) {
+        setGameStatus({ 
+          active: data.game_active, 
+          reason: data.game_paused_reason || undefined 
+        });
+        setCurrentRound(data.current_round);
+      }
+    } catch (error) {
+      console.error('Failed to fetch game status:', error);
+    }
+  };
 
   const fetchOnChainBalance = async () => {
     try {
       const state = await fetchContractState();
       if (state) {
         setOnChainBalance(state.prizePoolWover);
-        // Auto-sync database with on-chain state
         const onChainBalanceNum = parseFloat(state.prizePoolWover);
         if (!isNaN(onChainBalanceNum)) {
           await supabase
@@ -101,7 +138,7 @@ const GameManagementSection = () => {
               current_balance: onChainBalanceNum,
               updated_at: new Date().toISOString()
             })
-            .neq('id', '00000000-0000-0000-0000-000000000000'); // Update all rows
+            .neq('id', '00000000-0000-0000-0000-000000000000');
         }
       }
     } catch (error) {
@@ -112,7 +149,6 @@ const GameManagementSection = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch pool data
       const { data: poolData } = await supabase
         .from('game_pool')
         .select('*')
@@ -121,7 +157,6 @@ const GameManagementSection = () => {
       
       if (poolData) setPool(poolData);
 
-      // Fetch revenue data
       const { data: revenueData } = await supabase
         .from('game_revenue')
         .select('*')
@@ -130,7 +165,6 @@ const GameManagementSection = () => {
       
       if (revenueData) setRevenue(revenueData);
 
-      // Fetch config
       const { data: configData } = await supabase
         .from('game_config')
         .select('config_key, config_value');
@@ -148,9 +182,13 @@ const GameManagementSection = () => {
           max_multiplier: configMap.max_multiplier ?? 100,
           instant_crash_probability: configMap.instant_crash_probability ?? 3,
         });
+
+        // Also get game_status
+        if (configMap.game_status) {
+          setGameStatus(configMap.game_status);
+        }
       }
 
-      // Fetch round stats
       const { data: roundsData } = await supabase
         .from('game_rounds')
         .select('crash_point, total_bets, total_wagered, total_payouts');
@@ -160,7 +198,10 @@ const GameManagementSection = () => {
         const totalBets = roundsData.reduce((sum, r) => sum + (r.total_bets || 0), 0);
         const totalWagered = roundsData.reduce((sum, r) => sum + (r.total_wagered || 0), 0);
         const totalPayouts = roundsData.reduce((sum, r) => sum + (r.total_payouts || 0), 0);
-        const avgCrashPoint = roundsData.reduce((sum, r) => sum + (r.crash_point || 0), 0) / totalRounds;
+        const crashedRounds = roundsData.filter(r => r.crash_point !== null);
+        const avgCrashPoint = crashedRounds.length > 0 
+          ? crashedRounds.reduce((sum, r) => sum + (r.crash_point || 0), 0) / crashedRounds.length 
+          : 0;
         
         setStats({
           total_rounds: totalRounds,
@@ -177,20 +218,131 @@ const GameManagementSection = () => {
     }
   };
 
-  const handleStartNewRound = async () => {
+  // Toggle game active/paused
+  const handleToggleGame = async () => {
+    setIsTogglingGame(true);
     try {
-      const { error } = await supabase.functions.invoke('game-round-manager', {
+      const newStatus = { 
+        active: !gameStatus.active, 
+        reason: gameStatus.active ? 'Paused by admin' : undefined 
+      };
+
+      const { data: existing } = await supabase
+        .from('game_config')
+        .select('id')
+        .eq('config_key', 'game_status')
+        .single();
+
+      if (existing) {
+        await supabase
+          .from('game_config')
+          .update({ config_value: newStatus })
+          .eq('config_key', 'game_status');
+      } else {
+        await supabase
+          .from('game_config')
+          .insert({ config_key: 'game_status', config_value: newStatus });
+      }
+
+      setGameStatus(newStatus);
+      toast.success(newStatus.active ? 'Game resumed!' : 'Game paused');
+    } catch (error: any) {
+      toast.error('Failed to toggle game: ' + error.message);
+    } finally {
+      setIsTogglingGame(false);
+    }
+  };
+
+  // Run full round cycle manually
+  const handleRunRoundCycle = async () => {
+    if (!gameStatus.active) {
+      toast.error('Game is paused. Resume it first.');
+      return;
+    }
+
+    setIsRunningRound(true);
+    try {
+      // Phase 1: Start round
+      setRoundPhase('Starting round...');
+      const { data: startData, error: startError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_round' },
       });
       
-      if (error) throw error;
+      if (startError) {
+        throw new Error(startError.message || 'Failed to start round');
+      }
+
+      if (!startData?.success || !startData?.round) {
+        throw new Error(startData?.error || 'No round data returned');
+      }
+
+      const roundId = startData.round.id;
+      const roundNumber = startData.round.round_number;
+      toast.success(`Round #${roundNumber} started!`);
+
+      // Phase 2: Wait for betting (configurable)
+      const bettingDuration = config.betting_duration || 15;
+      setRoundPhase(`Betting phase (${bettingDuration}s)...`);
+      await sleep(bettingDuration * 1000);
+
+      // Phase 3: Countdown
+      setRoundPhase('Countdown...');
+      const { error: countdownError } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'start_countdown', round_id: roundId },
+      });
+      if (countdownError) throw new Error('Failed to start countdown');
       
-      toast.success('New round started!');
+      await sleep(3000); // 3 second countdown
+
+      // Phase 4: Flying
+      setRoundPhase('Flying! 🚀');
+      const { error: flyingError } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'start_flying', round_id: roundId },
+      });
+      if (flyingError) throw new Error('Failed to start flying');
+
+      // Simulate flying phase with random duration (2-10 seconds)
+      const flyDuration = 2000 + Math.random() * 8000;
+      await sleep(flyDuration);
+
+      // Phase 5: Crash
+      setRoundPhase('Crashing...');
+      const { data: crashData, error: crashError } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'crash', round_id: roundId },
+      });
+      if (crashError) throw new Error(crashError.message || 'Failed to crash');
+
+      const crashPoint = crashData?.crash_point || '?';
+      toast.info(`💥 Crashed at ${crashPoint}x`);
+
+      // Phase 6: Process payouts
+      setRoundPhase('Processing payouts...');
+      const { data: payoutData, error: payoutError } = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'process_payouts', round_id: roundId },
+      });
+      if (payoutError) {
+        console.error('Payout error:', payoutError);
+      }
+
+      const totalPayouts = payoutData?.total_payouts || 0;
+      const winnerCount = payoutData?.winning_bets || 0;
+
+      setRoundPhase(null);
+      toast.success(`Round #${roundNumber} complete! ${winnerCount} winners, ${totalPayouts} WOVER paid out`);
+      
       fetchData();
+      fetchGameStatus();
+
     } catch (error: any) {
-      toast.error('Failed to start round: ' + error.message);
+      console.error('Round cycle error:', error);
+      toast.error('Round cycle failed: ' + error.message);
+      setRoundPhase(null);
+    } finally {
+      setIsRunningRound(false);
     }
   };
+
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
   const handleDistributeWover = async () => {
     if (!revenue?.pending_wover || revenue.pending_wover <= 0) {
@@ -229,9 +381,7 @@ const GameManagementSection = () => {
     setIsDistributingUsdt(true);
     try {
       const { error } = await supabase.functions.invoke('game-admin-distribute', {
-        body: { 
-          currency: 'USDT'
-        },
+        body: { currency: 'USDT' },
       });
       
       if (error) throw error;
@@ -252,7 +402,6 @@ const GameManagementSection = () => {
       return;
     }
 
-    // Check if contract is deployed
     const contracts = getDeployedContracts();
     if (!contracts.crashGame) {
       toast.error('CrashGame contract not deployed');
@@ -261,7 +410,6 @@ const GameManagementSection = () => {
     
     setIsRefilling(true);
     try {
-      // Get signer from wallet
       const provider = await getProvider();
       if (!provider) {
         throw new Error('Wallet not connected');
@@ -269,14 +417,12 @@ const GameManagementSection = () => {
       const ethersProvider = new ethers.providers.Web3Provider(provider as any);
       const signer = ethersProvider.getSigner();
 
-      // Execute on-chain refill (approves token + transfers to contract)
       toast.info('Approving WOVER transfer...');
-      await refillPrizePool(signer, refillAmount, true); // true = WOVER
+      await refillPrizePool(signer, refillAmount, true);
 
-      // Update database after successful on-chain transaction
       const newBalance = (pool?.current_balance || 0) + amount;
       
-      const { error } = await supabase
+      await supabase
         .from('game_pool')
         .update({ 
           current_balance: newBalance,
@@ -285,13 +431,10 @@ const GameManagementSection = () => {
         })
         .eq('id', pool?.id);
       
-      if (error) {
-        console.error('Database update failed but on-chain succeeded:', error);
-      }
-      
       toast.success(`Pool refilled with ${amount} WOVER on-chain!`);
       setRefillAmount('');
       fetchData();
+      fetchOnChainBalance();
     } catch (error: any) {
       console.error('Refill failed:', error);
       toast.error('Refill failed: ' + (error.reason || error.message));
@@ -302,7 +445,6 @@ const GameManagementSection = () => {
 
   const handleUpdateConfig = async (key: string, value: any) => {
     try {
-      // Check if config exists
       const { data: existing } = await supabase
         .from('game_config')
         .select('id')
@@ -337,6 +479,92 @@ const GameManagementSection = () => {
 
   return (
     <div className="space-y-6">
+      {/* Game Status & Controls */}
+      <GlowCard className="p-6" glowColor={gameStatus.active ? 'cyan' : 'purple'}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
+              gameStatus.active ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
+            }`}>
+              {gameStatus.active ? (
+                <PlayCircle className="w-8 h-8" />
+              ) : (
+                <StopCircle className="w-8 h-8" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xl font-bold">Game Status</h3>
+                <Badge variant={gameStatus.active ? 'default' : 'destructive'}>
+                  {gameStatus.active ? 'ACTIVE' : 'PAUSED'}
+                </Badge>
+              </div>
+              {gameStatus.reason && !gameStatus.active && (
+                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  {gameStatus.reason}
+                </p>
+              )}
+              {currentRound && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Current: Round #{currentRound.round_number} ({currentRound.status})
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <NeonButton 
+              onClick={handleToggleGame}
+              disabled={isTogglingGame}
+              variant={gameStatus.active ? 'destructive' : 'primary'}
+              className="min-w-[140px]"
+            >
+              {isTogglingGame ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : gameStatus.active ? (
+                <Pause className="w-4 h-4 mr-2" />
+              ) : (
+                <Play className="w-4 h-4 mr-2" />
+              )}
+              {gameStatus.active ? 'Pause Game' : 'Resume Game'}
+            </NeonButton>
+
+            <NeonButton 
+              onClick={handleRunRoundCycle}
+              disabled={isRunningRound || !gameStatus.active}
+              className="min-w-[160px]"
+            >
+              {isRunningRound ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {roundPhase || 'Running...'}
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Run Round Cycle
+                </>
+              )}
+            </NeonButton>
+
+            <NeonButton variant="ghost" onClick={() => { fetchData(); fetchGameStatus(); }}>
+              <RefreshCw className="w-4 h-4" />
+            </NeonButton>
+          </div>
+        </div>
+
+        {/* Round Cycle Progress */}
+        {roundPhase && (
+          <div className="mt-4 p-3 bg-primary/10 rounded-lg border border-primary/30">
+            <div className="flex items-center gap-2 text-primary">
+              <Timer className="w-4 h-4 animate-pulse" />
+              <span className="text-sm font-medium">{roundPhase}</span>
+            </div>
+          </div>
+        )}
+      </GlowCard>
+
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <GlowCard className="p-4" glowColor="cyan">
@@ -397,10 +625,9 @@ const GameManagementSection = () => {
           </h3>
           
           <div className="space-y-4">
-            {/* On-Chain Balance - Source of Truth */}
             <div className="bg-success/10 rounded-lg p-4 border border-success/30">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-success font-medium">🔗 On-Chain Balance (Source of Truth)</span>
+                <span className="text-sm text-success font-medium">🔗 On-Chain Balance</span>
                 <NeonButton 
                   size="sm" 
                   variant="ghost" 
@@ -410,23 +637,22 @@ const GameManagementSection = () => {
                   <RefreshCw className="w-3 h-3" />
                 </NeonButton>
               </div>
-              <p className={`text-2xl font-bold ${parseFloat(onChainBalance || '0') < 1000 ? 'text-destructive' : 'text-success'}`}>
+              <p className={`text-2xl font-bold ${parseFloat(onChainBalance || '0') < 150 ? 'text-destructive' : 'text-success'}`}>
                 {onChainBalance !== null ? parseFloat(onChainBalance).toLocaleString() : 'Loading...'} WOVER
               </p>
             </div>
 
-            {/* Database Balance - for reference */}
             <div className="bg-background/50 rounded-lg p-4 border border-border/30">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Database Balance (synced)</span>
-                <span className={`text-lg font-semibold ${(pool?.current_balance || 0) < 1000 ? 'text-warning' : 'text-foreground'}`}>
+                <span className="text-sm text-muted-foreground">Database Balance</span>
+                <span className={`text-lg font-semibold ${(pool?.current_balance || 0) < 150 ? 'text-warning' : 'text-foreground'}`}>
                   {pool?.current_balance?.toLocaleString() || 0} WOVER
                 </span>
               </div>
-              {parseFloat(onChainBalance || '0') < 1000 && (
+              {parseFloat(onChainBalance || '0') < 150 && (
                 <div className="flex items-center gap-2 text-destructive text-xs mt-2">
                   <AlertTriangle className="w-3 h-3" />
-                  Low balance - consider refilling
+                  Below auto-pause threshold (150 WOVER)
                 </div>
               )}
             </div>
@@ -460,9 +686,6 @@ const GameManagementSection = () => {
                 {isRefilling ? 'Refilling...' : 'Refill'}
               </NeonButton>
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              💡 This executes an on-chain transaction to transfer WOVER to the contract
-            </p>
           </div>
         </GlowCard>
 
@@ -481,7 +704,6 @@ const GameManagementSection = () => {
               </p>
             </div>
 
-            {/* Prize Pool Percentage Slider */}
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-primary font-medium">Prize Pool</span>
@@ -495,7 +717,7 @@ const GameManagementSection = () => {
                   max="80"
                   value={prizePoolPercentage}
                   onChange={(e) => setPrizePoolPercentage(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gradient-to-r from-primary to-accent rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-foreground [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:cursor-pointer"
+                  className="w-full h-2 bg-gradient-to-r from-primary to-accent rounded-lg appearance-none cursor-pointer"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground mt-1">
                   <span>Min 20%</span>
@@ -504,7 +726,6 @@ const GameManagementSection = () => {
                 </div>
               </div>
 
-              {/* Preview */}
               {revenue?.pending_wover && revenue.pending_wover > 0 && (
                 <div className="grid grid-cols-2 gap-2 text-center text-xs">
                   <div className="bg-primary/10 rounded p-2 border border-primary/20">
@@ -576,7 +797,7 @@ const GameManagementSection = () => {
         </NeonButton>
       </GlowCard>
 
-      {/* Game Controls & Config */}
+      {/* Game Config */}
       <GlowCard className="p-6" glowColor="cyan">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Settings className="w-5 h-5 text-primary" />
@@ -584,29 +805,6 @@ const GameManagementSection = () => {
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Game Status */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="game-enabled" className="flex items-center gap-2">
-                {config.game_enabled ? (
-                  <CheckCircle className="w-4 h-4 text-success" />
-                ) : (
-                  <Pause className="w-4 h-4 text-destructive" />
-                )}
-                Game Status
-              </Label>
-              <Switch
-                id="game-enabled"
-                checked={config.game_enabled}
-                onCheckedChange={(checked) => handleUpdateConfig('game_enabled', checked)}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {config.game_enabled ? 'Game is running' : 'Game is paused'}
-            </p>
-          </div>
-
-          {/* Betting Duration */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-muted-foreground" />
@@ -620,7 +818,6 @@ const GameManagementSection = () => {
             />
           </div>
 
-          {/* Max Multiplier */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-muted-foreground" />
@@ -634,7 +831,6 @@ const GameManagementSection = () => {
             />
           </div>
 
-          {/* Min Bet */}
           <div className="space-y-2">
             <Label>Min Bet (tickets)</Label>
             <Input
@@ -645,7 +841,6 @@ const GameManagementSection = () => {
             />
           </div>
 
-          {/* Max Bet */}
           <div className="space-y-2">
             <Label>Max Bet (tickets)</Label>
             <Input
@@ -656,7 +851,6 @@ const GameManagementSection = () => {
             />
           </div>
 
-          {/* Instant Crash % */}
           <div className="space-y-2">
             <Label className="flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-destructive" />
@@ -669,16 +863,20 @@ const GameManagementSection = () => {
               className="w-full"
             />
           </div>
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 mt-6 pt-4 border-t border-border/30">
-          <NeonButton onClick={handleStartNewRound} className="flex-1">
-            <Play className="w-4 h-4 mr-2" /> Force Start Round
-          </NeonButton>
-          <NeonButton variant="secondary" onClick={fetchData} className="px-4">
-            <RefreshCw className="w-4 h-4" />
-          </NeonButton>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-muted-foreground" />
+              Auto-pause Threshold
+            </Label>
+            <Input
+              type="number"
+              placeholder="150"
+              defaultValue={150}
+              onChange={(e) => handleUpdateConfig('auto_pause_threshold', { wover: parseInt(e.target.value) })}
+              className="w-full"
+            />
+          </div>
         </div>
       </GlowCard>
     </div>
