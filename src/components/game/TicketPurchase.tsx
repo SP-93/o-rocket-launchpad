@@ -35,11 +35,22 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
     ? (selectedValue * woverPrice).toFixed(4)
     : null;
 
-  // Fetch token balance
+  // Fetch token balance with periodic refresh
   useEffect(() => {
-    if (walletAddress && isConnected) {
-      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+    if (!walletAddress || !isConnected) {
+      setTokenBalance(null);
+      return;
     }
+    
+    // Initial fetch
+    getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+    
+    // Periodic refresh every 10 seconds for live balance
+    const interval = setInterval(() => {
+      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+    }, 10000);
+    
+    return () => clearInterval(interval);
   }, [walletAddress, isConnected, selectedCurrency, getTokenBalance]);
 
   const handlePurchase = async () => {
