@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Shield, Check, X, Copy, ExternalLink, Info } from 'lucide-react';
 import { toast } from 'sonner';
-
+import { getDeployedContracts } from '@/contracts/storage';
 interface RoundData {
   roundNumber: number;
   seedHash: string;
@@ -303,9 +303,7 @@ const ProvablyFairModal = ({ currentRound, roundHistory = [] }: ProvablyFairModa
           {/* Smart Contract Link */}
           <div className="text-center text-sm text-muted-foreground">
             {(() => {
-              const crashGameAddress = typeof window !== 'undefined' 
-                ? localStorage.getItem('crashGameAddress') 
-                : null;
+              const crashGameAddress = getDeployedContracts().crashGame;
               const explorerUrl = crashGameAddress 
                 ? `https://scan.over.network/address/${crashGameAddress}` 
                 : 'https://scan.over.network';
