@@ -6,13 +6,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// SECURITY: In-memory storage for server seeds - never exposed until crash
-const activeRoundSeeds = new Map<string, { serverSeed: string; serverSeedHash: string }>();
-
 // Rate limiting map (simple in-memory)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10; // max 10 requests per minute
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
+
+// Simple encryption key from environment (or fallback)
+const ENCRYPTION_KEY = Deno.env.get('SEED_ENCRYPTION_KEY') || 'orocket-seed-encryption-key-2024';
 
 // ============ SECURITY FUNCTIONS ============
 
@@ -141,6 +141,86 @@ async function hashSeed(seed: string): Promise<string> {
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Simple XOR-based encryption (sufficient for short-term seed storage)
+function encryptSeed(seed: string): string {
+  const key = ENCRYPTION_KEY;
+  let encrypted = '';
+  for (let i = 0; i < seed.length; i++) {
+    encrypted += String.fromCharCode(seed.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  // Base64 encode for safe storage
+  return btoa(encrypted);
+}
+
+function decryptSeed(encryptedSeed: string): string {
+  const key = ENCRYPTION_KEY;
+  const encrypted = atob(encryptedSeed);
+  let decrypted = '';
+  for (let i = 0; i < encrypted.length; i++) {
+    decrypted += String.fromCharCode(encrypted.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return decrypted;
+}
+
+// ============ DB SEED STORAGE FUNCTIONS ============
+
+async function storeSeedInDb(supabase: any, roundId: string, serverSeed: string, serverSeedHash: string): Promise<boolean> {
+  try {
+    const encryptedSeed = encryptSeed(serverSeed);
+    const { error } = await supabase
+      .from('game_round_secrets')
+      .insert({
+        round_id: roundId,
+        encrypted_server_seed: encryptedSeed,
+        server_seed_hash: serverSeedHash,
+      });
+    
+    if (error) {
+      console.error('[SEED] Failed to store seed:', error);
+      return false;
+    }
+    console.log('[SEED] ✓ Seed stored in DB for round:', roundId);
+    return true;
+  } catch (err) {
+    console.error('[SEED] Error storing seed:', err);
+    return false;
+  }
+}
+
+async function getSeedFromDb(supabase: any, roundId: string): Promise<{ serverSeed: string; serverSeedHash: string } | null> {
+  try {
+    const { data, error } = await supabase
+      .from('game_round_secrets')
+      .select('encrypted_server_seed, server_seed_hash')
+      .eq('round_id', roundId)
+      .single();
+    
+    if (error || !data) {
+      console.error('[SEED] Failed to retrieve seed:', error);
+      return null;
+    }
+    
+    const serverSeed = decryptSeed(data.encrypted_server_seed);
+    console.log('[SEED] ✓ Seed retrieved from DB for round:', roundId);
+    return { serverSeed, serverSeedHash: data.server_seed_hash };
+  } catch (err) {
+    console.error('[SEED] Error retrieving seed:', err);
+    return null;
+  }
+}
+
+async function deleteSeedFromDb(supabase: any, roundId: string): Promise<void> {
+  try {
+    await supabase
+      .from('game_round_secrets')
+      .delete()
+      .eq('round_id', roundId);
+    console.log('[SEED] ✓ Seed deleted from DB for round:', roundId);
+  } catch (err) {
+    console.error('[SEED] Error deleting seed:', err);
+  }
 }
 
 // ============ MAIN HANDLER ============
@@ -319,8 +399,17 @@ serve(async (req) => {
           );
         }
 
-        // Store seed in memory only
-        activeRoundSeeds.set(round.id, { serverSeed, serverSeedHash });
+        // Store seed in DATABASE (persists across restarts!)
+        const stored = await storeSeedInDb(supabase, round.id, serverSeed, serverSeedHash);
+        if (!stored) {
+          console.error(`[${requestId}] Failed to store seed in DB`);
+          // Rollback round creation
+          await supabase.from('game_rounds').delete().eq('id', round.id);
+          return new Response(
+            JSON.stringify({ error: 'Failed to secure round seed' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
 
         console.log(`[${requestId}] ✓ Round ${round.round_number} started (ID: ${round.id})`);
 
@@ -454,12 +543,13 @@ serve(async (req) => {
           );
         }
 
-        const seedData = activeRoundSeeds.get(round_id);
+        // Get seed from DATABASE instead of in-memory
+        const seedData = await getSeedFromDb(supabase, round_id);
         
         if (!seedData) {
-          console.error(`[${requestId}] No seed found for round ${round_id}`);
+          console.error(`[${requestId}] No seed found in DB for round ${round_id}`);
           return new Response(
-            JSON.stringify({ error: 'Round seed not found - possible server restart' }),
+            JSON.stringify({ error: 'Round seed not found in database' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -492,8 +582,8 @@ serve(async (req) => {
           .eq('round_id', round_id)
           .eq('status', 'active');
 
-        // Remove from memory
-        activeRoundSeeds.delete(round_id);
+        // Delete seed from database (no longer needed)
+        await deleteSeedFromDb(supabase, round_id);
 
         console.log(`[${requestId}] ✓ Round ${round_id} crashed at ${crashPoint}x`);
 
@@ -517,52 +607,62 @@ serve(async (req) => {
           );
         }
 
+        // Get all winning bets
         const { data: winningBets } = await supabase
           .from('game_bets')
           .select('*')
           .eq('round_id', round_id)
           .eq('status', 'won');
 
-        let totalPayouts = 0;
-        if (winningBets) {
-          totalPayouts = winningBets.reduce((sum, bet) => sum + (bet.winnings || 0), 0);
-        }
+        const totalPayouts = winningBets?.reduce((sum, bet) => sum + (bet.winnings || 0), 0) || 0;
+        const winnerCount = winningBets?.length || 0;
+
+        // Update round with final stats
+        const { data: allBets } = await supabase
+          .from('game_bets')
+          .select('bet_amount')
+          .eq('round_id', round_id);
+
+        const totalWagered = allBets?.reduce((sum, bet) => sum + (bet.bet_amount || 0), 0) || 0;
+        const totalBets = allBets?.length || 0;
 
         await supabase
           .from('game_rounds')
           .update({ 
             status: 'payout',
-            total_payouts: totalPayouts 
+            total_bets: totalBets,
+            total_wagered: totalWagered,
+            total_payouts: totalPayouts,
           })
           .eq('id', round_id);
 
-        if (totalPayouts > 0) {
-          const { data: pool } = await supabase
-            .from('game_pool')
-            .select('*')
-            .limit(1)
-            .single();
+        // Update game pool
+        const { data: currentPool } = await supabase
+          .from('game_pool')
+          .select('*')
+          .limit(1)
+          .single();
 
-          if (pool) {
-            await supabase
-              .from('game_pool')
-              .update({
-                current_balance: pool.current_balance - totalPayouts,
-                total_payouts: pool.total_payouts + totalPayouts,
-                last_payout_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', pool.id);
-          }
+        if (currentPool) {
+          const newBalance = Math.max(0, (currentPool.current_balance || 0) - totalPayouts + totalWagered);
+          await supabase
+            .from('game_pool')
+            .update({ 
+              current_balance: newBalance,
+              total_payouts: (currentPool.total_payouts || 0) + totalPayouts,
+              last_payout_at: totalPayouts > 0 ? new Date().toISOString() : currentPool.last_payout_at,
+            })
+            .eq('id', currentPool.id);
         }
 
-        console.log(`[${requestId}] ✓ Payouts processed: ${totalPayouts} WOVER to ${winningBets?.length || 0} winners`);
+        console.log(`[${requestId}] ✓ Payouts processed: ${winnerCount} winners, ${totalPayouts} total`);
 
         return new Response(
-          JSON.stringify({ 
-            success: true, 
+          JSON.stringify({
+            success: true,
+            winning_bets: winnerCount,
             total_payouts: totalPayouts,
-            winning_bets: winningBets?.length || 0 
+            total_wagered: totalWagered,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -570,13 +670,13 @@ serve(async (req) => {
 
       default:
         return new Response(
-          JSON.stringify({ error: 'Invalid action' }),
+          JSON.stringify({ error: 'Unknown action' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }
 
   } catch (error) {
-    console.error(`[ERROR] game-round-manager:`, error);
+    console.error(`[${requestId}] Internal error:`, error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
