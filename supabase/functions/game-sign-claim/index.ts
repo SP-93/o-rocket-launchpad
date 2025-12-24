@@ -78,13 +78,48 @@ serve(async (req) => {
       );
     }
 
-    // Check if already claimed
+    // Check if already claimed or claiming
     if (bet.status === 'claimed') {
       return new Response(
         JSON.stringify({ error: 'Winnings already claimed' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    if (bet.status === 'claiming') {
+      return new Response(
+        JSON.stringify({ error: 'Claim already in progress' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ATOMIC LOCK: Change status to 'claiming' ONLY if still 'won'
+    // This prevents race conditions where multiple signatures could be generated
+    const { data: lockResult, error: lockError } = await supabase
+      .from('game_bets')
+      .update({ status: 'claiming' })
+      .eq('id', bet.id)
+      .eq('status', 'won')  // Critical: Only update if status is still 'won'
+      .select();
+
+    if (lockError) {
+      console.error('[game-sign-claim] Lock error:', lockError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to lock claim' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If no rows were updated, another process already started claiming
+    if (!lockResult || lockResult.length === 0) {
+      console.log('[game-sign-claim] Race condition detected - bet already being claimed');
+      return new Response(
+        JSON.stringify({ error: 'Claim already in progress or status changed' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('[game-sign-claim] Successfully locked bet for claiming:', bet.id);
 
     // Get private key for signing
     const privateKey = Deno.env.get('CLAIM_SINGER_KEY');

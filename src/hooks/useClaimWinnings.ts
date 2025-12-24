@@ -63,9 +63,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       // Use stored winnings or calculate from bet amount and multiplier
       const winnings = bet.winnings || (bet.bet_amount * (bet.cashed_out_at || 1));
 
-      // Check if already claimed (would need to track this)
-      // For now, assume claimable if status is 'won' or 'cashed_out'
-      const canClaim = bet.status === 'won' || bet.status === 'cashed_out';
+      // Check if can claim - only 'won' status is claimable
+      // 'claiming' means another claim is in progress, 'claimed' means already done
+      const canClaim = bet.status === 'won';
 
       setClaimState(prev => ({
         ...prev,
@@ -104,6 +104,16 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           nonce,
         },
       });
+
+      // Handle 409 Conflict - claim already in progress
+      if (claimError?.message?.includes('409') || claimResponse?.error?.includes('in progress')) {
+        toast({
+          title: "Claim In Progress",
+          description: "This reward is already being claimed. Please wait.",
+          variant: "destructive",
+        });
+        throw new Error('Claim already in progress');
+      }
 
       if (claimError || !claimResponse?.success) {
         throw new Error(claimResponse?.error || 'Failed to get claim signature');

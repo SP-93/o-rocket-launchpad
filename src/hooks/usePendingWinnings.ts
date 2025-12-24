@@ -24,11 +24,12 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
 
     setIsLoading(true);
     try {
+      // Fetch bets with 'won' status (claimable) - exclude 'claiming' and 'claimed'
       const { data, error } = await supabase
         .from('game_bets')
-        .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at')
+        .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at, status')
         .ilike('wallet_address', walletAddress)
-        .eq('status', 'won')
+        .eq('status', 'won')  // Only 'won' status is claimable
         .gt('winnings', 0)
         .order('created_at', { ascending: false });
 
