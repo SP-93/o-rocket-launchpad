@@ -16,13 +16,20 @@ serve(async (req) => {
   }
 
   try {
-    // Check cache
-    if (cachedLeaderboard && (Date.now() - cachedLeaderboard.timestamp) < CACHE_DURATION) {
+    // Check for force refresh parameter
+    const url = new URL(req.url);
+    const forceRefresh = url.searchParams.get('force_refresh') === 'true';
+    
+    // Check cache (skip if force refresh)
+    if (!forceRefresh && cachedLeaderboard && (Date.now() - cachedLeaderboard.timestamp) < CACHE_DURATION) {
+      console.log('[Leaderboard] Returning cached data');
       return new Response(
         JSON.stringify(cachedLeaderboard.data),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('[Leaderboard] Fetching fresh data', forceRefresh ? '(force refresh)' : '');
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;

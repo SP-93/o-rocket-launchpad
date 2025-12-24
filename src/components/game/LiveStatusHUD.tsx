@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wifi, WifiOff, Rocket, AlertTriangle, Clock, Zap } from 'lucide-react';
+import { WifiOff, Rocket, AlertTriangle, Clock, Zap, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LiveStatusHUDProps {
@@ -8,10 +8,11 @@ interface LiveStatusHUDProps {
     lastAction: string | null;
     lastTick: Date | null;
     error: string | null;
-    pauseReason?: string | null;
   };
   roundStatus: string | null;
   roundNumber: number | null;
+  gamePaused?: boolean;
+  pauseReason?: string | null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -22,7 +23,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   payout: { label: 'Settling', color: 'text-muted-foreground', icon: <Clock className="w-3 h-3" /> },
 };
 
-export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveStatusHUDProps) {
+export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber, gamePaused, pauseReason }: LiveStatusHUDProps) {
   const [tickAge, setTickAge] = useState<number>(0);
   
   useEffect(() => {
@@ -52,7 +53,14 @@ export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveSt
     return () => clearInterval(interval);
   }, [engineStatus?.lastTick]);
 
-  const isConnected = engineStatus?.isEnabled && tickAge < 5 && tickAge >= 0;
+  // Determine connection status:
+  // - If engine is enabled and ticking recently = Live
+  // - If engine disabled (intentionally stopped) = Stopped  
+  // - If game is paused = Paused with reason
+  // - If engine enabled but no recent tick = Offline
+  const isEngineStopped = !engineStatus?.isEnabled;
+  const hasRecentTick = tickAge < 5 && tickAge >= 0;
+  const isLive = engineStatus?.isEnabled && hasRecentTick;
   const statusConfig = roundStatus ? STATUS_CONFIG[roundStatus] : null;
 
   return (
@@ -60,22 +68,29 @@ export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveSt
       {/* Connection Status - compact */}
       <div className={cn(
         "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] md:text-xs font-medium backdrop-blur-md border shadow-lg",
-        isConnected 
+        isLive 
           ? "bg-success/20 border-success/30 text-success" 
-          : engineStatus?.pauseReason
+          : gamePaused
             ? "bg-warning/20 border-warning/30 text-warning"
-            : "bg-destructive/20 border-destructive/30 text-destructive"
+            : isEngineStopped
+              ? "bg-muted/40 border-border/40 text-muted-foreground"
+              : "bg-destructive/20 border-destructive/30 text-destructive"
       )}>
-        {isConnected ? (
+        {isLive ? (
           <>
             <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span>Live</span>
           </>
-        ) : engineStatus?.pauseReason ? (
+        ) : gamePaused ? (
           <>
             <AlertTriangle className="w-3 h-3" />
-            <span className="hidden md:inline">{engineStatus.pauseReason}</span>
+            <span className="hidden md:inline">{pauseReason || 'Paused'}</span>
             <span className="md:hidden">Paused</span>
+          </>
+        ) : isEngineStopped ? (
+          <>
+            <Pause className="w-3 h-3" />
+            <span>Stopped</span>
           </>
         ) : (
           <>
