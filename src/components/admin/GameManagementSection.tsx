@@ -65,11 +65,9 @@ interface CurrentRound {
   crash_point?: number;
 }
 
-const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
-
 const GameManagementSection = () => {
   const { getProvider } = useWallet();
-  const { refillPrizePool, fetchContractState } = useCrashGameContract();
+  const { refillPrizePool, fetchContractState, contractState } = useCrashGameContract();
   
   const [pool, setPool] = useState<GamePool | null>(null);
   const [revenue, setRevenue] = useState<GameRevenue | null>(null);
@@ -91,19 +89,16 @@ const GameManagementSection = () => {
     avg_crash_point: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [isDistributingWover, setIsDistributingWover] = useState(false);
-  const [isDistributingUsdt, setIsDistributingUsdt] = useState(false);
   const [isRefilling, setIsRefilling] = useState(false);
   const [isTogglingGame, setIsTogglingGame] = useState(false);
   const [isRunningRound, setIsRunningRound] = useState(false);
   const [roundPhase, setRoundPhase] = useState<string | null>(null);
   const [refillAmount, setRefillAmount] = useState('');
-  const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
 
   // Auto-cycling state
   const [isAutoCycling, setIsAutoCycling] = useState(false);
-  const [roundDelay, setRoundDelay] = useState(5); // seconds between rounds
+  const [roundDelay, setRoundDelay] = useState(5);
   const [nextRoundCountdown, setNextRoundCountdown] = useState<number | null>(null);
   const autoCycleRef = useRef<boolean>(false);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -134,18 +129,16 @@ const GameManagementSection = () => {
 
   const fetchOnChainBalance = async () => {
     try {
-      // First sync contract address from backend if needed
       const contracts = await getDeployedContractsAsync();
       if (!contracts.crashGame) {
-        console.log('No crashGame contract address found');
         setOnChainBalance(null);
         return;
       }
       
       const state = await fetchContractState();
       if (state) {
-        setOnChainBalance(state.prizePoolWover);
-        const onChainBalanceNum = parseFloat(state.prizePoolWover);
+        setOnChainBalance(state.prizePool);
+        const onChainBalanceNum = parseFloat(state.prizePool);
         if (!isNaN(onChainBalanceNum)) {
           await supabase
             .from('game_pool')
@@ -201,7 +194,6 @@ const GameManagementSection = () => {
           instant_crash_probability: configMap.instant_crash_probability ?? 3,
         });
 
-        // Also get game_status
         if (configMap.game_status) {
           setGameStatus(configMap.game_status);
         }
@@ -236,7 +228,6 @@ const GameManagementSection = () => {
     }
   };
 
-  // Toggle game active/paused
   const handleToggleGame = async () => {
     setIsTogglingGame(true);
     try {
@@ -271,7 +262,6 @@ const GameManagementSection = () => {
     }
   };
 
-  // Run full round cycle manually
   const handleRunRoundCycle = async () => {
     if (!gameStatus.active) {
       toast.error('Game is paused. Resume it first.');
@@ -280,7 +270,6 @@ const GameManagementSection = () => {
 
     setIsRunningRound(true);
     try {
-      // Phase 1: Start round
       setRoundPhase('Starting round...');
       const { data: startData, error: startError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_round' },
@@ -298,32 +287,27 @@ const GameManagementSection = () => {
       const roundNumber = startData.round.round_number;
       toast.success(`Round #${roundNumber} started!`);
 
-      // Phase 2: Wait for betting (configurable)
       const bettingDuration = config.betting_duration || 15;
       setRoundPhase(`Betting phase (${bettingDuration}s)...`);
       await sleep(bettingDuration * 1000);
 
-      // Phase 3: Countdown
       setRoundPhase('Countdown...');
       const { error: countdownError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_countdown', round_id: roundId },
       });
       if (countdownError) throw new Error('Failed to start countdown');
       
-      await sleep(3000); // 3 second countdown
+      await sleep(3000);
 
-      // Phase 4: Flying
       setRoundPhase('Flying! 🚀');
       const { error: flyingError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_flying', round_id: roundId },
       });
       if (flyingError) throw new Error('Failed to start flying');
 
-      // Simulate flying phase with random duration (2-10 seconds)
       const flyDuration = 2000 + Math.random() * 8000;
       await sleep(flyDuration);
 
-      // Phase 5: Crash
       setRoundPhase('Crashing...');
       const { data: crashData, error: crashError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'crash', round_id: roundId },
@@ -333,7 +317,6 @@ const GameManagementSection = () => {
       const crashPoint = crashData?.crash_point || '?';
       toast.info(`💥 Crashed at ${crashPoint}x`);
 
-      // Phase 6: Process payouts
       setRoundPhase('Processing payouts...');
       const { data: payoutData, error: payoutError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'process_payouts', round_id: roundId },
@@ -362,19 +345,15 @@ const GameManagementSection = () => {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Auto-cycling functions
   const runAutoCycle = useCallback(async () => {
     if (!autoCycleRef.current || !gameStatus.active) {
-      console.log('[AUTO] Stopping: autoCycleRef=', autoCycleRef.current, 'gameActive=', gameStatus.active);
       setIsAutoCycling(false);
       return;
     }
 
-    console.log('[AUTO] Starting new round cycle...');
     setIsRunningRound(true);
 
     try {
-      // Phase 1: Start round
       setRoundPhase('Starting round...');
       const { data: startData, error: startError } = await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_round' },
@@ -386,16 +365,13 @@ const GameManagementSection = () => {
 
       const roundId = startData.round.id;
       const roundNumber = startData.round.round_number;
-      console.log(`[AUTO] Round #${roundNumber} started`);
 
-      // Phase 2: Betting phase
       const bettingDuration = config.betting_duration || 15;
       setRoundPhase(`Betting (${bettingDuration}s)...`);
       await sleep(bettingDuration * 1000);
 
       if (!autoCycleRef.current) return;
 
-      // Phase 3: Countdown
       setRoundPhase('Countdown...');
       await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_countdown', round_id: roundId },
@@ -404,26 +380,21 @@ const GameManagementSection = () => {
 
       if (!autoCycleRef.current) return;
 
-      // Phase 4: Flying
       setRoundPhase('Flying! 🚀');
       await supabase.functions.invoke('game-round-manager', {
         body: { action: 'start_flying', round_id: roundId },
       });
 
-      // Simulate flying (2-10 seconds)
       const flyDuration = 2000 + Math.random() * 8000;
       await sleep(flyDuration);
 
       if (!autoCycleRef.current) return;
 
-      // Phase 5: Crash
       setRoundPhase('Crashing...');
-      const { data: crashData } = await supabase.functions.invoke('game-round-manager', {
+      await supabase.functions.invoke('game-round-manager', {
         body: { action: 'crash', round_id: roundId },
       });
-      console.log(`[AUTO] Round #${roundNumber} crashed at ${crashData?.crash_point}x`);
 
-      // Phase 6: Payouts
       setRoundPhase('Payouts...');
       await supabase.functions.invoke('game-round-manager', {
         body: { action: 'process_payouts', round_id: roundId },
@@ -432,12 +403,9 @@ const GameManagementSection = () => {
       setRoundPhase(null);
       setIsRunningRound(false);
 
-      // Wait before next round
       if (autoCycleRef.current) {
-        console.log(`[AUTO] Waiting ${roundDelay}s before next round...`);
         setNextRoundCountdown(roundDelay);
         
-        // Start countdown
         let countdown = roundDelay;
         countdownIntervalRef.current = setInterval(() => {
           countdown--;
@@ -457,19 +425,16 @@ const GameManagementSection = () => {
         }
         setNextRoundCountdown(null);
 
-        // Start next round if still active
         if (autoCycleRef.current && gameStatus.active) {
           runAutoCycle();
         }
       }
 
     } catch (error: any) {
-      console.error('[AUTO] Round cycle error:', error);
+      console.error('Auto-cycle error:', error);
       toast.error('Auto-cycle error: ' + error.message);
       setRoundPhase(null);
       setIsRunningRound(false);
-      
-      // Stop auto-cycling on error
       autoCycleRef.current = false;
       setIsAutoCycling(false);
     }
@@ -481,137 +446,42 @@ const GameManagementSection = () => {
       return;
     }
 
-    console.log('[AUTO] Starting auto-cycle...');
     autoCycleRef.current = true;
     setIsAutoCycling(true);
-    
-    // Save to database
-    await handleUpdateConfig('auto_cycling_enabled', true);
-    
-    toast.success('Auto-cycling started! Game will run continuously.');
+    toast.success('Auto-cycling started!');
     runAutoCycle();
   };
 
   const handleStopAutoCycle = async () => {
-    console.log('[AUTO] Stopping auto-cycle...');
     autoCycleRef.current = false;
     setIsAutoCycling(false);
     setNextRoundCountdown(null);
-    
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
-    
-    // Save to database
-    await handleUpdateConfig('auto_cycling_enabled', false);
-    
-    toast.info('Auto-cycling stopped. Current round will finish.');
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      autoCycleRef.current = false;
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const handleDistributeWover = async () => {
-    if (!revenue?.pending_wover || revenue.pending_wover <= 0) {
-      toast.error('No pending WOVER to distribute');
-      return;
-    }
-    
-    setIsDistributingWover(true);
-    try {
-      const { error } = await supabase.functions.invoke('game-admin-distribute', {
-        body: { 
-          currency: 'WOVER',
-          prize_pool_percentage: prizePoolPercentage
-        },
-      });
-      
-      if (error) throw error;
-      
-      const prizeAmount = (revenue.pending_wover * prizePoolPercentage / 100).toFixed(2);
-      const platformAmount = (revenue.pending_wover * (100 - prizePoolPercentage) / 100).toFixed(2);
-      toast.success(`Distributed: ${prizeAmount} WOVER → Pool, ${platformAmount} WOVER → Platform`);
-      fetchData();
-    } catch (error: any) {
-      toast.error('WOVER distribution failed: ' + error.message);
-    } finally {
-      setIsDistributingWover(false);
-    }
-  };
-
-  const handleDistributeUsdt = async () => {
-    if (!revenue?.pending_usdt || revenue.pending_usdt <= 0) {
-      toast.error('No pending USDT to distribute');
-      return;
-    }
-    
-    setIsDistributingUsdt(true);
-    try {
-      const { error } = await supabase.functions.invoke('game-admin-distribute', {
-        body: { currency: 'USDT' },
-      });
-      
-      if (error) throw error;
-      
-      toast.success(`Distributed: ${revenue.pending_usdt} USDT → Factory Deployer`);
-      fetchData();
-    } catch (error: any) {
-      toast.error('USDT distribution failed: ' + error.message);
-    } finally {
-      setIsDistributingUsdt(false);
-    }
+    toast.info('Auto-cycling stopped');
   };
 
   const handleRefillPool = async () => {
-    const amount = parseFloat(refillAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Enter a valid amount');
+    if (!refillAmount) {
+      toast.error('Enter refill amount');
       return;
     }
 
-    const contracts = getDeployedContracts();
-    if (!contracts.crashGame) {
-      toast.error('CrashGame contract not deployed');
-      return;
-    }
-    
     setIsRefilling(true);
     try {
       const provider = await getProvider();
-      if (!provider) {
-        throw new Error('Wallet not connected');
-      }
+      if (!provider) throw new Error('Connect wallet first');
+      
       const ethersProvider = new ethers.providers.Web3Provider(provider as any);
       const signer = ethersProvider.getSigner();
-
-      toast.info('Approving WOVER transfer...');
-      await refillPrizePool(signer, refillAmount, true);
-
-      const newBalance = (pool?.current_balance || 0) + amount;
       
-      await supabase
-        .from('game_pool')
-        .update({ 
-          current_balance: newBalance,
-          total_deposits: (pool?.total_deposits || 0) + amount,
-          last_refill_at: new Date().toISOString()
-        })
-        .eq('id', pool?.id);
-      
-      toast.success(`Pool refilled with ${amount} WOVER on-chain!`);
+      await refillPrizePool(signer, refillAmount);
       setRefillAmount('');
-      fetchData();
       fetchOnChainBalance();
+      fetchData();
     } catch (error: any) {
-      console.error('Refill failed:', error);
-      toast.error('Refill failed: ' + (error.reason || error.message));
+      toast.error('Refill failed: ' + error.message);
     } finally {
       setIsRefilling(false);
     }
@@ -635,8 +505,7 @@ const GameManagementSection = () => {
           .from('game_config')
           .insert({ config_key: key, config_value: value });
       }
-      
-      setConfig(prev => ({ ...prev, [key]: value }));
+
       toast.success(`${key} updated`);
     } catch (error: any) {
       toast.error('Failed to update config: ' + error.message);
@@ -645,7 +514,7 @@ const GameManagementSection = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-12">
+      <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
@@ -653,480 +522,236 @@ const GameManagementSection = () => {
 
   return (
     <div className="space-y-6">
-      {/* Game Status & Controls */}
-      <GlowCard className="p-6" glowColor={gameStatus.active ? 'cyan' : 'purple'}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${
-              gameStatus.active ? 'bg-success/20 text-success' : 'bg-destructive/20 text-destructive'
-            }`}>
-              {gameStatus.active ? (
-                <PlayCircle className="w-8 h-8" />
-              ) : (
-                <StopCircle className="w-8 h-8" />
-              )}
-            </div>
+      {/* Game Status Banner */}
+      <div className={`rounded-lg p-4 border ${gameStatus.active ? 'bg-success/10 border-success/30' : 'bg-warning/10 border-warning/30'}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {gameStatus.active ? (
+              <CheckCircle className="w-6 h-6 text-success" />
+            ) : (
+              <AlertTriangle className="w-6 h-6 text-warning" />
+            )}
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold">Game Status</h3>
-                <Badge variant={gameStatus.active ? 'default' : 'destructive'}>
-                  {gameStatus.active ? 'ACTIVE' : 'PAUSED'}
-                </Badge>
-              </div>
+              <p className="font-semibold">
+                Game is {gameStatus.active ? 'ACTIVE' : 'PAUSED'}
+              </p>
               {gameStatus.reason && !gameStatus.active && (
-                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  {gameStatus.reason}
-                </p>
+                <p className="text-xs text-muted-foreground">{gameStatus.reason}</p>
               )}
-              {currentRound && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  Current: Round #{currentRound.round_number} ({currentRound.status})
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <NeonButton 
-              onClick={handleToggleGame}
-              disabled={isTogglingGame || isAutoCycling}
-              variant={gameStatus.active ? 'destructive' : 'primary'}
-              className="min-w-[140px]"
-            >
-              {isTogglingGame ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : gameStatus.active ? (
-                <Pause className="w-4 h-4 mr-2" />
-              ) : (
-                <Play className="w-4 h-4 mr-2" />
-              )}
-              {gameStatus.active ? 'Pause Game' : 'Resume Game'}
-            </NeonButton>
-
-            <NeonButton variant="ghost" onClick={() => { fetchData(); fetchGameStatus(); }}>
-              <RefreshCw className="w-4 h-4" />
-            </NeonButton>
-          </div>
-        </div>
-
-        {/* Auto-Cycling Controls */}
-        <div className="mt-4 p-4 bg-card/50 rounded-lg border border-border/50">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                isAutoCycling ? 'bg-success/20' : 'bg-muted/20'
-              }`}>
-                <RotateCcw className={`w-5 h-5 ${isAutoCycling ? 'text-success animate-spin' : 'text-muted-foreground'}`} />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">Auto-Cycling</span>
-                  <Badge variant={isAutoCycling ? 'default' : 'outline'} className={isAutoCycling ? 'bg-success text-success-foreground' : ''}>
-                    {isAutoCycling ? 'LIVE' : 'OFF'}
-                  </Badge>
-                </div>
-                {isAutoCycling && nextRoundCountdown !== null && (
-                  <p className="text-xs text-muted-foreground">
-                    Next round in {nextRoundCountdown}s...
-                  </p>
-                )}
-                {isAutoCycling && roundPhase && (
-                  <p className="text-xs text-primary">
-                    {roundPhase}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <Label className="text-xs text-muted-foreground whitespace-nowrap">Delay:</Label>
-                <Input
-                  type="number"
-                  min="3"
-                  max="30"
-                  value={roundDelay}
-                  onChange={(e) => setRoundDelay(Math.max(3, Math.min(30, parseInt(e.target.value) || 5)))}
-                  className="w-16 h-8 text-center"
-                  disabled={isAutoCycling}
-                />
-                <span className="text-xs text-muted-foreground">sec</span>
-              </div>
-
-              {isAutoCycling ? (
-                <NeonButton 
-                  onClick={handleStopAutoCycle}
-                  variant="destructive"
-                  className="min-w-[140px]"
-                >
-                  <StopCircle className="w-4 h-4 mr-2" />
-                  Stop Auto
-                </NeonButton>
-              ) : (
-                <NeonButton 
-                  onClick={handleStartAutoCycle}
-                  disabled={!gameStatus.active || isRunningRound}
-                  className="min-w-[140px] bg-success hover:bg-success/90"
-                >
-                  <PlayCircle className="w-4 h-4 mr-2" />
-                  Start Auto
-                </NeonButton>
-              )}
-
-              {!isAutoCycling && (
-                <NeonButton 
-                  onClick={handleRunRoundCycle}
-                  disabled={isRunningRound || !gameStatus.active}
-                  variant="ghost"
-                  className="min-w-[130px]"
-                >
-                  {isRunningRound ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {roundPhase || 'Running...'}
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4 mr-2" />
-                      Run 1 Round
-                    </>
-                  )}
-                </NeonButton>
-              )}
-            </div>
-          </div>
-        </div>
-      </GlowCard>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <GlowCard className="p-4" glowColor="cyan">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Rocket className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Rounds</p>
-              <p className="text-xl font-bold">{stats.total_rounds}</p>
-            </div>
-          </div>
-        </GlowCard>
-        
-        <GlowCard className="p-4" glowColor="purple">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-              <Users className="w-5 h-5 text-accent" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Bets</p>
-              <p className="text-xl font-bold">{stats.total_bets}</p>
-            </div>
-          </div>
-        </GlowCard>
-        
-        <GlowCard className="p-4" glowColor="cyan">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Wagered</p>
-              <p className="text-xl font-bold">{stats.total_wagered.toFixed(0)}</p>
-            </div>
-          </div>
-        </GlowCard>
-        
-        <GlowCard className="p-4" glowColor="purple">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-success" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Avg Crash</p>
-              <p className="text-xl font-bold">{stats.avg_crash_point.toFixed(2)}×</p>
-            </div>
-          </div>
-        </GlowCard>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Prize Pool Management */}
-        <GlowCard className="p-6" glowColor="cyan">
-          <div className="flex items-start justify-between mb-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-warning" />
-              Prize Pool
-            </h3>
-            <div className="group relative">
-              <Badge variant="outline" className="text-xs cursor-help">
-                Hybrid Mode
-              </Badge>
-              <div className="absolute right-0 top-full mt-2 w-64 p-3 bg-popover border border-border rounded-lg shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  <strong className="text-foreground block mb-1">On-Chain vs Off-Chain:</strong>
-                  <span className="block mb-1">• <strong>On-Chain:</strong> Real token balances & payouts via smart contract</span>
-                  <span className="block">• <strong>Off-Chain:</strong> Game logic, statistics, and round management for speed</span>
-                </p>
-              </div>
             </div>
           </div>
           
-          <div className="space-y-4">
-            <div className="bg-success/10 rounded-lg p-4 border border-success/30">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm text-success font-medium">🔗 On-Chain Balance</span>
-                <NeonButton 
-                  size="sm" 
-                  variant="ghost" 
-                  onClick={fetchOnChainBalance}
-                  className="h-6 px-2 text-xs"
-                >
-                  <RefreshCw className="w-3 h-3" />
-                </NeonButton>
-              </div>
-              <p className={`text-2xl font-bold ${parseFloat(onChainBalance || '0') < 150 ? 'text-destructive' : 'text-success'}`}>
-                {onChainBalance !== null ? parseFloat(onChainBalance).toLocaleString() : 'Loading...'} WOVER
-              </p>
-            </div>
+          <NeonButton
+            variant={gameStatus.active ? 'secondary' : 'primary'}
+            onClick={handleToggleGame}
+            disabled={isTogglingGame}
+          >
+            {isTogglingGame ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : gameStatus.active ? (
+              <>
+                <Pause className="w-4 h-4 mr-2" />
+                Pause Game
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 mr-2" />
+                Resume Game
+              </>
+            )}
+          </NeonButton>
+        </div>
+      </div>
 
-            <div className="bg-background/50 rounded-lg p-4 border border-border/30">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Database Balance</span>
-                <span className={`text-lg font-semibold ${(pool?.current_balance || 0) < 150 ? 'text-warning' : 'text-foreground'}`}>
-                  {pool?.current_balance?.toLocaleString() || 0} WOVER
-                </span>
-              </div>
-              {parseFloat(onChainBalance || '0') < 150 && (
-                <div className="flex items-center gap-2 text-destructive text-xs mt-2">
-                  <AlertTriangle className="w-3 h-3" />
-                  Below auto-pause threshold (150 WOVER)
-                </div>
-              )}
-            </div>
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <GlowCard className="p-4" glowColor="cyan">
+          <div className="flex items-center gap-2 mb-2">
+            <Rocket className="w-4 h-4 text-primary" />
+            <span className="text-xs text-muted-foreground">Total Rounds</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.total_rounds}</p>
+        </GlowCard>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="bg-background/30 p-3 rounded-lg">
-                <p className="text-muted-foreground text-xs">Total Deposits</p>
-                <p className="font-semibold">{pool?.total_deposits?.toLocaleString() || 0}</p>
-              </div>
-              <div className="bg-background/30 p-3 rounded-lg">
-                <p className="text-muted-foreground text-xs">Total Payouts</p>
-                <p className="font-semibold">{pool?.total_payouts?.toLocaleString() || 0}</p>
-              </div>
-            </div>
+        <GlowCard className="p-4" glowColor="purple">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="w-4 h-4 text-primary" />
+            <span className="text-xs text-muted-foreground">Total Bets</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.total_bets}</p>
+        </GlowCard>
 
+        <GlowCard className="p-4" glowColor="cyan">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className="w-4 h-4 text-primary" />
+            <span className="text-xs text-muted-foreground">Total Wagered</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.total_wagered.toFixed(0)}</p>
+        </GlowCard>
+
+        <GlowCard className="p-4" glowColor="purple">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            <span className="text-xs text-muted-foreground">Avg Crash</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.avg_crash_point.toFixed(2)}×</p>
+        </GlowCard>
+      </div>
+
+      {/* On-Chain Prize Pool */}
+      <GlowCard className="p-6" glowColor="cyan">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Wallet className="w-5 h-5 text-primary" />
+          On-Chain Prize Pool
+        </h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+            <p className="text-xs text-muted-foreground mb-1">Contract Balance</p>
+            <p className="text-2xl font-bold text-primary">
+              {onChainBalance ? `${parseFloat(onChainBalance).toFixed(2)} WOVER` : 'N/A'}
+            </p>
+            {contractState?.isPoolLow && (
+              <Badge variant="destructive" className="mt-2">Low Pool Warning</Badge>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-sm">Refill Amount (WOVER)</Label>
             <div className="flex gap-2">
               <Input
                 type="number"
-                placeholder="Amount (WOVER)"
+                placeholder="1000"
                 value={refillAmount}
                 onChange={(e) => setRefillAmount(e.target.value)}
-                className="flex-1"
-                disabled={isRefilling}
               />
-              <NeonButton onClick={handleRefillPool} disabled={isRefilling} className="px-4">
-                {isRefilling ? (
-                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                ) : (
-                  <DollarSign className="w-4 h-4 mr-1" />
-                )}
-                {isRefilling ? 'Refilling...' : 'Refill'}
+              <NeonButton
+                onClick={handleRefillPool}
+                disabled={isRefilling || !refillAmount}
+              >
+                {isRefilling ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refill'}
               </NeonButton>
             </div>
           </div>
-        </GlowCard>
+        </div>
+      </GlowCard>
 
-        {/* WOVER Distribution */}
-        <GlowCard className="p-6" glowColor="purple">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-warning" />
-            WOVER Distribution
-          </h3>
-          
-          <div className="space-y-4">
-            <div className="bg-background/50 rounded-lg p-4 border border-warning/30">
-              <p className="text-xs text-muted-foreground mb-1">Pending WOVER</p>
-              <p className="text-2xl font-bold text-warning">
-                {revenue?.pending_wover?.toLocaleString() || 0}
-              </p>
+      {/* Round Control */}
+      <GlowCard className="p-6" glowColor="purple">
+        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-primary" />
+          Round Control
+        </h3>
+
+        {roundPhase && (
+          <div className="bg-primary/10 border border-primary/20 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="font-medium">{roundPhase}</span>
             </div>
+          </div>
+        )}
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-primary font-medium">Prize Pool</span>
-                <span className="text-accent font-medium">Platform</span>
-              </div>
-              
-              <div className="relative">
-                <input
-                  type="range"
-                  min="20"
-                  max="80"
-                  value={prizePoolPercentage}
-                  onChange={(e) => setPrizePoolPercentage(parseInt(e.target.value))}
-                  className="w-full h-2 bg-gradient-to-r from-primary to-accent rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                  <span>Min 20%</span>
-                  <span className="font-bold text-foreground">{prizePoolPercentage}% / {100 - prizePoolPercentage}%</span>
-                  <span>Max 80%</span>
-                </div>
-              </div>
-
-              {revenue?.pending_wover && revenue.pending_wover > 0 && (
-                <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                  <div className="bg-primary/10 rounded p-2 border border-primary/20">
-                    <p className="font-bold text-primary">
-                      {(revenue.pending_wover * prizePoolPercentage / 100).toFixed(2)} WOVER
-                    </p>
-                    <p className="text-muted-foreground">→ Prize Pool</p>
-                  </div>
-                  <div className="bg-accent/10 rounded p-2 border border-accent/20">
-                    <p className="font-bold text-accent">
-                      {(revenue.pending_wover * (100 - prizePoolPercentage) / 100).toFixed(2)} WOVER
-                    </p>
-                    <p className="text-muted-foreground">→ Platform</p>
-                  </div>
-                </div>
-              )}
+        {nextRoundCountdown !== null && (
+          <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 mb-4">
+            <div className="flex items-center gap-2">
+              <Timer className="w-4 h-4 text-warning" />
+              <span>Next round in {nextRoundCountdown}s...</span>
             </div>
+          </div>
+        )}
 
-            <NeonButton 
-              onClick={handleDistributeWover} 
-              disabled={isDistributingWover || !revenue?.pending_wover || revenue.pending_wover <= 0}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-3">
+            <NeonButton
+              onClick={handleRunRoundCycle}
+              disabled={isRunningRound || isAutoCycling || !gameStatus.active}
               className="w-full"
             >
-              {isDistributingWover ? (
+              {isRunningRound ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : (
-                <DollarSign className="w-4 h-4 mr-2" />
+                <PlayCircle className="w-4 h-4 mr-2" />
               )}
-              Distribute WOVER
+              Run Single Round
             </NeonButton>
           </div>
-        </GlowCard>
-      </div>
 
-      {/* USDT Distribution */}
-      <GlowCard className="p-6" glowColor="cyan">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-success" />
-          USDT Distribution
-        </h3>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-background/50 rounded-lg p-4 border border-success/30">
-            <p className="text-xs text-muted-foreground mb-1">Pending USDT</p>
-            <p className="text-2xl font-bold text-success">
-              {revenue?.pending_usdt?.toLocaleString() || 0}
-            </p>
+          <div className="space-y-3">
+            {isAutoCycling ? (
+              <NeonButton
+                variant="secondary"
+                onClick={handleStopAutoCycle}
+                className="w-full text-destructive"
+              >
+                <StopCircle className="w-4 h-4 mr-2" />
+                Stop Auto-Cycle
+              </NeonButton>
+            ) : (
+              <NeonButton
+                onClick={handleStartAutoCycle}
+                disabled={isRunningRound || !gameStatus.active}
+                className="w-full"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Start Auto-Cycle
+              </NeonButton>
+            )}
           </div>
+        </div>
+
+        <div className="mt-4 flex items-center gap-4">
+          <Label className="text-xs">Delay between rounds:</Label>
+          <Input
+            type="number"
+            min={1}
+            max={60}
+            value={roundDelay}
+            onChange={(e) => setRoundDelay(Number(e.target.value))}
+            className="w-20"
+          />
+          <span className="text-xs text-muted-foreground">seconds</span>
+        </div>
+      </GlowCard>
+
+      {/* Current Round Info */}
+      {currentRound && (
+        <GlowCard className="p-6" glowColor="cyan">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Target className="w-5 h-5 text-primary" />
+            Current Round
+          </h3>
           
-          <div className="bg-background/30 rounded-lg p-4">
-            <p className="text-xs text-muted-foreground mb-2">100% → Factory Deployer Wallet</p>
-            <p className="text-xs font-mono text-muted-foreground break-all">
-              {FACTORY_DEPLOYER_WALLET}
-            </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+              <p className="text-xs text-muted-foreground">Round #</p>
+              <p className="text-xl font-bold">{currentRound.round_number}</p>
+            </div>
+            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+              <p className="text-xs text-muted-foreground">Status</p>
+              <Badge variant="outline">{currentRound.status}</Badge>
+            </div>
+            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+              <p className="text-xs text-muted-foreground">Crash Point</p>
+              <p className="text-xl font-bold text-destructive">
+                {currentRound.crash_point ? `${currentRound.crash_point}×` : '---'}
+              </p>
+            </div>
+            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
+              <p className="text-xs text-muted-foreground">ID</p>
+              <code className="text-xs font-mono">{currentRound.id.slice(0, 8)}...</code>
+            </div>
           </div>
-        </div>
-        
-        <NeonButton 
-          onClick={handleDistributeUsdt} 
-          disabled={isDistributingUsdt || !revenue?.pending_usdt || revenue.pending_usdt <= 0}
-          className="w-full mt-4"
-        >
-          {isDistributingUsdt ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <DollarSign className="w-4 h-4 mr-2" />
-          )}
-          Distribute USDT
+        </GlowCard>
+      )}
+
+      {/* Refresh Button */}
+      <div className="flex justify-center">
+        <NeonButton variant="ghost" onClick={() => { fetchData(); fetchGameStatus(); fetchOnChainBalance(); }}>
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Refresh All Data
         </NeonButton>
-      </GlowCard>
-
-      {/* Game Config */}
-      <GlowCard className="p-6" glowColor="cyan">
-        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-primary" />
-          Game Configuration
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" />
-              Betting Duration (sec)
-            </Label>
-            <Input
-              type="number"
-              value={config.betting_duration}
-              onChange={(e) => handleUpdateConfig('betting_duration', parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-muted-foreground" />
-              Max Multiplier
-            </Label>
-            <Input
-              type="number"
-              value={config.max_multiplier}
-              onChange={(e) => handleUpdateConfig('max_multiplier', parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Min Bet (tickets)</Label>
-            <Input
-              type="number"
-              value={config.min_bet}
-              onChange={(e) => handleUpdateConfig('min_bet', parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Max Bet (tickets)</Label>
-            <Input
-              type="number"
-              value={config.max_bet}
-              onChange={(e) => handleUpdateConfig('max_bet', parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-destructive" />
-              Instant Crash %
-            </Label>
-            <Input
-              type="number"
-              value={config.instant_crash_probability}
-              onChange={(e) => handleUpdateConfig('instant_crash_probability', parseInt(e.target.value))}
-              className="w-full"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Target className="w-4 h-4 text-muted-foreground" />
-              Auto-pause Threshold
-            </Label>
-            <Input
-              type="number"
-              placeholder="150"
-              defaultValue={150}
-              onChange={(e) => handleUpdateConfig('auto_pause_threshold', { wover: parseInt(e.target.value) })}
-              className="w-full"
-            />
-          </div>
-        </div>
-      </GlowCard>
+      </div>
     </div>
   );
 };

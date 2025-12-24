@@ -46,28 +46,28 @@ const BettingPanel = ({
   // Check if player can claim winnings when they won
   useEffect(() => {
     const checkClaimStatus = async () => {
-      if (myBet?.status === 'won' && currentRound?.round_number) {
-        console.log(`[BettingPanel] Checking claim status for round ${currentRound.round_number}`);
-        const result = await checkCanClaim(currentRound.round_number);
+      if (myBet?.status === 'won' && currentRound?.id) {
+        console.log(`[BettingPanel] Checking claim status for round ${currentRound.id}`);
+        const result = await checkCanClaim(currentRound.id);
         console.log(`[BettingPanel] Claim check result:`, result);
       }
     };
     checkClaimStatus();
-  }, [myBet?.status, currentRound?.round_number, checkCanClaim]);
+  }, [myBet?.status, currentRound?.id, checkCanClaim]);
 
   const handleClaimWinnings = async () => {
-    if (!currentRound?.round_number || !window.ethereum) {
+    if (!currentRound?.id || !window.ethereum) {
       console.log('[BettingPanel] Cannot claim: missing round or ethereum');
       return;
     }
     
     try {
-      console.log(`[BettingPanel] Starting claim for round ${currentRound.round_number}`);
+      console.log(`[BettingPanel] Starting claim for round ${currentRound.id}`);
       const { ethers } = await import('ethers');
       const provider = new ethers.providers.Web3Provider(window.ethereum as any);
       const signer = provider.getSigner();
       
-      const txHash = await claimWinnings(signer, currentRound.round_number);
+      const txHash = await claimWinnings(signer, currentRound.id);
       console.log(`[BettingPanel] Claim successful: ${txHash}`);
       playSound('cashout');
     } catch (error) {
