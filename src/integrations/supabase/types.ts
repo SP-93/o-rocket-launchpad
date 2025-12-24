@@ -198,6 +198,30 @@ export type Database = {
         }
         Relationships: []
       }
+      game_round_secrets: {
+        Row: {
+          created_at: string
+          encrypted_server_seed: string
+          id: string
+          round_id: string
+          server_seed_hash: string
+        }
+        Insert: {
+          created_at?: string
+          encrypted_server_seed: string
+          id?: string
+          round_id: string
+          server_seed_hash: string
+        }
+        Update: {
+          created_at?: string
+          encrypted_server_seed?: string
+          id?: string
+          round_id?: string
+          server_seed_hash?: string
+        }
+        Relationships: []
+      }
       game_rounds: {
         Row: {
           crash_point: number | null
