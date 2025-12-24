@@ -12,7 +12,7 @@ import {
 import { toast } from 'sonner';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { useOnChainBytecodeAnalysis } from '@/hooks/useOnChainBytecodeAnalysis';
-import { getDeployedContracts, clearCrashGameAddress } from '@/contracts/storage';
+import { getDeployedContracts, getDeployedContractsAsync, clearCrashGameAddress } from '@/contracts/storage';
 import { useWallet } from '@/hooks/useWallet';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG, TREASURY_WALLET } from '@/config/admin';
 import { CRASH_GAME_BYTECODE } from '@/contracts/artifacts/crashGame';
@@ -77,14 +77,19 @@ const CrashGameContractSection = () => {
   }, [getProvider]);
 
   useEffect(() => {
-    setDeployedContracts(getDeployedContracts());
-    if (deployedContracts.crashGame) {
-      fetchContractState();
-      // Fetch owner
-      getContractOwner().then(owner => {
+    const init = async () => {
+      // Use async version to sync from backend if needed
+      const contracts = await getDeployedContractsAsync();
+      setDeployedContracts(contracts);
+      
+      if (contracts.crashGame) {
+        fetchContractState();
+        // Fetch owner
+        const owner = await getContractOwner();
         if (owner) setContractOwner(owner);
-      });
-    }
+      }
+    };
+    init();
   }, []);
 
   const isContractDeployed = !!deployedContracts.crashGame;

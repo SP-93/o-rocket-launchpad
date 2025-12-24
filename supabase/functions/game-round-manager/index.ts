@@ -16,7 +16,11 @@ const RATE_LIMIT_WINDOW = 60000; // 1 minute
 
 // ============ SECURITY FUNCTIONS ============
 
-async function verifyAdminAuthorization(req: Request, supabase: any): Promise<{ authorized: boolean; walletAddress?: string; error?: string }> {
+async function verifyAdminAuthorization(
+  req: Request, 
+  supabaseAuth: any, 
+  supabaseService: any
+): Promise<{ authorized: boolean; walletAddress?: string; error?: string }> {
   try {
     // Extract JWT from Authorization header
     const authHeader = req.headers.get('authorization');
@@ -27,8 +31,8 @@ async function verifyAdminAuthorization(req: Request, supabase: any): Promise<{ 
 
     const jwt = authHeader.replace('Bearer ', '');
     
-    // Verify JWT and get user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(jwt);
+    // Verify JWT and get user using anon client
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(jwt);
     
     if (userError || !user) {
       console.log('[SECURITY] Invalid JWT:', userError?.message);
@@ -37,8 +41,8 @@ async function verifyAdminAuthorization(req: Request, supabase: any): Promise<{ 
 
     console.log(`[SECURITY] Authenticated user: ${user.id}`);
 
-    // Get user's wallet address
-    const { data: wallet, error: walletError } = await supabase
+    // Get user's wallet address using SERVICE ROLE client (bypasses RLS)
+    const { data: wallet, error: walletError } = await supabaseService
       .from('user_wallets')
       .select('wallet_address')
       .eq('user_id', user.id)
@@ -46,15 +50,15 @@ async function verifyAdminAuthorization(req: Request, supabase: any): Promise<{ 
       .single();
 
     if (walletError || !wallet) {
-      console.log('[SECURITY] No wallet linked for user');
+      console.log('[SECURITY] No wallet linked for user. Error:', walletError?.message);
       return { authorized: false, error: 'No wallet linked' };
     }
 
     const walletAddress = wallet.wallet_address;
     console.log(`[SECURITY] User wallet: ${walletAddress}`);
 
-    // Check if wallet is admin using RPC function
-    const { data: isAdmin, error: adminError } = await supabase
+    // Check if wallet is admin using RPC function (service role)
+    const { data: isAdmin, error: adminError } = await supabaseService
       .rpc('is_wallet_admin', { _wallet_address: walletAddress });
 
     if (adminError) {
@@ -229,8 +233,8 @@ serve(async (req) => {
       );
     }
 
-    // SECURITY: Verify admin authorization
-    const authResult = await verifyAdminAuthorization(req, supabaseAuth);
+    // SECURITY: Verify admin authorization (use service role for DB queries)
+    const authResult = await verifyAdminAuthorization(req, supabaseAuth, supabase);
     if (!authResult.authorized) {
       console.log(`[${requestId}] Unauthorized: ${authResult.error}`);
       return new Response(

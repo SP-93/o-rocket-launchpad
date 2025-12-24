@@ -3,6 +3,7 @@ import { ethers, Contract, ContractFactory } from 'ethers';
 import { toast } from 'sonner';
 import { CRASH_GAME_ABI, CRASH_GAME_BYTECODE } from '@/contracts/artifacts/crashGame';
 import { getDeployedContracts, saveDeployedContract } from '@/contracts/storage';
+import { saveCrashGameAddressToBackend } from '@/lib/contractConfigSync';
 
 interface CrashGameState {
   currentRoundId: number;
@@ -104,8 +105,9 @@ export const useCrashGameContract = () => {
       // Ensure ethers has the final address
       await contract.deployed();
 
-      // Save deployment address
+      // Save deployment address to localStorage AND backend
       saveDeployedContract('crashGame', contract.address);
+      await saveCrashGameAddressToBackend(contract.address);
 
       toast.success(`CrashGame deployed at ${contract.address}`);
       return contract.address;
