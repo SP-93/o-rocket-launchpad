@@ -302,15 +302,25 @@ const ProvablyFairModal = ({ currentRound, roundHistory = [] }: ProvablyFairModa
 
           {/* Smart Contract Link */}
           <div className="text-center text-sm text-muted-foreground">
-            <a
-              href="https://explorer.over.network"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-            >
-              View contract on Explorer
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {(() => {
+              const crashGameAddress = typeof window !== 'undefined' 
+                ? localStorage.getItem('crashGameAddress') 
+                : null;
+              const explorerUrl = crashGameAddress 
+                ? `https://scan.over.network/address/${crashGameAddress}` 
+                : 'https://scan.over.network';
+              return (
+                <a
+                  href={explorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                >
+                  View contract on OverScan
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              );
+            })()}
           </div>
         </div>
       </DialogContent>

@@ -35,8 +35,8 @@ export const useCrashGameContract = () => {
       return new Contract(crashGameAddress, CRASH_GAME_ABI, signer);
     }
 
-    // Read-only provider
-    const provider = new ethers.providers.JsonRpcProvider('https://rpc.over.network');
+    // Read-only provider - use correct Over Protocol mainnet RPC
+    const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
     return new Contract(crashGameAddress, CRASH_GAME_ABI, provider);
   }, []);
 
