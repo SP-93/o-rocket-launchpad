@@ -241,24 +241,80 @@ export const useCrashGameContract = () => {
     const contract = await getContract(signer);
     if (!contract) throw new Error('Contract not deployed');
 
+    const signerAddress = await signer.getAddress();
+    
+    // Check ownership first
+    const owner = await contract.owner();
+    if (owner.toLowerCase() !== signerAddress.toLowerCase()) {
+      throw new Error(`Only contract owner can refill. Owner: ${owner}, Your wallet: ${signerAddress}`);
+    }
+
     const amountWei = ethers.utils.parseEther(amount);
     
-    // First approve the token transfer
+    // Get token address and create contract with balanceOf
     const tokenAddress = isWover ? await contract.woverToken() : await contract.usdtToken();
     const tokenContract = new Contract(
       tokenAddress,
-      ['function approve(address spender, uint256 amount) returns (bool)'],
+      [
+        'function approve(address spender, uint256 amount) returns (bool)',
+        'function balanceOf(address account) view returns (uint256)',
+        'function allowance(address owner, address spender) view returns (uint256)'
+      ],
       signer
     );
     
-    const approveTx = await tokenContract.approve(contract.address, amountWei);
-    await waitForTransaction(approveTx);
+    // Check token balance
+    const tokenBalance = await tokenContract.balanceOf(signerAddress);
+    if (tokenBalance.lt(amountWei)) {
+      const balanceFormatted = ethers.utils.formatEther(tokenBalance);
+      throw new Error(`Insufficient ${isWover ? 'WOVER' : 'USDT'} balance. You have: ${balanceFormatted}, Need: ${amount}`);
+    }
+
+    console.log('[refillPrizePool] Starting refill...', {
+      owner,
+      signerAddress,
+      amount,
+      tokenAddress,
+      tokenBalance: ethers.utils.formatEther(tokenBalance)
+    });
     
-    // Then refill
-    const tx = await contract.refillPrizePool(amountWei, isWover);
-    await waitForTransaction(tx);
-    
-    toast.success(`Prize pool refilled with ${amount} WOVER`);
+    try {
+      // Approve with explicit gas limit
+      toast.info('Approving token transfer...');
+      const approveTx = await tokenContract.approve(contract.address, amountWei, { gasLimit: 100000 });
+      await waitForTransaction(approveTx);
+      console.log('[refillPrizePool] Approve successful');
+      
+      // Refill with explicit gas limit
+      toast.info('Refilling prize pool...');
+      const tx = await contract.refillPrizePool(amountWei, isWover, { gasLimit: 500000 });
+      await waitForTransaction(tx);
+      console.log('[refillPrizePool] Refill successful');
+      
+      toast.success(`Prize pool refilled with ${amount} ${isWover ? 'WOVER' : 'USDT'}`);
+    } catch (error: any) {
+      console.error('[refillPrizePool] Error:', error);
+      
+      // Decode JSON-RPC errors
+      if (error.code === -32603 || error.message?.includes('Internal JSON-RPC error')) {
+        const innerError = error.data?.message || error.error?.message || 'Unknown contract error';
+        throw new Error(`Contract call failed: ${innerError}`);
+      }
+      
+      // Re-throw with better message
+      throw new Error(error.reason || error.message || 'Refill failed');
+    }
+  }, [getContract]);
+
+  // Fetch contract owner
+  const getContractOwner = useCallback(async () => {
+    const contract = await getContract();
+    if (!contract) return null;
+    try {
+      return await contract.owner();
+    } catch {
+      return null;
+    }
   }, [getContract]);
 
   const distributeWoverRevenue = useCallback(async (signer: ethers.Signer) => {
@@ -318,6 +374,7 @@ export const useCrashGameContract = () => {
     deployCrashGame,
     fetchContractState,
     getContract,
+    getContractOwner,
     startRound,
     startFlying,
     crashRound,

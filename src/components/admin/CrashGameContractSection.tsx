@@ -27,6 +27,7 @@ const CrashGameContractSection = () => {
     contractState,
     deployCrashGame,
     fetchContractState,
+    getContractOwner,
     refillPrizePool,
     distributeWoverRevenue,
     distributeUsdtRevenue,
@@ -41,6 +42,13 @@ const CrashGameContractSection = () => {
   const [newPercentage, setNewPercentage] = useState(70);
   const [isUpdating, setIsUpdating] = useState(false);
   const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
+  const [contractOwner, setContractOwner] = useState<string | null>(null);
+
+  // Check if current wallet is owner
+  const isOwner = useMemo(() => {
+    if (!address || !contractOwner) return false;
+    return address.toLowerCase() === contractOwner.toLowerCase();
+  }, [address, contractOwner]);
 
   // Analyze bytecode for PUSH0 compatibility
   const bytecodeAnalysis = useMemo(() => {
@@ -61,6 +69,10 @@ const CrashGameContractSection = () => {
     setDeployedContracts(getDeployedContracts());
     if (deployedContracts.crashGame) {
       fetchContractState();
+      // Fetch owner
+      getContractOwner().then(owner => {
+        if (owner) setContractOwner(owner);
+      });
     }
   }, []);
 
@@ -366,6 +378,30 @@ const CrashGameContractSection = () => {
               On-Chain Prize Pool
             </h3>
 
+            {/* Ownership Info */}
+            {contractOwner && (
+              <div className={`rounded-lg p-3 mb-4 border ${isOwner ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                <div className="flex items-center gap-2">
+                  {isOwner ? (
+                    <CheckCircle className="w-4 h-4 text-success" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-destructive" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {isOwner ? 'You are the contract owner' : 'You are NOT the contract owner'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Owner: <code className="text-[10px]">{contractOwner}</code>
+                </p>
+                {!isOwner && (
+                  <p className="text-xs text-destructive mt-1">
+                    Only the owner can refill prize pool and distribute revenue
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* WOVER Prize Pool - Only WOVER for payouts per spec */}
             <div className="bg-warning/10 rounded-lg p-4 border border-warning/30 mb-4">
               <p className="text-xs text-muted-foreground mb-1">🎮 Prize Pool (WOVER only)</p>
@@ -385,11 +421,15 @@ const CrashGameContractSection = () => {
                   value={refillAmount}
                   onChange={(e) => setRefillAmount(e.target.value)}
                   className="flex-1"
+                  disabled={!isOwner}
                 />
-                <NeonButton onClick={handleRefill} disabled={isUpdating || !refillAmount}>
+                <NeonButton onClick={handleRefill} disabled={isUpdating || !refillAmount || !isOwner}>
                   {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
                 </NeonButton>
               </div>
+              {!isOwner && (
+                <p className="text-xs text-destructive">Connect with owner wallet to refill</p>
+              )}
             </div>
           </GlowCard>
 
