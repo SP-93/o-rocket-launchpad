@@ -210,9 +210,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
             <span className="font-semibold text-sm">Game Tickets</span>
           </div>
           {isConnected && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Wallet className="w-3 h-3" />
-              <span>{tokenBalance?.toFixed(2) || '...'} {selectedCurrency}</span>
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card/50 border border-border/30">
+              <Wallet className="w-3 h-3 text-primary" />
+              <span className="text-xs font-medium">
+                <span className="text-muted-foreground">Balance:</span>{' '}
+                <span className="text-foreground">{tokenBalance?.toFixed(2) || '...'} {selectedCurrency}</span>
+              </span>
             </div>
           )}
         </div>
