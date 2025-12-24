@@ -257,9 +257,49 @@ function calculateMultiplier(flyingStartedAt: string): number {
   return Math.min(Math.round(multiplier * 100) / 100, 10.00);
 }
 
+// ============ STUCK CLAIMS RECOVERY ============
+
+const STUCK_CLAIM_TIMEOUT_MINUTES = 5;
+
+async function resetStuckClaims(supabase: any, requestId: string): Promise<void> {
+  try {
+    // Calculate cutoff time
+    const cutoffTime = new Date(Date.now() - STUCK_CLAIM_TIMEOUT_MINUTES * 60 * 1000).toISOString();
+
+    // Find and reset stuck claims: status='claiming', claim_tx_hash is null, claiming_started_at < cutoff
+    const { data: stuckBets, error: fetchError } = await supabase
+      .from('game_bets')
+      .select('id')
+      .eq('status', 'claiming')
+      .is('claim_tx_hash', null)
+      .lt('claiming_started_at', cutoffTime);
+
+    if (fetchError || !stuckBets || stuckBets.length === 0) {
+      return; // No stuck claims or error
+    }
+
+    const resetIds = stuckBets.map((b: any) => b.id);
+    await supabase
+      .from('game_bets')
+      .update({
+        status: 'won',
+        claiming_started_at: null,
+        claim_nonce: null,
+      })
+      .in('id', resetIds);
+
+    console.log(`[${requestId}] TICK: Reset ${stuckBets.length} stuck claims`);
+  } catch (err) {
+    console.error(`[${requestId}] Error resetting stuck claims:`, err);
+  }
+}
+
 // ============ TICK ENGINE - SERVER-SIDE STATE MACHINE ============
 
 async function handleTick(supabase: any, requestId: string): Promise<{ action: string; details: any }> {
+  // Reset stuck claims periodically (every tick is fine, query is fast)
+  await resetStuckClaims(supabase, requestId);
+
   // Check if engine is enabled
   const { data: engineConfig } = await supabase
     .from('game_config')

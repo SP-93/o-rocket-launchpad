@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.game-confirm-claim]
 verify_jwt = false
+
+[functions.game-reset-stuck-claims]
+verify_jwt = false
