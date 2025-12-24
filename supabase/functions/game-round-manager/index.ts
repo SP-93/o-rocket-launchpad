@@ -254,7 +254,7 @@ function calculateMultiplier(flyingStartedAt: string): number {
   const elapsed = (Date.now() - startTime) / 1000;
   // Exponential growth formula - same as frontend
   const multiplier = Math.pow(1.0718, elapsed);
-  return Math.min(Math.round(multiplier * 100) / 100, 100.00);
+  return Math.min(Math.round(multiplier * 100) / 100, 10.00);
 }
 
 // ============ TICK ENGINE - SERVER-SIDE STATE MACHINE ============
@@ -585,6 +585,8 @@ serve(async (req) => {
         .eq('config_key', 'engine_enabled')
         .single();
 
+      const engineEnabled = engineConfig?.config_value?.enabled ?? false;
+
       const { data: thresholdConfig } = await supabase
         .from('game_config')
         .select('config_value')
@@ -597,22 +599,36 @@ serve(async (req) => {
         .limit(1)
         .single();
 
-      const { data: currentRound } = await supabase
-        .from('game_rounds')
-        .select('*')
-        .in('status', ['betting', 'countdown', 'flying'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      // If engine is stopped, show the last finished round instead of a stuck in-progress one
+      let currentRound: any | null = null;
+      if (engineEnabled) {
+        const { data } = await supabase
+          .from('game_rounds')
+          .select('*')
+          .in('status', ['betting', 'countdown', 'flying'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        currentRound = data ?? null;
+      } else {
+        const { data } = await supabase
+          .from('game_rounds')
+          .select('*')
+          .in('status', ['crashed', 'payout'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        currentRound = data ?? null;
+      }
 
       return new Response(
         JSON.stringify({
           game_active: gameStatus?.config_value?.active ?? false,
           pause_reason: gameStatus?.config_value?.reason ?? null,
-          engine_enabled: engineConfig?.config_value?.enabled ?? false,
+          engine_enabled: engineEnabled,
           threshold: thresholdConfig?.config_value?.wover ?? 100,
           prize_pool: pool?.current_balance ?? 0,
-          current_round: currentRound ?? null,
+          current_round: currentRound,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
