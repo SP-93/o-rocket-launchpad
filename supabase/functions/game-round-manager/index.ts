@@ -310,7 +310,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
       .eq('config_key', 'auto_pause_threshold')
       .single();
 
-    const minBalance = threshold?.config_value?.wover || 150;
+    const minBalance = threshold?.config_value?.wover || 100;
 
     if (pool && pool.current_balance < minBalance) {
       await supabase
@@ -585,6 +585,12 @@ serve(async (req) => {
         .eq('config_key', 'engine_enabled')
         .single();
 
+      const { data: thresholdConfig } = await supabase
+        .from('game_config')
+        .select('config_value')
+        .eq('config_key', 'auto_pause_threshold')
+        .single();
+
       const { data: pool } = await supabase
         .from('game_pool')
         .select('current_balance')
@@ -602,8 +608,9 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           game_active: gameStatus?.config_value?.active ?? false,
-          game_paused_reason: gameStatus?.config_value?.reason ?? null,
+          pause_reason: gameStatus?.config_value?.reason ?? null,
           engine_enabled: engineConfig?.config_value?.enabled ?? false,
+          threshold: thresholdConfig?.config_value?.wover ?? 100,
           prize_pool: pool?.current_balance ?? 0,
           current_round: currentRound ?? null,
         }),

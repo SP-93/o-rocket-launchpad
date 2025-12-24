@@ -20,6 +20,8 @@ interface EngineState {
   prizePool: number;
   lastAction: string | null;
   error: string | null;
+  pauseReason: string | null;
+  threshold: number;
 }
 
 const PHASE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -41,6 +43,8 @@ const AutoGameControl = () => {
     prizePool: 0,
     lastAction: null,
     error: null,
+    pauseReason: null,
+    threshold: 100,
   });
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +64,8 @@ const AutoGameControl = () => {
           gameActive: response.data.game_active ?? false,
           currentRound: response.data.current_round,
           prizePool: response.data.prize_pool ?? 0,
+          pauseReason: response.data.pause_reason ?? null,
+          threshold: response.data.threshold ?? 100,
           error: null,
         }));
         setLastUpdate(new Date());
@@ -222,6 +228,21 @@ const AutoGameControl = () => {
             </p>
           </div>
         </div>
+
+        {/* Pause Reason Display */}
+        {state.pauseReason && !state.gameActive && (
+          <div className="bg-warning/10 border border-warning/20 rounded-lg p-3 mb-4">
+            <div className="flex items-start gap-2 text-warning">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <span className="text-sm font-medium">Game Paused</span>
+                <p className="text-xs mt-0.5 opacity-80">
+                  {state.pauseReason} (Threshold: {state.threshold} WOVER)
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error Display */}
         {state.error && (

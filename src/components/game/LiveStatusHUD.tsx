@@ -8,6 +8,7 @@ interface LiveStatusHUDProps {
     lastAction: string | null;
     lastTick: Date | null;
     error: string | null;
+    pauseReason?: string | null;
   };
   roundStatus: string | null;
   roundNumber: number | null;
@@ -61,12 +62,20 @@ export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveSt
         "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] md:text-xs font-medium backdrop-blur-md border shadow-lg",
         isConnected 
           ? "bg-success/20 border-success/30 text-success" 
-          : "bg-destructive/20 border-destructive/30 text-destructive"
+          : engineStatus?.pauseReason
+            ? "bg-warning/20 border-warning/30 text-warning"
+            : "bg-destructive/20 border-destructive/30 text-destructive"
       )}>
         {isConnected ? (
           <>
             <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span>Live</span>
+          </>
+        ) : engineStatus?.pauseReason ? (
+          <>
+            <AlertTriangle className="w-3 h-3" />
+            <span className="hidden md:inline">{engineStatus.pauseReason}</span>
+            <span className="md:hidden">Paused</span>
           </>
         ) : (
           <>
