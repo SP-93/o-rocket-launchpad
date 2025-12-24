@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export interface GameTicket {
   id: string;
@@ -83,6 +84,40 @@ export function useGameTickets(walletAddress: string | undefined) {
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  // Realtime subscription for ticket updates
+  const channelRef = useRef<RealtimeChannel | null>(null);
+  
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    // Subscribe to ticket changes for this wallet
+    const channel = supabase
+      .channel(`tickets-${walletAddress.toLowerCase()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'game_tickets',
+          filter: `wallet_address=eq.${walletAddress.toLowerCase()}`,
+        },
+        (payload) => {
+          console.log('[useGameTickets] Realtime update:', payload);
+          fetchTickets();
+        }
+      )
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [walletAddress, fetchTickets]);
 
   const buyTicket = useCallback(async (
     ticketValue: number,
