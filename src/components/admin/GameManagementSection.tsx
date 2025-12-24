@@ -180,7 +180,7 @@ const GameManagementSection = () => {
   const handleStartNewRound = async () => {
     try {
       const { error } = await supabase.functions.invoke('game-round-manager', {
-        body: { action: 'start_new_round' },
+        body: { action: 'start_round' },
       });
       
       if (error) throw error;
