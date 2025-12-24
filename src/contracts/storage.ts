@@ -225,6 +225,14 @@ export const clearAllDeployedData = (): void => {
   storageValidationFailed = false;
 };
 
+// Clear only CrashGame contract address (for redeploy)
+export const clearCrashGameAddress = (): void => {
+  const contracts = getDeployedContracts();
+  contracts.crashGame = null;
+  secureStorage.setItem(STORAGE_KEYS.contracts, contracts);
+  logger.info('CrashGame address cleared from storage');
+};
+
 // Check if a contract is deployed
 export const isContractDeployed = (contractId: keyof DeployedContracts): boolean => {
   const contracts = getDeployedContracts();

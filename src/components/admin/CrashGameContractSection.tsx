@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { 
   Rocket, Loader2, CheckCircle, XCircle, ExternalLink, 
   Copy, RefreshCw, Wallet, DollarSign, Shield, Play, Pause,
-  TrendingUp, AlertTriangle, Database, Info
+  TrendingUp, AlertTriangle, Database, Info, Search, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
-import { getDeployedContracts } from '@/contracts/storage';
+import { useOnChainBytecodeAnalysis } from '@/hooks/useOnChainBytecodeAnalysis';
+import { getDeployedContracts, clearCrashGameAddress } from '@/contracts/storage';
 import { useWallet } from '@/hooks/useWallet';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG, TREASURY_WALLET } from '@/config/admin';
 import { CRASH_GAME_BYTECODE } from '@/contracts/artifacts/crashGame';
@@ -43,6 +44,15 @@ const CrashGameContractSection = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
   const [contractOwner, setContractOwner] = useState<string | null>(null);
+
+  // On-chain bytecode analysis hook
+  const { 
+    isAnalyzing: isAnalyzingOnChain, 
+    analysis: onChainAnalysis, 
+    error: analysisError,
+    analyzeOnChain,
+    clearAnalysis
+  } = useOnChainBytecodeAnalysis();
 
   // Check if current wallet is owner
   const isOwner = useMemo(() => {
@@ -185,6 +195,19 @@ const CrashGameContractSection = () => {
     }
   };
 
+  const handleAnalyzeOnChain = async () => {
+    await analyzeOnChain(TOKEN_ADDRESSES.WOVER, TOKEN_ADDRESSES.USDT);
+  };
+
+  const handleClearAddress = () => {
+    if (window.confirm('Are you sure you want to clear the stored CrashGame address? This will NOT affect the deployed contract on-chain.')) {
+      clearCrashGameAddress();
+      clearAnalysis();
+      setDeployedContracts(getDeployedContracts());
+      toast.success('CrashGame address cleared from local storage');
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success('Copied to clipboard');
@@ -267,16 +290,150 @@ const CrashGameContractSection = () => {
               </div>
             )}
 
-            {/* Refresh Button */}
-            <NeonButton 
-              variant="secondary" 
-              onClick={() => fetchContractState()} 
-              disabled={isLoading}
-              className="w-full"
-            >
-              {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-              Refresh State
-            </NeonButton>
+            {/* On-Chain Diagnostics Panel */}
+            <div className="bg-background/50 rounded-lg p-4 border border-border/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Search className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">On-Chain Bytecode Diagnostics</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <NeonButton 
+                    variant="secondary" 
+                    onClick={handleAnalyzeOnChain}
+                    disabled={isAnalyzingOnChain}
+                    className="text-xs px-3 py-1"
+                  >
+                    {isAnalyzingOnChain ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Search className="w-3 h-3 mr-1" />
+                        Analyze
+                      </>
+                    )}
+                  </NeonButton>
+                </div>
+              </div>
+
+              {analysisError && (
+                <div className="bg-destructive/10 border border-destructive/30 rounded p-2 text-xs text-destructive">
+                  {analysisError}
+                </div>
+              )}
+
+              {onChainAnalysis && (
+                <div className="space-y-2">
+                  {/* PUSH0 Status - Main Indicator */}
+                  <div className={`rounded p-3 border ${
+                    onChainAnalysis.bytecodeAnalysis.hasPush0 
+                      ? 'bg-destructive/10 border-destructive/30' 
+                      : 'bg-success/10 border-success/30'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      {onChainAnalysis.bytecodeAnalysis.hasPush0 ? (
+                        <XCircle className="w-5 h-5 text-destructive" />
+                      ) : (
+                        <CheckCircle className="w-5 h-5 text-success" />
+                      )}
+                      <span className="font-medium">
+                        On-Chain PUSH0: {onChainAnalysis.bytecodeAnalysis.hasPush0 ? 'PRESENT ⚠️' : 'Not Found ✓'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {onChainAnalysis.bytecodeAnalysis.hasPush0 
+                        ? 'Contract uses Shanghai opcode - may cause "invalid jump destination" errors'
+                        : 'Contract uses Paris-compatible opcodes'
+                      }
+                    </p>
+                  </div>
+
+                  {/* Bytecode Details */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-background/30 rounded p-2">
+                      <span className="text-muted-foreground">Bytecode Size: </span>
+                      <span className="font-mono">{onChainAnalysis.bytecodeLength.toLocaleString()} bytes</span>
+                    </div>
+                    <div className="bg-background/30 rounded p-2">
+                      <span className="text-muted-foreground">EVM Version: </span>
+                      <span className={`font-mono ${
+                        onChainAnalysis.bytecodeAnalysis.evmVersion === 'shanghai' 
+                          ? 'text-destructive' 
+                          : 'text-success'
+                      }`}>
+                        {onChainAnalysis.bytecodeAnalysis.evmVersion.toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bytecode Hash */}
+                  <div className="bg-background/30 rounded p-2">
+                    <span className="text-xs text-muted-foreground">Hash: </span>
+                    <code className="text-[10px] font-mono break-all">{onChainAnalysis.bytecodeHash}</code>
+                  </div>
+
+                  {/* Token Balances in Contract */}
+                  {onChainAnalysis.tokenBalances && (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-warning/10 border border-warning/30 rounded p-2">
+                        <span className="text-muted-foreground">Contract WOVER Balance: </span>
+                        <span className="font-bold text-warning">{onChainAnalysis.tokenBalances.wover}</span>
+                      </div>
+                      <div className="bg-success/10 border border-success/30 rounded p-2">
+                        <span className="text-muted-foreground">Contract USDT Balance: </span>
+                        <span className="font-bold text-success">{onChainAnalysis.tokenBalances.usdt}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Compare with Internal State */}
+                  {onChainAnalysis.tokenBalances && contractState && (
+                    <div className="bg-primary/10 border border-primary/30 rounded p-2">
+                      <p className="text-xs font-medium mb-1">Balance vs Internal State Comparison:</p>
+                      <div className="grid grid-cols-2 gap-2 text-[10px]">
+                        <div>
+                          <span className="text-muted-foreground">WOVER Real: </span>
+                          <span className="font-mono">{onChainAnalysis.tokenBalances.wover}</span>
+                          <span className="text-muted-foreground"> | Internal: </span>
+                          <span className="font-mono">{contractState.prizePoolWover}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">USDT Real: </span>
+                          <span className="font-mono">{onChainAnalysis.tokenBalances.usdt}</span>
+                          <span className="text-muted-foreground"> | Internal: </span>
+                          <span className="font-mono">{contractState.prizePoolUsdt}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-muted-foreground">
+                    Analyzed at: {onChainAnalysis.fetchedAt.toLocaleTimeString()}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons Row */}
+            <div className="flex gap-2">
+              <NeonButton 
+                variant="secondary" 
+                onClick={() => fetchContractState()} 
+                disabled={isLoading}
+                className="flex-1"
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                Refresh State
+              </NeonButton>
+              
+              <NeonButton 
+                variant="secondary" 
+                onClick={handleClearAddress}
+                className="px-4 text-destructive hover:text-destructive"
+              >
+                <Trash2 className="w-4 h-4" />
+              </NeonButton>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
