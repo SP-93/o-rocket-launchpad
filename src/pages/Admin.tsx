@@ -1013,43 +1013,16 @@ const Admin = () => {
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
               {/* Auto Game Loop - Primary Control */}
-              <div className="border-b border-border/30 pb-6">
+              <GlowCard className="p-6" glowColor="cyan">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
                   <Rocket className="w-5 h-5 text-success" />
-                  Automatic Game Loop
+                  Game Engine
                 </h2>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Start automatic gameplay - rounds cycle continuously (betting → flying → crash → payout)
+                  Control the automatic game loop. Rounds cycle: betting → countdown → flying → crash → payout → repeat
                 </p>
                 <AutoGameControl />
-              </div>
-              
-              {/* Smart Contract Deployment */}
-              <CrashGameContractSection />
-              
-              {/* On-Chain Round Control (Manual) */}
-              <div className="border-t border-border/30 pt-6">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Rocket className="w-5 h-5 text-primary" />
-                  Manual On-Chain Round Control
-                </h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Manual control for testing - start rounds, control flight phase, and trigger crash
-                </p>
-                <OnChainRoundManagement />
-              </div>
-              
-              {/* Database Management Section */}
-              <div className="border-t border-border/30 pt-6">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-primary" />
-                  Off-Chain Game Management
-                </h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Manage game data stored in the database (backup system when blockchain is not available)
-                </p>
-                <GameManagementSection />
-              </div>
+              </GlowCard>
             </TabsContent>
 
             {/* Treasury Tab */}

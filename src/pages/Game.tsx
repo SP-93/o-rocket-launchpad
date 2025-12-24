@@ -12,11 +12,12 @@ import GameTimer from '@/components/game/GameTimer';
 import LiveBetsFeed from '@/components/game/LiveBetsFeed';
 import QuickCashoutOverlay from '@/components/game/QuickCashoutOverlay';
 import MobileBetBar from '@/components/game/MobileBetBar';
+import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Wifi, WifiOff } from 'lucide-react';
+import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import useGameSounds from '@/hooks/useGameSounds';
 import { supabase } from '@/integrations/supabase/client';
@@ -164,6 +165,13 @@ const Game = () => {
     <div className="min-h-screen bg-background relative overflow-hidden">
       <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
+      
+      {/* Live Status HUD */}
+      <LiveStatusHUD 
+        engineStatus={engineStatus}
+        roundStatus={currentRound?.status || null}
+        roundNumber={currentRound?.round_number || null}
+      />
 
       {/* Background effects */}
       <div className="fixed inset-0 pointer-events-none">
