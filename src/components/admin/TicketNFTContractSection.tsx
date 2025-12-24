@@ -3,13 +3,19 @@ import { ethers, providers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
-import { getDeployedContracts, clearTicketNFTAddress } from '@/contracts/storage';
+import { getDeployedContracts, clearTicketNFTAddress, saveDeployedContract } from '@/contracts/storage';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG } from '@/config/admin';
+import { 
+  fetchTicketNFTAddressFromBackend, 
+  saveTicketNFTAddressToBackend, 
+  clearTicketNFTAddressFromBackend 
+} from '@/lib/contractConfigSync';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
 import { 
   Ticket, ExternalLink, Copy, Trash2, Loader2, CheckCircle, 
-  DollarSign, RefreshCw, TrendingUp, AlertTriangle
+  DollarSign, RefreshCw, TrendingUp, AlertTriangle,
+  Cloud, HardDrive, Download, Upload
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,11 +33,16 @@ const TicketNFTContractSection = () => {
   } = useTicketNFT();
   const { price: cexPrice, loading: cexLoading, refetch: refetchCexPrice } = useCoinGeckoPrice();
   
-  const [contractAddress, setContractAddress] = useState<string | null>(null);
+  const [localAddress, setLocalAddress] = useState<string | null>(null);
+  const [backendAddress, setBackendAddress] = useState<string | null>(null);
   const [gasLimit, setGasLimit] = useState<number>(8_000_000);
   const [newPriceUSD, setNewPriceUSD] = useState<string>('0.008');
   const [isSettingPrice, setIsSettingPrice] = useState(false);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
+  const [isSyncingBackend, setIsSyncingBackend] = useState(false);
+
+  const addressMismatch = localAddress && backendAddress && 
+    localAddress.toLowerCase() !== backendAddress.toLowerCase();
 
   // Get signer from window.ethereum
   const getSigner = useCallback(async (): Promise<ethers.Signer | null> => {
@@ -47,26 +58,29 @@ const TicketNFTContractSection = () => {
     }
   }, []);
 
-  // Load contract address
-  const refreshContractAddress = useCallback(() => {
+  // Load addresses
+  const refreshAddresses = useCallback(async () => {
     const contracts = getDeployedContracts();
-    setContractAddress(contracts.ticketNFT || null);
+    setLocalAddress(contracts.ticketNFT || null);
+    
+    const backend = await fetchTicketNFTAddressFromBackend();
+    setBackendAddress(backend);
   }, []);
 
   useEffect(() => {
-    refreshContractAddress();
-  }, [refreshContractAddress]);
+    refreshAddresses();
+  }, [refreshAddresses]);
 
   // Fetch contract state when address is available
   useEffect(() => {
-    if (contractAddress) {
+    if (localAddress) {
       fetchContractState();
       // Fetch owner
       const fetchOwner = async () => {
         try {
           const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
           const contract = new ethers.Contract(
-            contractAddress,
+            localAddress,
             ['function owner() view returns (address)'],
             provider
           );
@@ -78,7 +92,7 @@ const TicketNFTContractSection = () => {
       };
       fetchOwner();
     }
-  }, [contractAddress, fetchContractState]);
+  }, [localAddress, fetchContractState]);
 
   const handleDeploy = async () => {
     const signer = await getSigner();
@@ -90,20 +104,63 @@ const TicketNFTContractSection = () => {
     try {
       const deployedAddress = await deployTicketNFT(signer, { gasLimit });
       if (deployedAddress) {
-        setContractAddress(deployedAddress);
+        setLocalAddress(deployedAddress);
         fetchContractState();
+        
+        // Auto-save to backend
+        await saveTicketNFTAddressToBackend(deployedAddress);
+        setBackendAddress(deployedAddress);
+        toast.success('Contract synced to backend');
       }
     } catch (error) {
       console.error('Deploy failed:', error);
     }
   };
 
-  const handleClearAddress = () => {
-    if (confirm('Clear TicketNFT address? This will allow you to deploy a new contract.')) {
+  const handleClearLocal = () => {
+    if (confirm('Clear local TicketNFT address?')) {
       clearTicketNFTAddress();
-      setContractAddress(null);
+      setLocalAddress(null);
       setContractOwner(null);
-      toast.success('TicketNFT address cleared');
+      toast.success('Local address cleared');
+    }
+  };
+
+  const handleClearBackend = async () => {
+    if (confirm('Clear TicketNFT address from backend?')) {
+      setIsSyncingBackend(true);
+      try {
+        await clearTicketNFTAddressFromBackend();
+        setBackendAddress(null);
+        toast.success('Backend address cleared');
+      } catch (error) {
+        toast.error('Failed to clear backend');
+      } finally {
+        setIsSyncingBackend(false);
+      }
+    }
+  };
+
+  const handlePushToBackend = async () => {
+    if (!localAddress) return;
+    setIsSyncingBackend(true);
+    try {
+      await saveTicketNFTAddressToBackend(localAddress);
+      setBackendAddress(localAddress);
+      toast.success('Pushed to backend');
+    } catch (error) {
+      toast.error('Failed to push');
+    } finally {
+      setIsSyncingBackend(false);
+    }
+  };
+
+  const handlePullFromBackend = () => {
+    if (!backendAddress) return;
+    if (confirm('Use backend address for local?')) {
+      saveDeployedContract('ticketNFT', backendAddress);
+      setLocalAddress(backendAddress);
+      toast.success('Pulled from backend');
     }
   };
 
@@ -122,9 +179,6 @@ const TicketNFTContractSection = () => {
 
     setIsSettingPrice(true);
     try {
-      // Convert USD price to wei (18 decimals)
-      // woverPrice is stored as the USD value per 1 WOVER in wei format
-      // e.g., $0.008 = 8000000000000000 wei (0.008 * 1e18)
       const priceWei = ethers.utils.parseEther(priceUSD.toString());
       await setWoverPrice(signer, priceWei.toString());
       await fetchContractState();
@@ -151,19 +205,72 @@ const TicketNFTContractSection = () => {
         <h3 className="text-lg font-bold flex items-center gap-2">
           <Ticket className="w-5 h-5 text-pink-400" />
           RocketTicketNFT Contract
+          {addressMismatch && (
+            <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded-full">
+              Mismatch
+            </span>
+          )}
         </h3>
-        {contractAddress && (
-          <button 
-            onClick={handleClearAddress}
-            className="text-destructive hover:text-destructive/80 p-2 rounded-lg hover:bg-destructive/10 transition-colors"
-            title="Clear address for redeploy"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+      </div>
+
+      {/* Address Sync Panel */}
+      <div className="mb-4 space-y-2">
+        {/* Local Address */}
+        <div className="flex items-center gap-2 text-xs bg-background/50 rounded-lg p-2 border border-border/30">
+          <HardDrive className="w-4 h-4 text-muted-foreground" />
+          <span className="text-muted-foreground w-20">Local:</span>
+          <code className="flex-1 font-mono truncate">
+            {localAddress || <span className="text-muted-foreground">Not set</span>}
+          </code>
+          {localAddress && (
+            <button onClick={handleClearLocal} className="text-destructive hover:text-destructive/80 p-1">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+        
+        {/* Backend Address */}
+        <div className="flex items-center gap-2 text-xs bg-background/50 rounded-lg p-2 border border-border/30">
+          <Cloud className="w-4 h-4 text-muted-foreground" />
+          <span className="text-muted-foreground w-20">Backend:</span>
+          <code className="flex-1 font-mono truncate">
+            {backendAddress || <span className="text-muted-foreground">Not set</span>}
+          </code>
+          {backendAddress && (
+            <button onClick={handleClearBackend} disabled={isSyncingBackend} className="text-destructive hover:text-destructive/80 p-1">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+
+        {/* Sync Buttons */}
+        {(localAddress || backendAddress) && (
+          <div className="flex gap-2">
+            {localAddress && !backendAddress && (
+              <NeonButton variant="secondary" size="sm" onClick={handlePushToBackend} disabled={isSyncingBackend} className="text-xs flex-1">
+                <Upload className="w-3 h-3 mr-1" /> Push to Backend
+              </NeonButton>
+            )}
+            {backendAddress && !localAddress && (
+              <NeonButton variant="secondary" size="sm" onClick={handlePullFromBackend} disabled={isSyncingBackend} className="text-xs flex-1">
+                <Download className="w-3 h-3 mr-1" /> Pull from Backend
+              </NeonButton>
+            )}
+            {addressMismatch && (
+              <>
+                <NeonButton variant="secondary" size="sm" onClick={handlePushToBackend} disabled={isSyncingBackend} className="text-xs flex-1">
+                  <Upload className="w-3 h-3 mr-1" /> Push Local
+                </NeonButton>
+                <NeonButton variant="secondary" size="sm" onClick={handlePullFromBackend} disabled={isSyncingBackend} className="text-xs flex-1">
+                  <Download className="w-3 h-3 mr-1" /> Use Backend
+                </NeonButton>
+              </>
+            )}
+          </div>
         )}
       </div>
 
-      {!contractAddress ? (
+      {!localAddress ? (
         // Not deployed - show deployment UI
         <div className="space-y-4">
           <div className="bg-background/50 rounded-lg p-4 border border-border/30">
@@ -230,13 +337,13 @@ const TicketNFTContractSection = () => {
             <CheckCircle className="w-4 h-4 text-success" />
             <span className="text-sm font-medium text-success">Deployed</span>
             <code className="flex-1 text-xs font-mono text-muted-foreground truncate ml-2">
-              {contractAddress}
+              {localAddress}
             </code>
-            <button onClick={() => copyToClipboard(contractAddress)} className="text-muted-foreground hover:text-primary">
+            <button onClick={() => copyToClipboard(localAddress)} className="text-muted-foreground hover:text-primary">
               <Copy className="w-3.5 h-3.5" />
             </button>
             <a
-              href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/address/${contractAddress}`}
+              href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/address/${localAddress}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"

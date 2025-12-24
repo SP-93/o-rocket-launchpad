@@ -116,26 +116,36 @@ export const getDeployedContracts = (): DeployedContracts => {
   return mergeContracts(hardcoded, data);
 };
 
-// Async version that fetches crashGame from backend if not in localStorage
+// Async version that fetches crashGame and ticketNFT from backend if not in localStorage
+// Uses versioned keys (v2) for proper contract management
 export const getDeployedContractsAsync = async (): Promise<DeployedContracts> => {
   const contracts = getDeployedContracts();
   
-  // If crashGame is missing, try to fetch from backend
-  if (!contracts.crashGame) {
-    try {
-      // Dynamic import to avoid circular dependencies
-      const { fetchCrashGameAddressFromBackend } = await import('@/lib/contractConfigSync');
+  try {
+    // Dynamic import to avoid circular dependencies
+    const { fetchCrashGameAddressFromBackend, fetchTicketNFTAddressFromBackend } = await import('@/lib/contractConfigSync');
+    
+    // Sync crashGame v2 if missing locally
+    if (!contracts.crashGame) {
       const backendAddress = await fetchCrashGameAddressFromBackend();
-      
       if (backendAddress && isValidAddress(backendAddress)) {
-        // Save to localStorage for future use
         contracts.crashGame = backendAddress;
         secureStorage.setItem(STORAGE_KEYS.contracts, contracts);
-        logger.info('Synced crashGame address from backend:', backendAddress);
+        logger.info('Synced crashGame v2 address from backend:', backendAddress);
       }
-    } catch (error) {
-      logger.error('Failed to sync crashGame from backend:', error);
     }
+    
+    // Sync ticketNFT if missing locally
+    if (!contracts.ticketNFT) {
+      const backendAddress = await fetchTicketNFTAddressFromBackend();
+      if (backendAddress && isValidAddress(backendAddress)) {
+        contracts.ticketNFT = backendAddress;
+        secureStorage.setItem(STORAGE_KEYS.contracts, contracts);
+        logger.info('Synced ticketNFT address from backend:', backendAddress);
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to sync contracts from backend:', error);
   }
   
   return contracts;
