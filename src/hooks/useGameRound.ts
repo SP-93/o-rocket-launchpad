@@ -73,11 +73,11 @@ export function useGameRound() {
         
         lastStatusRef.current = round.status;
       } else {
-        // No active round, fetch the most recent crashed round
+        // No active round, fetch the most recent crashed or payout round
         const { data: lastRound, error: lastError } = await supabase
           .from('game_rounds_secure')
           .select('*')
-          .eq('status', 'crashed')
+          .in('status', ['crashed', 'payout'])
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -85,6 +85,10 @@ export function useGameRound() {
         if (!lastError && lastRound) {
           setCurrentRound(lastRound as GameRound);
           stopMultiplierAnimation();
+          // Set final multiplier to crash point if available
+          if (lastRound.crash_point) {
+            setCurrentMultiplier(lastRound.crash_point);
+          }
         }
       }
     } catch (error) {
@@ -117,13 +121,13 @@ export function useGameRound() {
     }
   }, []);
 
-  // Fetch round history
+  // Fetch round history (include payout rounds which have crash_point visible)
   const fetchRoundHistory = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('game_rounds_secure')
         .select('*')
-        .eq('status', 'crashed')
+        .in('status', ['crashed', 'payout'])
         .order('created_at', { ascending: false })
         .limit(10);
 
