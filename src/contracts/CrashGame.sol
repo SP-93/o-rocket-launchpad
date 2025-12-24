@@ -10,6 +10,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @title CrashGame
  * @dev Provably fair crash game contract for O'Rocket DEX
  * @notice Supports WOVER and USDT payments with configurable revenue distribution
+ * @notice Players can claim their winnings on-chain after winning
  */
 contract CrashGame is Ownable, ReentrancyGuard, Pausable {
     
@@ -33,6 +34,7 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
         uint256 autoCashoutAt;   // Multiplier * 100 (0 = manual)
         uint256 cashedOutAt;     // 0 if not cashed out
         bool isWover;            // true = WOVER, false = USDT
+        bool claimed;            // NEW: true if winnings have been claimed
     }
     
     enum RoundStatus {
@@ -83,6 +85,7 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
     event PrizePoolRefilled(address indexed token, uint256 amount);
     event RevenueDistributed(bool isWover, uint256 prizePoolAmount, uint256 platformAmount);
     event ConfigUpdated(string param, uint256 value);
+    event WinningsClaimed(uint256 indexed roundId, address indexed player, uint256 amount); // NEW
     
     // ============ Modifiers ============
     
@@ -162,7 +165,8 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
             amount: _amount,
             autoCashoutAt: _autoCashoutAt,
             cashedOutAt: 0,
-            isWover: _isWover
+            isWover: _isWover,
+            claimed: false
         });
         
         playerBetIndex[currentRoundId][msg.sender] = roundBets[currentRoundId].length;
@@ -219,6 +223,7 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
         }
         
         rounds[currentRoundId].totalPayout += payout;
+        bet.claimed = true; // Mark as claimed since payout is immediate
         
         require(token.transfer(msg.sender, payout), "Payout transfer failed");
         
@@ -251,7 +256,7 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
-     * @dev Process auto cashouts at crash point
+     * @dev Process auto cashouts at crash point - marks for claiming, does NOT transfer
      */
     function _processAutoCashouts(uint256 _crashPoint) internal {
         Bet[] storage bets = roundBets[currentRoundId];
@@ -262,28 +267,79 @@ contract CrashGame is Ownable, ReentrancyGuard, Pausable {
             // Skip already cashed out
             if (bet.cashedOutAt > 0) continue;
             
-            // Check auto cashout
+            // Check auto cashout - mark as won, player must claim manually
             if (bet.autoCashoutAt > 0 && bet.autoCashoutAt <= _crashPoint) {
                 bet.cashedOutAt = bet.autoCashoutAt;
-                
-                uint256 payout = (bet.amount * bet.autoCashoutAt) / 100;
-                
-                IERC20 token = bet.isWover ? woverToken : usdtToken;
-                
-                if (bet.isWover && prizePoolWover >= payout) {
-                    prizePoolWover -= payout;
-                    token.transfer(bet.player, payout);
-                    rounds[currentRoundId].totalPayout += payout;
-                    emit PayoutProcessed(currentRoundId, bet.player, payout);
-                } else if (!bet.isWover && prizePoolUsdt >= payout) {
-                    prizePoolUsdt -= payout;
-                    token.transfer(bet.player, payout);
-                    rounds[currentRoundId].totalPayout += payout;
-                    emit PayoutProcessed(currentRoundId, bet.player, payout);
-                }
+                // Note: claimed stays false - player must call claimWinnings()
             }
             // Players who didn't cash out lose their bet (already in pending revenue)
         }
+    }
+    
+    /**
+     * @dev Claim winnings after round has ended - player calls this to receive tokens
+     * @param _roundId The round ID to claim winnings from
+     */
+    function claimWinnings(uint256 _roundId) external nonReentrant {
+        require(rounds[_roundId].status == RoundStatus.Payout, "Round not completed");
+        require(hasPlayerBet[_roundId][msg.sender], "No bet in round");
+        
+        uint256 betIndex = playerBetIndex[_roundId][msg.sender];
+        Bet storage bet = roundBets[_roundId][betIndex];
+        
+        require(bet.cashedOutAt > 0, "Did not cash out - lost");
+        require(!bet.claimed, "Already claimed");
+        
+        bet.claimed = true;
+        
+        uint256 payout = (bet.amount * bet.cashedOutAt) / 100;
+        IERC20 token = bet.isWover ? woverToken : usdtToken;
+        
+        // Payout from prize pool
+        if (bet.isWover) {
+            require(prizePoolWover >= payout, "Insufficient prize pool");
+            prizePoolWover -= payout;
+        } else {
+            require(prizePoolUsdt >= payout, "Insufficient prize pool");
+            prizePoolUsdt -= payout;
+        }
+        
+        rounds[_roundId].totalPayout += payout;
+        
+        require(token.transfer(msg.sender, payout), "Payout transfer failed");
+        
+        emit WinningsClaimed(_roundId, msg.sender, payout);
+    }
+    
+    /**
+     * @dev Check if player can claim winnings for a round
+     * @param _roundId The round ID to check
+     * @param _player The player address
+     */
+    function canClaimWinnings(uint256 _roundId, address _player) external view returns (bool) {
+        if (rounds[_roundId].status != RoundStatus.Payout) return false;
+        if (!hasPlayerBet[_roundId][_player]) return false;
+        
+        uint256 betIndex = playerBetIndex[_roundId][_player];
+        Bet storage bet = roundBets[_roundId][betIndex];
+        
+        return bet.cashedOutAt > 0 && !bet.claimed;
+    }
+    
+    /**
+     * @dev Get pending claim amount for a player
+     * @param _roundId The round ID to check
+     * @param _player The player address
+     */
+    function getPendingClaimAmount(uint256 _roundId, address _player) external view returns (uint256) {
+        if (!hasPlayerBet[_roundId][_player]) return 0;
+        
+        uint256 betIndex = playerBetIndex[_roundId][_player];
+        Bet storage bet = roundBets[_roundId][betIndex];
+        
+        if (bet.cashedOutAt == 0 || bet.claimed) return 0;
+        
+        return (bet.amount * bet.cashedOutAt) / 100;
     }
     
     // ============ Revenue & Pool Management ============
