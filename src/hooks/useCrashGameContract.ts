@@ -262,14 +262,22 @@ export const useCrashGameContract = () => {
 
     const amountWei = ethers.utils.parseEther(amount);
     
-    // Get token address and create contract with balanceOf
-    const tokenAddress = isWover ? await contract.woverToken() : await contract.usdtToken();
+    // Get token addresses from contract and verify
+    const woverInContract = await contract.woverToken();
+    const usdtInContract = await contract.usdtToken();
+    console.log('[refillPrizePool] Token addresses in contract:', {
+      wover: woverInContract,
+      usdt: usdtInContract,
+    });
+    
+    const tokenAddress = isWover ? woverInContract : usdtInContract;
     const tokenContract = new Contract(
       tokenAddress,
       [
         'function approve(address spender, uint256 amount) returns (bool)',
         'function balanceOf(address account) view returns (uint256)',
-        'function allowance(address owner, address spender) view returns (uint256)'
+        'function allowance(address owner, address spender) view returns (uint256)',
+        'function symbol() view returns (string)'
       ],
       signer
     );
@@ -281,26 +289,65 @@ export const useCrashGameContract = () => {
       throw new Error(`Insufficient ${isWover ? 'WOVER' : 'USDT'} balance. You have: ${balanceFormatted}, Need: ${amount}`);
     }
 
+    // Check current allowance
+    const currentAllowance = await tokenContract.allowance(signerAddress, contract.address);
     console.log('[refillPrizePool] Starting refill...', {
       owner,
       signerAddress,
       amount,
       tokenAddress,
-      tokenBalance: ethers.utils.formatEther(tokenBalance)
+      tokenBalance: ethers.utils.formatEther(tokenBalance),
+      currentAllowance: ethers.utils.formatEther(currentAllowance)
     });
     
     try {
-      // Approve with explicit gas limit
-      toast.info('Approving token transfer...');
-      const approveTx = await tokenContract.approve(contract.address, amountWei, { gasLimit: 100000 });
-      await waitForTransaction(approveTx);
-      console.log('[refillPrizePool] Approve successful');
+      // Only approve if needed - use MaxUint256 for infinite approval
+      if (currentAllowance.lt(amountWei)) {
+        toast.info('Approving token transfer...');
+        const approveTx = await tokenContract.approve(
+          contract.address, 
+          ethers.constants.MaxUint256, // Infinite approval
+          { 
+            gasLimit: 150000,
+            gasPrice: ethers.utils.parseUnits('100', 'gwei')
+          }
+        );
+        await waitForTransaction(approveTx);
+        
+        // Verify allowance after approve
+        const allowanceAfter = await tokenContract.allowance(signerAddress, contract.address);
+        console.log('[refillPrizePool] Allowance after approve:', ethers.utils.formatEther(allowanceAfter));
+        
+        if (allowanceAfter.isZero()) {
+          throw new Error('Approve transaction completed but allowance is still 0');
+        }
+      } else {
+        console.log('[refillPrizePool] Sufficient allowance exists, skipping approve');
+      }
       
-      // Refill with explicit gas limit
+      // Estimate gas first to catch revert reasons early
+      toast.info('Estimating gas for refill...');
+      let gasLimit: number;
+      try {
+        const estimatedGas = await contract.estimateGas.refillPrizePool(amountWei, isWover);
+        gasLimit = Math.ceil(estimatedGas.toNumber() * 1.3); // 30% buffer
+        console.log('[refillPrizePool] Estimated gas:', estimatedGas.toString(), 'Using:', gasLimit);
+      } catch (estimateError: any) {
+        console.error('[refillPrizePool] Gas estimation failed - transaction would revert:', estimateError);
+        
+        // Try to decode revert reason
+        const reason = estimateError.reason || estimateError.error?.message || estimateError.message;
+        throw new Error(`Transaction would fail: ${reason}`);
+      }
+      
+      // Execute refill with estimated gas
       toast.info('Refilling prize pool...');
-      const tx = await contract.refillPrizePool(amountWei, isWover, { gasLimit: 500000 });
+      const tx = await contract.refillPrizePool(amountWei, isWover, { 
+        gasLimit,
+        gasPrice: ethers.utils.parseUnits('100', 'gwei')
+      });
       await waitForTransaction(tx);
-      console.log('[refillPrizePool] Refill successful');
+      console.log('[refillPrizePool] Refill successful, tx:', tx.hash);
       
       toast.success(`Prize pool refilled with ${amount} ${isWover ? 'WOVER' : 'USDT'}`);
     } catch (error: any) {
@@ -310,6 +357,11 @@ export const useCrashGameContract = () => {
       if (error.code === -32603 || error.message?.includes('Internal JSON-RPC error')) {
         const innerError = error.data?.message || error.error?.message || 'Unknown contract error';
         throw new Error(`Contract call failed: ${innerError}`);
+      }
+      
+      // Handle CALL_EXCEPTION
+      if (error.code === 'CALL_EXCEPTION') {
+        throw new Error(`Transaction reverted on-chain. Possible causes: insufficient token balance in contract, or contract logic error.`);
       }
       
       // Re-throw with better message
