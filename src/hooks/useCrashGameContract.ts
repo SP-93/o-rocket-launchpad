@@ -325,22 +325,30 @@ export const useCrashGameContract = () => {
         console.log('[refillPrizePool] Sufficient allowance exists, skipping approve');
       }
       
-      // Estimate gas first to catch revert reasons early
-      toast.info('Estimating gas for refill...');
-      let gasLimit: number;
+      // STEP 1: Static call to get exact revert reason before sending tx
+      toast.info('Validating transaction...');
+      try {
+        await contract.callStatic.refillPrizePool(amountWei, isWover);
+        console.log('[refillPrizePool] Static call succeeded - transaction should work');
+      } catch (staticError: any) {
+        console.error('[refillPrizePool] Static call failed:', staticError);
+        const reason = staticError.reason || staticError.error?.message || staticError.message;
+        throw new Error(`Contract would revert: ${reason}`);
+      }
+      
+      // STEP 2: Estimate gas with fallback
+      toast.info('Estimating gas...');
+      let gasLimit: number = 800000; // Fallback default
       try {
         const estimatedGas = await contract.estimateGas.refillPrizePool(amountWei, isWover);
         gasLimit = Math.ceil(estimatedGas.toNumber() * 1.3); // 30% buffer
         console.log('[refillPrizePool] Estimated gas:', estimatedGas.toString(), 'Using:', gasLimit);
       } catch (estimateError: any) {
-        console.error('[refillPrizePool] Gas estimation failed - transaction would revert:', estimateError);
-        
-        // Try to decode revert reason
-        const reason = estimateError.reason || estimateError.error?.message || estimateError.message;
-        throw new Error(`Transaction would fail: ${reason}`);
+        console.warn('[refillPrizePool] Gas estimation failed, using fallback:', gasLimit);
+        // Continue with fallback gas limit instead of throwing
       }
       
-      // Execute refill with estimated gas
+      // STEP 3: Execute refill
       toast.info('Refilling prize pool...');
       const tx = await contract.refillPrizePool(amountWei, isWover, { 
         gasLimit,
