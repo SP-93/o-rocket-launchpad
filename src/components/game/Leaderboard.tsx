@@ -27,7 +27,7 @@ const Leaderboard = () => {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        const response = await supabase.functions.invoke('game-leaderboard', {
+        const response = await supabase.functions.invoke('game-leaderboard?force_refresh=true', {
           body: {},
         });
 
