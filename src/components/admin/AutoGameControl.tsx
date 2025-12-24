@@ -1,17 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
-import { Button } from '@/components/ui/button';
 import { 
   Play, Square, Rocket, Clock, 
   Zap, AlertTriangle, CheckCircle, Loader2,
-  Timer, TrendingUp, Pause, Power
+  Timer, Pause, Power, RefreshCw
 } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 import { isAdmin } from '@/config/admin';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 
 interface EngineState {
   isEnabled: boolean;
@@ -33,6 +33,7 @@ const PHASE_CONFIG: Record<string, { label: string; color: string; icon: any }> 
 
 const AutoGameControl = () => {
   const { address } = useWallet();
+  const { fetchContractState } = useCrashGameContract();
   const [state, setState] = useState<EngineState>({
     isEnabled: false,
     gameActive: false,
@@ -41,10 +42,11 @@ const AutoGameControl = () => {
     lastAction: null,
     error: null,
   });
+  const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  // Fetch current status
+  // Fetch current status and on-chain balance
   const fetchStatus = useCallback(async () => {
     try {
       const response = await supabase.functions.invoke('game-round-manager', {
@@ -62,16 +64,22 @@ const AutoGameControl = () => {
         }));
         setLastUpdate(new Date());
       }
+      
+      // Fetch on-chain balance
+      const contractState = await fetchContractState();
+      if (contractState) {
+        setOnChainBalance(contractState.prizePool);
+      }
     } catch (err: any) {
       console.error('[AdminEngine] Status fetch failed:', err);
       setState(prev => ({ ...prev, error: err.message }));
     }
-  }, []);
+  }, [fetchContractState]);
 
   // Poll for status updates
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 2000);
+    const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
@@ -197,8 +205,10 @@ const AutoGameControl = () => {
           </div>
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-            <p className="text-xs text-muted-foreground">Prize Pool</p>
-            <p className="text-xl font-bold text-warning">{state.prizePool.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Prize Pool (On-Chain)</p>
+            <p className="text-xl font-bold text-warning">
+              {onChainBalance ? `${parseFloat(onChainBalance).toLocaleString()} WOVER` : '---'}
+            </p>
           </div>
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
