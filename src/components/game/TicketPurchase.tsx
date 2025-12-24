@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Ticket, Clock, AlertCircle } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles } from 'lucide-react';
 import { useGameTickets } from '@/hooks/useGameTickets';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
+import { useTokenTransfer } from '@/hooks/useTokenTransfer';
 import { toast } from '@/hooks/use-toast';
 
 interface TicketPurchaseProps {
@@ -18,16 +18,26 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [selectedValue, setSelectedValue] = useState<number>(1);
   const [selectedCurrency, setSelectedCurrency] = useState<'WOVER' | 'USDT'>('WOVER');
   const [isPurchasing, setIsPurchasing] = useState(false);
+  const [txStatus, setTxStatus] = useState<'idle' | 'confirming' | 'saving'>('idle');
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   
   const { buyTicket, availableTickets, refetch } = useGameTickets(walletAddress);
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
+  const { transferToken, getTokenBalance, isPending: isTransferPending } = useTokenTransfer();
 
   const usdtAmount = selectedCurrency === 'USDT' && woverPrice 
     ? (selectedValue * woverPrice).toFixed(4)
     : null;
 
+  // Fetch token balance
+  useEffect(() => {
+    if (walletAddress && isConnected) {
+      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+    }
+  }, [walletAddress, isConnected, selectedCurrency, getTokenBalance]);
+
   const handlePurchase = async () => {
-    if (!isConnected) {
+    if (!isConnected || !walletAddress) {
       toast({
         title: "Connect Wallet",
         description: "Please connect your wallet to purchase tickets",
@@ -36,20 +46,51 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       return;
     }
 
-    setIsPurchasing(true);
-    try {
-      const paymentAmount = selectedCurrency === 'WOVER' 
-        ? selectedValue 
-        : parseFloat(usdtAmount || '0');
+    const paymentAmount = selectedCurrency === 'WOVER' 
+      ? selectedValue 
+      : parseFloat(usdtAmount || '0');
 
-      await buyTicket(selectedValue, selectedCurrency, paymentAmount);
+    // Check balance
+    if (tokenBalance !== null && tokenBalance < paymentAmount) {
+      toast({
+        title: "Insufficient Balance",
+        description: `You need ${paymentAmount} ${selectedCurrency} but only have ${tokenBalance.toFixed(4)}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsPurchasing(true);
+    setTxStatus('confirming');
+
+    try {
+      // Step 1: Execute blockchain transfer
+      toast({
+        title: "Confirm Transaction",
+        description: "Please confirm the transaction in your wallet",
+      });
+
+      const result = await transferToken(selectedCurrency, paymentAmount);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Transaction failed');
+      }
+
+      setTxStatus('saving');
+
+      // Step 2: Register ticket in database with tx hash
+      await buyTicket(selectedValue, selectedCurrency, paymentAmount, result.txHash);
       
       toast({
-        title: "Ticket Purchased!",
-        description: `You bought a ${selectedValue} WOVER ticket`,
+        title: "Ticket Purchased! 🎫",
+        description: `${selectedValue} WOVER ticket added to your collection`,
       });
       
+      // Refresh data
       await refetch();
+      if (walletAddress) {
+        getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+      }
     } catch (error) {
       toast({
         title: "Purchase Failed",
@@ -58,85 +99,106 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       });
     } finally {
       setIsPurchasing(false);
+      setTxStatus('idle');
     }
   };
 
+  const isLoading = isPurchasing || isTransferPending;
+
   return (
-    <Card className="bg-[#0d0d18]/80 backdrop-blur border-primary/10 overflow-hidden">
-      <CardHeader className="pb-2 pt-4">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <div className="p-1.5 rounded-lg bg-primary/20">
-            <Ticket className="w-4 h-4 text-primary" />
+    <div className="glass-card overflow-hidden">
+      {/* Header with gradient accent */}
+      <div className="relative px-4 py-3 border-b border-border/30">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-primary/20">
+              <Ticket className="w-4 h-4 text-primary" />
+            </div>
+            <span className="font-semibold text-sm">Game Tickets</span>
           </div>
-          Game Tickets
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3 pb-4">
-        {/* Available Tickets Display with Animation */}
+          {isConnected && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Wallet className="w-3 h-3" />
+              <span>{tokenBalance?.toFixed(2) || '...'} {selectedCurrency}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Available Tickets Display */}
         {isConnected && (
-          <div className="flex flex-wrap gap-2 p-2 bg-primary/5 rounded-lg min-h-[60px] items-center justify-center">
-            {availableTickets.length > 0 ? (
-              availableTickets.slice(0, 6).map((ticket, index) => (
-                <div
-                  key={ticket.id}
-                  className="relative group cursor-pointer animate-fade-in"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  {/* Ticket card */}
-                  <div className="relative w-12 h-16 bg-gradient-to-br from-primary/30 via-primary/20 to-primary/10 rounded-lg border border-primary/30 shadow-lg shadow-primary/20 transition-all duration-300 group-hover:scale-110 group-hover:shadow-primary/40 group-hover:-translate-y-1">
-                    {/* Ticket perforated edge */}
-                    <div className="absolute left-0 top-2 bottom-2 w-1 flex flex-col justify-between">
-                      {[...Array(4)].map((_, i) => (
-                        <div key={i} className="w-1 h-1 rounded-full bg-[#0d0d18]" />
-                      ))}
+          <div className="relative">
+            <div className="flex flex-wrap gap-2 p-3 bg-card/50 rounded-xl min-h-[70px] items-center justify-center border border-border/20">
+              {availableTickets.length > 0 ? (
+                <>
+                  {availableTickets.slice(0, 6).map((ticket, index) => (
+                    <div
+                      key={ticket.id}
+                      className="relative group cursor-pointer animate-fade-in"
+                      style={{ animationDelay: `${index * 80}ms` }}
+                    >
+                      <div className="relative w-11 h-14 bg-gradient-to-br from-primary/40 via-primary/25 to-primary/10 rounded-lg border border-primary/40 shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:border-primary/60 group-hover:-translate-y-1">
+                        {/* Perforated edge */}
+                        <div className="absolute left-0.5 top-1.5 bottom-1.5 w-0.5 flex flex-col justify-around">
+                          {[...Array(3)].map((_, i) => (
+                            <div key={i} className="w-1 h-1 rounded-full bg-background/80" />
+                          ))}
+                        </div>
+                        {/* Value */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-base font-bold text-primary">{ticket.ticket_value}</span>
+                          <span className="text-[7px] text-muted-foreground uppercase tracking-wider">WOVER</span>
+                        </div>
+                        {/* Shine */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                      {/* Glow on hover */}
+                      <div className="absolute inset-0 blur-lg bg-primary/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
                     </div>
-                    {/* Value */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-lg font-bold text-primary">{ticket.ticket_value}</span>
-                      <span className="text-[8px] text-muted-foreground uppercase tracking-wider">WOVER</span>
+                  ))}
+                  {availableTickets.length > 6 && (
+                    <div className="flex items-center justify-center w-11 h-14 rounded-lg border border-dashed border-primary/30 text-xs text-muted-foreground">
+                      +{availableTickets.length - 6}
                     </div>
-                    {/* Shine effect */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                  {/* Glow */}
-                  <div className="absolute inset-0 blur-md bg-primary/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-2">
+                  <Sparkles className="w-5 h-5 text-muted-foreground/50 mx-auto mb-1" />
+                  <p className="text-xs text-muted-foreground">No tickets yet</p>
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-muted-foreground text-center">No tickets yet - buy some below!</p>
-            )}
-            {availableTickets.length > 6 && (
-              <div className="text-xs text-muted-foreground">+{availableTickets.length - 6} more</div>
-            )}
+              )}
+            </div>
           </div>
         )}
 
         {/* Currency Selection */}
         <Tabs value={selectedCurrency} onValueChange={(v) => setSelectedCurrency(v as 'WOVER' | 'USDT')}>
-          <TabsList className="grid w-full grid-cols-2 bg-background/50 h-8">
-            <TabsTrigger value="WOVER" className="text-xs data-[state=active]:bg-primary/20">
+          <TabsList className="grid w-full grid-cols-2 bg-card/50 h-9">
+            <TabsTrigger value="WOVER" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
               WOVER
             </TabsTrigger>
-            <TabsTrigger value="USDT" className="text-xs data-[state=active]:bg-primary/20">
+            <TabsTrigger value="USDT" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
               USDT
             </TabsTrigger>
           </TabsList>
         </Tabs>
 
         {/* Ticket Value Selection */}
-        <div className="grid grid-cols-5 gap-1.5">
-          {TICKET_VALUES.map((value, index) => (
+        <div className="grid grid-cols-5 gap-2">
+          {TICKET_VALUES.map((value) => (
             <Button
               key={value}
               variant={selectedValue === value ? "default" : "outline"}
               size="sm"
               onClick={() => setSelectedValue(value)}
-              className={`h-9 text-sm font-bold transition-all duration-200 ${
+              className={`h-10 text-sm font-bold transition-all duration-200 ${
                 selectedValue === value 
-                  ? "bg-primary shadow-lg shadow-primary/30 scale-105" 
-                  : "border-primary/20 hover:border-primary/40 hover:bg-primary/10"
+                  ? "bg-primary shadow-lg shadow-primary/30 scale-105 border-0" 
+                  : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
               }`}
-              style={{ animationDelay: `${index * 50}ms` }}
             >
               {value}
             </Button>
@@ -144,10 +206,10 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         </div>
 
         {/* Price Display */}
-        <div className="p-2.5 rounded-lg bg-background/30 border border-primary/10 space-y-1">
+        <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-muted-foreground text-xs">You Pay</span>
-            <span className="font-bold">
+            <span className="font-bold text-base">
               {selectedCurrency === 'WOVER' ? (
                 `${selectedValue} WOVER`
               ) : isPriceLoading ? (
@@ -157,37 +219,47 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
               )}
             </span>
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Clock className="w-2.5 h-2.5" />
-            Valid for 15 days
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5" />
+              Valid for 15 days
+            </div>
+            <span>Ticket value: {selectedValue} WOVER</span>
           </div>
         </div>
 
         {/* Purchase Button */}
         <Button
           onClick={handlePurchase}
-          disabled={!isConnected || isPurchasing}
-          className="w-full btn-primary h-9 text-sm"
+          disabled={!isConnected || isLoading}
+          className="w-full btn-primary h-11 text-sm font-semibold"
         >
-          {isPurchasing ? (
-            <>
-              <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-              Buying...
-            </>
+          {isLoading ? (
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>
+                {txStatus === 'confirming' && 'Confirm in Wallet...'}
+                {txStatus === 'saving' && 'Saving Ticket...'}
+                {txStatus === 'idle' && 'Processing...'}
+              </span>
+            </div>
           ) : !isConnected ? (
             "Connect Wallet"
           ) : (
-            "Buy Ticket"
+            <div className="flex items-center gap-2">
+              <Ticket className="w-4 h-4" />
+              Buy Ticket
+            </div>
           )}
         </Button>
 
         {/* Info */}
-        <div className="flex items-start gap-1.5 p-1.5 rounded bg-warning/10 text-warning text-[10px]">
+        <div className="flex items-start gap-2 p-2 rounded-lg bg-warning/5 border border-warning/10 text-[10px] text-warning">
           <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-          <span>On-chain verification coming soon</span>
+          <span>Tokens are transferred to the game treasury. Transaction required.</span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 

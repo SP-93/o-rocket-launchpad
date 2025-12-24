@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Loader2, Zap, Hand, Target } from 'lucide-react';
+import { Loader2, Zap, Hand, Target, Ticket, TrendingUp } from 'lucide-react';
 import { useGameTickets, type GameTicket } from '@/hooks/useGameTickets';
 import { useGameBetting } from '@/hooks/useGameBetting';
 import type { GameRound, GameBet } from '@/hooks/useGameRound';
@@ -19,7 +18,7 @@ interface BettingPanelProps {
   onBetPlaced?: () => void;
 }
 
-type AutoCashout = 'x2' | 'x10' | 'off';
+type AutoCashout = 'x2' | 'x5' | 'x10' | 'off';
 
 const BettingPanel = ({
   walletAddress,
@@ -35,7 +34,6 @@ const BettingPanel = ({
   const { availableTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
   
-  // Sound effects
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
 
@@ -46,22 +44,21 @@ const BettingPanel = ({
     if (!selectedTicket) {
       toast({
         title: "Select a Ticket",
-        description: "Please select a ticket to place your bet",
+        description: "Choose a ticket to place your bet",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const autoCashoutValue = autoCashout === 'x2' ? 2 : autoCashout === 'x10' ? 10 : null;
+      const autoCashoutValue = autoCashout === 'x2' ? 2 : autoCashout === 'x5' ? 5 : autoCashout === 'x10' ? 10 : null;
       await placeBet(selectedTicket, autoCashoutValue);
       
-      // Play bet sound
       playSound('bet');
       
       toast({
-        title: "Bet Placed!",
-        description: `Betting ${selectedTicket.ticket_value} WOVER${autoCashoutValue ? ` with auto cash-out at x${autoCashoutValue}` : ''}`,
+        title: "Bet Placed! 🎯",
+        description: `${selectedTicket.ticket_value} WOVER${autoCashoutValue ? ` • Auto @${autoCashoutValue}×` : ''}`,
       });
       
       setSelectedTicket(null);
@@ -80,13 +77,11 @@ const BettingPanel = ({
 
     try {
       const result = await cashOut(myBet.id, currentMultiplier);
-      
-      // Play cashout sound
       playSound('cashout');
       
       toast({
         title: "Cashed Out! 🎉",
-        description: `Won ${result.cashout.winnings.toFixed(2)} WOVER at ${currentMultiplier}x`,
+        description: `Won ${result.cashout.winnings.toFixed(2)} WOVER at ${currentMultiplier}×`,
       });
     } catch (error) {
       toast({
@@ -97,46 +92,56 @@ const BettingPanel = ({
     }
   };
 
-  // If player has an active bet
+  // Active bet view
   if (myBet && currentRound) {
     const potentialWin = myBet.bet_amount * currentMultiplier;
     
     return (
-      <Card className="glass-card border-primary/20">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Zap className="w-5 h-5 text-warning" />
-            Your Bet
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-            <div className="flex justify-between mb-2">
-              <span className="text-muted-foreground">Bet Amount:</span>
+      <div className="glass-card overflow-hidden">
+        <div className="relative px-4 py-3 border-b border-border/20">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-warning/60 to-transparent" />
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-warning/20">
+              <Zap className="w-4 h-4 text-warning" />
+            </div>
+            <span className="font-semibold text-sm">Your Bet</span>
+          </div>
+        </div>
+        
+        <div className="p-4 space-y-4">
+          <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Bet Amount</span>
               <span className="font-bold">{myBet.bet_amount} WOVER</span>
             </div>
-            <div className="flex justify-between mb-2">
-              <span className="text-muted-foreground">Auto Cash-out:</span>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Auto Cash-out</span>
               <span className="font-medium">
-                {myBet.auto_cashout_at ? `x${myBet.auto_cashout_at}` : 'Manual'}
+                {myBet.auto_cashout_at ? `@${myBet.auto_cashout_at}×` : 'Manual'}
               </span>
             </div>
+            
             {myBet.status === 'active' && currentRound.status === 'flying' && (
-              <div className="flex justify-between text-lg pt-2 border-t border-primary/20">
-                <span className="text-muted-foreground">Potential Win:</span>
-                <span className="font-bold text-success">{potentialWin.toFixed(2)} WOVER</span>
+              <div className="pt-2 border-t border-border/20">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground text-sm">Potential Win</span>
+                  <span className="font-bold text-lg text-success">{potentialWin.toFixed(2)} WOVER</span>
+                </div>
               </div>
             )}
+            
             {myBet.status === 'won' && (
-              <div className="flex justify-between text-lg pt-2 border-t border-primary/20">
-                <span className="text-muted-foreground">Won:</span>
-                <span className="font-bold text-success">{myBet.winnings.toFixed(2)} WOVER</span>
+              <div className="pt-2 border-t border-border/20">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground text-sm">Won</span>
+                  <span className="font-bold text-lg text-success">+{myBet.winnings?.toFixed(2)} WOVER</span>
+                </div>
               </div>
             )}
+            
             {myBet.status === 'lost' && (
-              <div className="flex justify-between text-lg pt-2 border-t border-primary/20">
-                <span className="text-muted-foreground">Result:</span>
-                <span className="font-bold text-destructive">LOST</span>
+              <div className="pt-2 border-t border-border/20 text-center">
+                <span className="font-bold text-destructive">💥 LOST</span>
               </div>
             )}
           </div>
@@ -145,102 +150,114 @@ const BettingPanel = ({
             <Button
               onClick={handleCashOut}
               disabled={isCashingOut}
-              className="w-full h-16 text-xl font-bold bg-success hover:bg-success/90 text-success-foreground animate-pulse"
+              className="w-full h-14 text-lg font-bold bg-success hover:bg-success/90 text-success-foreground shadow-lg shadow-success/30"
             >
               {isCashingOut ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <>
-                  <Hand className="w-6 h-6 mr-2" />
-                  CASH OUT ({potentialWin.toFixed(2)} WOVER)
-                </>
+                <div className="flex items-center gap-2">
+                  <Hand className="w-5 h-5" />
+                  <span>CASH OUT {potentialWin.toFixed(2)}</span>
+                </div>
               )}
             </Button>
           )}
 
           {currentRound.status === 'betting' && (
-            <p className="text-center text-sm text-muted-foreground">
-              Waiting for round to start...
+            <p className="text-center text-xs text-muted-foreground animate-pulse">
+              ⏳ Waiting for round to start...
             </p>
           )}
           
           {currentRound.status === 'countdown' && (
-            <p className="text-center text-sm text-warning animate-pulse">
+            <p className="text-center text-sm text-warning animate-pulse font-medium">
               🚀 Launching in 3... 2... 1...
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   // Betting form
   return (
-    <Card className="glass-card border-primary/20">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Target className="w-5 h-5 text-primary" />
-          Place Bet
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="glass-card overflow-hidden">
+      <div className="relative px-4 py-3 border-b border-border/20">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent" />
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-primary/20">
+            <Target className="w-4 h-4 text-primary" />
+          </div>
+          <span className="font-semibold text-sm">Place Bet</span>
+        </div>
+      </div>
+      
+      <div className="p-4 space-y-4">
         {!isConnected ? (
-          <div className="text-center py-6 text-muted-foreground">
-            Connect wallet to place bets
+          <div className="text-center py-8 text-muted-foreground">
+            <Ticket className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Connect wallet to place bets</p>
           </div>
         ) : availableTickets.length === 0 ? (
           <div className="text-center py-6">
-            <p className="text-muted-foreground mb-2">No tickets available</p>
-            <p className="text-sm text-primary">Buy tickets above to play!</p>
+            <Ticket className="w-8 h-8 mx-auto mb-2 text-primary/50" />
+            <p className="text-muted-foreground text-sm mb-1">No tickets available</p>
+            <p className="text-xs text-primary">Buy tickets to play!</p>
           </div>
         ) : !canBet ? (
           <div className="text-center py-6 text-muted-foreground">
-            {currentRound?.status === 'flying' 
-              ? 'Round in progress...'
-              : currentRound?.status === 'crashed'
-              ? 'Round ended. Next round soon...'
-              : 'Waiting for betting phase...'}
+            <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">
+              {currentRound?.status === 'flying' 
+                ? '🚀 Round in progress...'
+                : currentRound?.status === 'crashed'
+                ? '💥 Round ended. Next round soon...'
+                : '⏳ Waiting for betting phase...'}
+            </p>
           </div>
         ) : (
           <>
             {/* Ticket Selection */}
             <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">Select Ticket</label>
-              <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+              <label className="text-xs text-muted-foreground font-medium">Select Ticket</label>
+              <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto pr-1">
                 {availableTickets.map((ticket) => (
                   <Button
                     key={ticket.id}
                     variant={selectedTicket?.id === ticket.id ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSelectedTicket(ticket)}
-                    className={`justify-between ${selectedTicket?.id === ticket.id ? "bg-primary" : "border-primary/30"}`}
+                    className={`h-10 justify-center font-bold transition-all ${
+                      selectedTicket?.id === ticket.id 
+                        ? "bg-primary shadow-lg shadow-primary/30 border-0" 
+                        : "border-border/40 hover:border-primary/40 hover:bg-primary/10"
+                    }`}
                   >
-                    <span>{ticket.ticket_value} WOVER</span>
+                    {ticket.ticket_value} WOVER
                   </Button>
                 ))}
               </div>
             </div>
 
-            {/* Auto Cash-out Selection */}
+            {/* Auto Cash-out */}
             <div className="space-y-2">
-              <label className="text-sm text-muted-foreground">Auto Cash-out</label>
+              <label className="text-xs text-muted-foreground font-medium">Auto Cash-out</label>
               <RadioGroup
                 value={autoCashout}
                 onValueChange={(v) => setAutoCashout(v as AutoCashout)}
-                className="flex gap-4"
+                className="grid grid-cols-4 gap-2"
               >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="x2" id="x2" />
-                  <Label htmlFor="x2" className="cursor-pointer">x2</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="x10" id="x10" />
-                  <Label htmlFor="x10" className="cursor-pointer">x10</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="off" id="off" />
-                  <Label htmlFor="off" className="cursor-pointer">Manual</Label>
-                </div>
+                {(['x2', 'x5', 'x10', 'off'] as const).map((val) => (
+                  <div key={val} className="flex items-center">
+                    <RadioGroupItem value={val} id={val} className="peer sr-only" />
+                    <Label 
+                      htmlFor={val} 
+                      className="flex-1 text-center py-2 px-1 rounded-lg border border-border/40 cursor-pointer text-xs font-medium transition-all peer-data-[state=checked]:bg-primary/20 peer-data-[state=checked]:border-primary/40 peer-data-[state=checked]:text-primary hover:bg-card/50"
+                    >
+                      {val === 'off' ? 'Manual' : val}
+                    </Label>
+                  </div>
+                ))}
               </RadioGroup>
             </div>
 
@@ -248,23 +265,26 @@ const BettingPanel = ({
             <Button
               onClick={handlePlaceBet}
               disabled={!selectedTicket || isPlacingBet}
-              className="w-full btn-primary"
+              className="w-full btn-primary h-11 text-sm font-semibold"
             >
               {isPlacingBet ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Placing Bet...
-                </>
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Placing Bet...</span>
+                </div>
               ) : selectedTicket ? (
-                `Bet ${selectedTicket.ticket_value} WOVER`
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  <span>Bet {selectedTicket.ticket_value} WOVER</span>
+                </div>
               ) : (
                 'Select a Ticket'
               )}
             </Button>
           </>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
