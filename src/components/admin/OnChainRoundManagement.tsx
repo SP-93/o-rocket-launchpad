@@ -202,17 +202,36 @@ const OnChainRoundManagement = () => {
 
   return (
     <div className="space-y-6">
-      {/* Info Banner */}
-      <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+      {/* Info Banner - Detailed Explanation */}
+      <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-3">
         <div className="flex items-start gap-3">
           <Shield className="w-5 h-5 text-primary mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-foreground mb-1">Manual Round Control (Testing Mode)</p>
-            <p className="text-muted-foreground text-xs">
-              Ova 3-koračna kontrola omogućava ručno testiranje "Provably Fair" sistema. 
-              U produkciji će ovo biti automatizovano preko backend servisa.
-              Koraci: 1) Započni rundu sa seed-om → 2) Aktiviraj let → 3) Crash sa multiplierom.
+            <p className="font-medium text-foreground mb-1">🧪 Manual Round Control (Testing Mode)</p>
+            <p className="text-muted-foreground text-xs mb-2">
+              Ova sekcija je za <strong>ručno testiranje</strong> Provably Fair sistema pre automatizacije.
             </p>
+          </div>
+        </div>
+        
+        <div className="bg-background/50 rounded-lg p-3 text-xs space-y-2">
+          <div>
+            <span className="font-medium text-primary">🎯 Crash Point (Multiplier):</span>
+            <span className="text-muted-foreground ml-1">
+              Tačka pada - množilac pri kojem raketa eksplodira. Npr. 2.50x znači da igrači koji cashout-uju pre toga dobijaju 2.5x ulog.
+            </span>
+          </div>
+          <div>
+            <span className="font-medium text-primary">🔐 Zašto 3 koraka?</span>
+            <span className="text-muted-foreground ml-1">
+              Provably Fair zahteva: (1) Seed hash commit pre opklada, (2) Faza leta, (3) Reveal seed + crash point. Ovo dokazuje da ishod nije manipulisan.
+            </span>
+          </div>
+          <div>
+            <span className="font-medium text-success">⚡ Produkcija:</span>
+            <span className="text-muted-foreground ml-1">
+              U produkciji će backend automatski: generisati seed, pokrenuti rundu, čekati betting period, aktivirati let, i crash-ovati na random tačku.
+            </span>
           </div>
         </div>
       </div>

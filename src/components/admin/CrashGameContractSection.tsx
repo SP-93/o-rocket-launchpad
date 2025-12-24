@@ -37,7 +37,7 @@ const CrashGameContractSection = () => {
 
   const [deployedContracts, setDeployedContracts] = useState(getDeployedContracts());
   const [refillAmount, setRefillAmount] = useState('');
-  const [refillCurrency, setRefillCurrency] = useState<'wover' | 'usdt'>('wover');
+  // Prize pool only uses WOVER (per spec)
   const [newPercentage, setNewPercentage] = useState(70);
   const [isUpdating, setIsUpdating] = useState(false);
   const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
@@ -103,7 +103,7 @@ const CrashGameContractSection = () => {
 
     setIsUpdating(true);
     try {
-      await refillPrizePool(signer, refillAmount, refillCurrency === 'wover');
+      await refillPrizePool(signer, refillAmount, true); // Always WOVER for prize pool
       setRefillAmount('');
       fetchContractState();
     } catch (error: any) {
@@ -366,32 +366,22 @@ const CrashGameContractSection = () => {
               On-Chain Prize Pool
             </h3>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-background/50 rounded-lg p-4 border border-warning/30">
-                <p className="text-xs text-muted-foreground mb-1">WOVER Pool</p>
-                <p className="text-2xl font-bold text-warning">{contractState.prizePoolWover}</p>
-              </div>
-              <div className="bg-background/50 rounded-lg p-4 border border-success/30">
-                <p className="text-xs text-muted-foreground mb-1">USDT Pool</p>
-                <p className="text-2xl font-bold text-success">{contractState.prizePoolUsdt}</p>
-              </div>
+            {/* WOVER Prize Pool - Only WOVER for payouts per spec */}
+            <div className="bg-warning/10 rounded-lg p-4 border border-warning/30 mb-4">
+              <p className="text-xs text-muted-foreground mb-1">🎮 Prize Pool (WOVER only)</p>
+              <p className="text-2xl font-bold text-warning">{contractState.prizePoolWover} WOVER</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                All player payouts are in WOVER tokens
+              </p>
             </div>
 
-            {/* Refill Pool */}
+            {/* Refill Pool - WOVER only */}
             <div className="space-y-3">
-              <Label>Refill Prize Pool</Label>
+              <Label>Refill Prize Pool (WOVER)</Label>
               <div className="flex gap-2">
-                <select 
-                  value={refillCurrency}
-                  onChange={(e) => setRefillCurrency(e.target.value as 'wover' | 'usdt')}
-                  className="bg-background border border-border rounded-lg px-3 py-2"
-                >
-                  <option value="wover">WOVER</option>
-                  <option value="usdt">USDT</option>
-                </select>
                 <Input
                   type="number"
-                  placeholder="Amount"
+                  placeholder="Amount in WOVER"
                   value={refillAmount}
                   onChange={(e) => setRefillAmount(e.target.value)}
                   className="flex-1"
