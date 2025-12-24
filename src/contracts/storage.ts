@@ -1,6 +1,7 @@
 // Contract Address Storage
 // Manages deployed contract addresses using localStorage with security validation
 // Falls back to hardcoded addresses from config for all users
+// CrashGame address also syncs from backend config
 
 import { secureStorage, validateContractAddresses, isValidAddress } from '@/lib/storageValidation';
 import { MAINNET_CONTRACTS, MAINNET_POOLS } from '@/config/admin';
@@ -109,6 +110,31 @@ export const getDeployedContracts = (): DeployedContracts => {
 
   // Merge: hardcoded takes priority, localStorage only fills gaps
   return mergeContracts(hardcoded, data);
+};
+
+// Async version that fetches crashGame from backend if not in localStorage
+export const getDeployedContractsAsync = async (): Promise<DeployedContracts> => {
+  const contracts = getDeployedContracts();
+  
+  // If crashGame is missing, try to fetch from backend
+  if (!contracts.crashGame) {
+    try {
+      // Dynamic import to avoid circular dependencies
+      const { fetchCrashGameAddressFromBackend } = await import('@/lib/contractConfigSync');
+      const backendAddress = await fetchCrashGameAddressFromBackend();
+      
+      if (backendAddress && isValidAddress(backendAddress)) {
+        // Save to localStorage for future use
+        contracts.crashGame = backendAddress;
+        secureStorage.setItem(STORAGE_KEYS.contracts, contracts);
+        logger.info('Synced crashGame address from backend:', backendAddress);
+      }
+    } catch (error) {
+      logger.error('Failed to sync crashGame from backend:', error);
+    }
+  }
+  
+  return contracts;
 };
 
 // Save a deployed contract address with validation

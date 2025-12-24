@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
 import { useWallet } from '@/hooks/useWallet';
-import { getDeployedContracts } from '@/contracts/storage';
+import { getDeployedContracts, getDeployedContractsAsync } from '@/contracts/storage';
 
 interface GamePool {
   id: string;
@@ -127,6 +127,14 @@ const GameManagementSection = () => {
 
   const fetchOnChainBalance = async () => {
     try {
+      // First sync contract address from backend if needed
+      const contracts = await getDeployedContractsAsync();
+      if (!contracts.crashGame) {
+        console.log('No crashGame contract address found');
+        setOnChainBalance(null);
+        return;
+      }
+      
       const state = await fetchContractState();
       if (state) {
         setOnChainBalance(state.prizePoolWover);
@@ -140,9 +148,12 @@ const GameManagementSection = () => {
             })
             .neq('id', '00000000-0000-0000-0000-000000000000');
         }
+      } else {
+        setOnChainBalance(null);
       }
     } catch (error) {
       console.error('Failed to fetch on-chain balance:', error);
+      setOnChainBalance(null);
     }
   };
 
