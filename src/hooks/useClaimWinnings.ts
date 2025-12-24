@@ -35,13 +35,28 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     return new ethers.Contract(contractAddress, CRASH_GAME_ABI, provider);
   }, []);
 
-  const checkCanClaim = useCallback(async (roundId: number): Promise<{ canClaim: boolean; pendingAmount: string }> => {
+  // Get the on-chain round ID from the contract
+  const getOnChainRoundId = useCallback(async (): Promise<number> => {
+    try {
+      const contract = getContract();
+      const currentRoundId = await contract.currentRoundId();
+      return currentRoundId.toNumber();
+    } catch (error) {
+      console.error('Error getting on-chain round ID:', error);
+      return 0;
+    }
+  }, [getContract]);
+
+  const checkCanClaim = useCallback(async (roundNumber: number): Promise<{ canClaim: boolean; pendingAmount: string }> => {
     if (!walletAddress) {
       return { canClaim: false, pendingAmount: '0' };
     }
 
     try {
       const contract = getContract();
+      
+      // Use the round number as round ID (they should match)
+      const roundId = roundNumber;
       
       const [canClaim, pendingAmount] = await Promise.all([
         contract.canClaimWinnings(roundId, walletAddress),
@@ -56,6 +71,8 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         pendingAmount: formattedAmount,
       }));
 
+      console.log(`[ClaimWinnings] Round ${roundId}: canClaim=${canClaim}, amount=${formattedAmount}`);
+
       return { canClaim, pendingAmount: formattedAmount };
     } catch (error) {
       console.error('Error checking claim status:', error);
@@ -65,7 +82,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
   const claimWinnings = useCallback(async (
     signer: ethers.Signer,
-    roundId: number
+    roundNumber: number
   ): Promise<string> => {
     if (!walletAddress) {
       throw new Error('Wallet not connected');
@@ -75,6 +92,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
     try {
       const contract = getContract(signer);
+      const roundId = roundNumber;
       
       // Check if can claim first
       const canClaim = await contract.canClaimWinnings(roundId, walletAddress);
@@ -85,6 +103,8 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       // Get pending amount for display
       const pendingAmount = await contract.getPendingClaimAmount(roundId, walletAddress);
       const formattedAmount = ethers.utils.formatEther(pendingAmount);
+
+      console.log(`[ClaimWinnings] Claiming ${formattedAmount} WOVER for round ${roundId}`);
 
       // Estimate gas
       const gasEstimate = await contract.estimateGas.claimWinnings(roundId);
@@ -100,12 +120,16 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         description: `Transaction submitted. Claiming ${formattedAmount} WOVER`,
       });
 
+      console.log(`[ClaimWinnings] TX submitted: ${tx.hash}`);
+
       // Wait for confirmation
       const receipt = await tx.wait();
 
       if (receipt.status === 0) {
         throw new Error('Claim transaction failed');
       }
+
+      console.log(`[ClaimWinnings] TX confirmed: ${tx.hash}`);
 
       setClaimState({
         isClaiming: false,
@@ -121,7 +145,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       return tx.hash;
     } catch (error: any) {
-      console.error('Claim error:', error);
+      console.error('[ClaimWinnings] Error:', error);
       
       setClaimState(prev => ({ ...prev, isClaiming: false }));
 
@@ -137,6 +161,10 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         errorMessage = 'No winnings to claim - you lost this round';
       } else if (error.message?.includes('Round not completed')) {
         errorMessage = 'Round not yet completed';
+      } else if (error.message?.includes('Insufficient prize pool')) {
+        errorMessage = 'Prize pool insufficient - contact admin';
+      } else if (error.message?.includes('No bet in round')) {
+        errorMessage = 'No bet found for this round';
       }
 
       toast({
@@ -149,7 +177,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     }
   }, [walletAddress, getContract]);
 
-  const getPlayerBet = useCallback(async (roundId: number): Promise<{
+  const getPlayerBet = useCallback(async (roundNumber: number): Promise<{
     amount: string;
     cashedOutAt: number;
     claimed: boolean;
@@ -159,6 +187,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
     try {
       const contract = getContract();
+      const roundId = roundNumber;
       const bet = await contract.getPlayerBet(roundId, walletAddress);
       
       return {
@@ -178,6 +207,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     checkCanClaim,
     claimWinnings,
     getPlayerBet,
+    getOnChainRoundId,
   };
 };
 
