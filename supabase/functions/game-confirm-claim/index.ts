@@ -12,6 +12,29 @@ const CRASH_GAME_ABI = [
   "event WinningsClaimed(address indexed player, uint256 amount, bytes32 indexed roundId, uint256 nonce)"
 ];
 
+// Rate limiting: 3 requests per 10 seconds per wallet
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 3;
+const RATE_LIMIT_WINDOW = 10000; // 10 seconds
+
+function checkRateLimit(walletAddress: string): { allowed: boolean; remaining: number } {
+  const key = walletAddress.toLowerCase();
+  const now = Date.now();
+  const record = rateLimitMap.get(key);
+
+  if (!record || now > record.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW });
+    return { allowed: true, remaining: RATE_LIMIT - 1 };
+  }
+
+  if (record.count >= RATE_LIMIT) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  record.count++;
+  return { allowed: true, remaining: RATE_LIMIT - record.count };
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -28,6 +51,16 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // RATE LIMIT CHECK - Prevent spam/abuse
+    const rateCheck = checkRateLimit(walletAddress);
+    if (!rateCheck.allowed) {
+      console.warn('[game-confirm-claim] Rate limited:', walletAddress);
+      return new Response(
+        JSON.stringify({ error: 'Too many requests. Please wait 10 seconds.' }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
