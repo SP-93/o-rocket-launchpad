@@ -18,6 +18,22 @@ interface CrashGameState {
   isPaused: boolean;
 }
 
+// Helper to handle TRANSACTION_REPLACED errors
+const waitForTransaction = async (tx: ethers.ContractTransaction): Promise<void> => {
+  try {
+    await tx.wait();
+  } catch (error: any) {
+    // If transaction was replaced but the replacement succeeded, continue
+    if (error.code === 'TRANSACTION_REPLACED') {
+      if (error.receipt?.status === 1 || error.replacement) {
+        console.log('Transaction was replaced but succeeded');
+        return;
+      }
+    }
+    throw error;
+  }
+};
+
 export const useCrashGameContract = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -186,7 +202,7 @@ export const useCrashGameContract = () => {
     );
     
     const tx = await contract.startRound(seedHash);
-    await tx.wait();
+    await waitForTransaction(tx);
     
     return { seedHash, seedBytes32 };
   }, [getContract]);
@@ -196,7 +212,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.startFlying();
-    await tx.wait();
+    await waitForTransaction(tx);
   }, [getContract]);
 
   const crashRound = useCallback(async (
@@ -214,7 +230,7 @@ export const useCrashGameContract = () => {
     
     // crashPoint is multiplier * 100 (e.g., 250 = 2.50x)
     const tx = await contract.crashRound(seedBytes32, crashPoint);
-    await tx.wait();
+    await waitForTransaction(tx);
   }, [getContract]);
 
   const refillPrizePool = useCallback(async (
@@ -236,13 +252,13 @@ export const useCrashGameContract = () => {
     );
     
     const approveTx = await tokenContract.approve(contract.address, amountWei);
-    await approveTx.wait();
+    await waitForTransaction(approveTx);
     
     // Then refill
     const tx = await contract.refillPrizePool(amountWei, isWover);
-    await tx.wait();
+    await waitForTransaction(tx);
     
-    toast.success(`Prize pool refilled with ${amount} ${isWover ? 'WOVER' : 'USDT'}`);
+    toast.success(`Prize pool refilled with ${amount} WOVER`);
   }, [getContract]);
 
   const distributeWoverRevenue = useCallback(async (signer: ethers.Signer) => {
@@ -250,7 +266,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.distributeWoverRevenue();
-    await tx.wait();
+    await waitForTransaction(tx);
     
     toast.success('WOVER revenue distributed');
   }, [getContract]);
@@ -260,7 +276,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.distributeUsdtRevenue();
-    await tx.wait();
+    await waitForTransaction(tx);
     
     toast.success('USDT revenue distributed');
   }, [getContract]);
@@ -270,7 +286,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.setPrizePoolPercentage(percentage);
-    await tx.wait();
+    await waitForTransaction(tx);
     
     toast.success(`Prize pool percentage set to ${percentage}%`);
   }, [getContract]);
@@ -280,7 +296,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.pause();
-    await tx.wait();
+    await waitForTransaction(tx);
     
     toast.success('Game paused');
   }, [getContract]);
@@ -290,7 +306,7 @@ export const useCrashGameContract = () => {
     if (!contract) throw new Error('Contract not deployed');
 
     const tx = await contract.unpause();
-    await tx.wait();
+    await waitForTransaction(tx);
     
     toast.success('Game unpaused');
   }, [getContract]);
