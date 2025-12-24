@@ -162,7 +162,7 @@ const Game = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
+    <div className="min-h-screen bg-background relative overflow-hidden pb-20 lg:pb-0">
       <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
       
@@ -174,21 +174,21 @@ const Game = () => {
       />
 
       {/* Background effects */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-background/20 to-background/60" />
-        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-warning/5 rounded-full blur-[150px] animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-[400px] h-[400px] bg-primary/5 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }} />
+      <div className="fixed inset-0 pointer-events-none z-[1]">
+        <div className="absolute inset-0 bg-gradient-to-b from-background/30 via-transparent to-background/50" />
+        <div className="absolute top-0 left-1/4 w-[400px] h-[400px] bg-warning/3 rounded-full blur-[120px]" />
+        <div className="absolute bottom-0 right-1/4 w-[300px] h-[300px] bg-primary/3 rounded-full blur-[100px]" />
       </div>
 
-      <div className="relative z-10 min-h-screen pt-20 pb-8 px-3 md:px-4">
+      <div className="relative z-10 min-h-screen pt-16 md:pt-20 pb-4 px-2 md:px-4">
         <div className="container mx-auto max-w-7xl">
           
           {/* Main Game Layout - Modern 3-column */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 lg:gap-4">
             
-            {/* Left Sidebar - Tickets & Stats */}
+            {/* Left Sidebar - Tickets & Stats (hidden on mobile, shown below game) */}
             {isConnected ? (
-              <div className="lg:col-span-3 order-2 lg:order-1 space-y-3">
+              <div className="hidden lg:block lg:col-span-3 lg:order-1 space-y-3">
                 <TicketPurchase walletAddress={address} isConnected={isConnected} />
                 
                 {/* Quick Stats */}
@@ -207,10 +207,6 @@ const Game = () => {
                       <div className="text-[10px] text-muted-foreground">Best</div>
                     </div>
                   </div>
-                </div>
-
-                <div className="lg:hidden">
-                  <CrashHistory history={roundHistory} />
                 </div>
               </div>
             ) : null}

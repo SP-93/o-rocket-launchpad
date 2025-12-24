@@ -26,6 +26,7 @@ import WalletLinkSection from '@/components/admin/WalletLinkSection';
 import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
 import AuditLogSection from '@/components/admin/AuditLogSection';
 import GameManagementSection from '@/components/admin/GameManagementSection';
+import GameRevenueSection from '@/components/admin/GameRevenueSection';
 import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
 import OnChainRoundManagement from '@/components/admin/OnChainRoundManagement';
 import AutoGameControl from '@/components/admin/AutoGameControl';
@@ -1023,6 +1024,9 @@ const Admin = () => {
                 </p>
                 <AutoGameControl />
               </GlowCard>
+
+              {/* Revenue & Pool Management */}
+              <GameRevenueSection />
             </TabsContent>
 
             {/* Treasury Tab */}

@@ -14,46 +14,59 @@ interface LiveStatusHUDProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  betting: { label: 'Betting Open', color: 'text-success', icon: <Clock className="w-3 h-3" /> },
-  countdown: { label: 'Countdown', color: 'text-warning', icon: <Zap className="w-3 h-3" /> },
-  flying: { label: 'In Flight!', color: 'text-primary', icon: <Rocket className="w-3 h-3" /> },
+  betting: { label: 'Betting', color: 'text-success', icon: <Clock className="w-3 h-3" /> },
+  countdown: { label: 'Starting', color: 'text-warning', icon: <Zap className="w-3 h-3" /> },
+  flying: { label: 'Flying!', color: 'text-primary', icon: <Rocket className="w-3 h-3" /> },
   crashed: { label: 'Crashed', color: 'text-destructive', icon: <AlertTriangle className="w-3 h-3" /> },
-  payout: { label: 'Settling...', color: 'text-destructive', icon: <AlertTriangle className="w-3 h-3" /> },
+  payout: { label: 'Settling', color: 'text-muted-foreground', icon: <Clock className="w-3 h-3" /> },
 };
 
 export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveStatusHUDProps) {
   const [tickAge, setTickAge] = useState<number>(0);
   
   useEffect(() => {
-    if (!engineStatus.lastTick) return;
+    // Guard against null/undefined lastTick
+    if (!engineStatus?.lastTick) {
+      setTickAge(0);
+      return;
+    }
     
     const updateAge = () => {
-      const age = (Date.now() - new Date(engineStatus.lastTick!).getTime()) / 1000;
-      setTickAge(age);
+      try {
+        const tickTime = new Date(engineStatus.lastTick!).getTime();
+        if (isNaN(tickTime)) {
+          setTickAge(0);
+          return;
+        }
+        const age = (Date.now() - tickTime) / 1000;
+        // Cap at 99 to prevent display issues
+        setTickAge(Math.min(age, 99));
+      } catch {
+        setTickAge(0);
+      }
     };
     
     updateAge();
     const interval = setInterval(updateAge, 500);
     return () => clearInterval(interval);
-  }, [engineStatus.lastTick]);
+  }, [engineStatus?.lastTick]);
 
-  const isConnected = engineStatus.isEnabled && tickAge < 5;
+  const isConnected = engineStatus?.isEnabled && tickAge < 5 && tickAge >= 0;
   const statusConfig = roundStatus ? STATUS_CONFIG[roundStatus] : null;
 
   return (
-    <div className="fixed top-20 left-4 z-40 flex flex-col gap-2">
-      {/* Connection Status */}
+    <div className="fixed top-20 left-3 md:left-4 z-40 flex flex-col gap-1.5">
+      {/* Connection Status - compact */}
       <div className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md border",
+        "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] md:text-xs font-medium backdrop-blur-md border shadow-lg",
         isConnected 
           ? "bg-success/20 border-success/30 text-success" 
           : "bg-destructive/20 border-destructive/30 text-destructive"
       )}>
         {isConnected ? (
           <>
-            <Wifi className="w-3 h-3" />
+            <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
             <span>Live</span>
-            <span className="opacity-70">({tickAge.toFixed(1)}s)</span>
           </>
         ) : (
           <>
@@ -63,23 +76,23 @@ export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveSt
         )}
       </div>
 
-      {/* Round Status */}
+      {/* Round Status - only show when available */}
       {roundStatus && statusConfig && (
         <div className={cn(
-          "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md border bg-background/50 border-border/30",
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] md:text-xs font-medium backdrop-blur-md border bg-background/60 border-border/40 shadow-lg",
           statusConfig.color
         )}>
           {statusConfig.icon}
           <span>{statusConfig.label}</span>
-          {roundNumber && <span className="opacity-70">#{roundNumber}</span>}
+          {roundNumber && <span className="opacity-60 font-mono">#{roundNumber}</span>}
         </div>
       )}
 
-      {/* Error indicator */}
-      {engineStatus.error && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-md border bg-destructive/20 border-destructive/30 text-destructive">
+      {/* Error indicator - hidden on mobile for cleaner look */}
+      {engineStatus?.error && (
+        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium backdrop-blur-md border bg-destructive/20 border-destructive/30 text-destructive">
           <AlertTriangle className="w-3 h-3" />
-          <span className="truncate max-w-[150px]">{engineStatus.error}</span>
+          <span className="truncate max-w-[120px]">{engineStatus.error}</span>
         </div>
       )}
     </div>
