@@ -189,6 +189,17 @@ export const useCrashGameContract = () => {
     }
   }, [getContract]);
 
+  // Fetch contract owner - placed here for stable hook order
+  const getContractOwner = useCallback(async () => {
+    const contract = await getContract();
+    if (!contract) return null;
+    try {
+      return await contract.owner();
+    } catch {
+      return null;
+    }
+  }, [getContract]);
+
   const startRound = useCallback(async (signer: ethers.Signer, serverSeed: string) => {
     const contract = await getContract(signer);
     if (!contract) throw new Error('Contract not deployed');
@@ -306,16 +317,6 @@ export const useCrashGameContract = () => {
     }
   }, [getContract]);
 
-  // Fetch contract owner
-  const getContractOwner = useCallback(async () => {
-    const contract = await getContract();
-    if (!contract) return null;
-    try {
-      return await contract.owner();
-    } catch {
-      return null;
-    }
-  }, [getContract]);
 
   const distributeWoverRevenue = useCallback(async (signer: ethers.Signer) => {
     const contract = await getContract(signer);
