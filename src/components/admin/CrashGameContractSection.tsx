@@ -205,28 +205,41 @@ const CrashGameContractSection = () => {
           <div className="space-y-4">
             {/* Contract Address */}
             <div className="bg-success/10 border border-success/30 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-success" />
-                  <span className="font-medium">Contract Deployed</span>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-success" />
+                    <span className="font-medium">Contract Deployed</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => copyToClipboard(deployedContracts.crashGame!)} 
+                      className="text-muted-foreground hover:text-primary flex items-center gap-1 text-xs"
+                      title="Copy address"
+                    >
+                      <Copy className="w-3 h-3" />
+                      Copy
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <code className="text-xs font-mono text-success">
-                    {truncateAddress(deployedContracts.crashGame!)}
+                
+                {/* Full address display */}
+                <div className="bg-background/30 rounded p-2 break-all">
+                  <code className="text-[10px] font-mono text-success">
+                    {deployedContracts.crashGame}
                   </code>
-                  <button onClick={() => copyToClipboard(deployedContracts.crashGame!)} className="text-muted-foreground hover:text-primary">
-                    <Copy className="w-4 h-4" />
-                  </button>
-                  <a 
-                    href={`https://scan.over.network/address/${deployedContracts.crashGame}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary flex items-center gap-1"
-                    title="Open in Over Network Explorer"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
                 </div>
+                
+                {/* Explorer link - proper <a> tag */}
+                <a 
+                  href={`https://scan.over.network/address/${deployedContracts.crashGame}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-primary hover:underline"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>View on Over Network Explorer</span>
+                </a>
               </div>
             </div>
 
