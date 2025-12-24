@@ -1,42 +1,42 @@
-// CrashGame Contract ABI and Bytecode
+// CrashGame Contract ABI and Bytecode (Signature-Based Claims Version)
 // Compiled with Solidity 0.8.20
 // EVM Version: PARIS (NO PUSH0 opcode for Over Protocol compatibility)
-// Provably Fair Crash Game with SafeERC20
-// Updated: Added claimWinnings() for on-chain player claims
+// Uses signature-based claim system for off-chain game logic
 
 export const CRASH_GAME_ABI = [
   {
     "inputs": [
       { "internalType": "address", "name": "_woverToken", "type": "address" },
-      { "internalType": "address", "name": "_usdtToken", "type": "address" },
-      { "internalType": "address", "name": "_treasuryWallet", "type": "address" },
-      { "internalType": "address", "name": "_factoryDeployerWallet", "type": "address" }
+      { "internalType": "address", "name": "_claimSigner", "type": "address" }
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
   },
+  { "inputs": [], "name": "ECDSAInvalidSignature", "type": "error" },
+  { "inputs": [{ "internalType": "uint256", "name": "length", "type": "uint256" }], "name": "ECDSAInvalidSignatureLength", "type": "error" },
+  { "inputs": [{ "internalType": "bytes32", "name": "s", "type": "bytes32" }], "name": "ECDSAInvalidSignatureS", "type": "error" },
   { "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }], "name": "OwnableInvalidOwner", "type": "error" },
   { "inputs": [{ "internalType": "address", "name": "account", "type": "address" }], "name": "OwnableUnauthorizedAccount", "type": "error" },
-  { "inputs": [{ "internalType": "address", "name": "token", "type": "address" }], "name": "SafeERC20FailedOperation", "type": "error" },
+  { "inputs": [], "name": "ReentrancyGuardReentrantCall", "type": "error" },
   {
     "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "player", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" },
-      { "indexed": false, "internalType": "bool", "name": "isWover", "type": "bool" },
-      { "indexed": false, "internalType": "uint256", "name": "autoCashoutAt", "type": "uint256" }
-    ],
-    "name": "BetPlaced",
+    "inputs": [{ "indexed": false, "internalType": "address", "name": "newSigner", "type": "address" }],
+    "name": "ClaimSignerUpdated",
     "type": "event"
   },
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": false, "internalType": "string", "name": "param", "type": "string" },
-      { "indexed": false, "internalType": "uint256", "name": "value", "type": "uint256" }
+      { "indexed": true, "internalType": "address", "name": "by", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
     ],
-    "name": "ConfigUpdated",
+    "name": "EmergencyWithdraw",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [{ "indexed": false, "internalType": "uint256", "name": "currentBalance", "type": "uint256" }],
+    "name": "LowPrizePoolAlarm",
     "type": "event"
   },
   {
@@ -48,33 +48,12 @@ export const CRASH_GAME_ABI = [
     "name": "OwnershipTransferred",
     "type": "event"
   },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "account", "type": "address" }], "name": "Paused", "type": "event" },
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "player", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
-    ],
-    "name": "PayoutProcessed",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
-      { "indexed": true, "internalType": "address", "name": "player", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "multiplier", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "payout", "type": "uint256" }
-    ],
-    "name": "PlayerCashedOut",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "address", "name": "token", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
+      { "indexed": true, "internalType": "address", "name": "by", "type": "address" },
+      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" },
+      { "indexed": false, "internalType": "uint256", "name": "newBalance", "type": "uint256" }
     ],
     "name": "PrizePoolRefilled",
     "type": "event"
@@ -82,213 +61,82 @@ export const CRASH_GAME_ABI = [
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": false, "internalType": "bool", "name": "isWover", "type": "bool" },
-      { "indexed": false, "internalType": "uint256", "name": "prizePoolAmount", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "platformAmount", "type": "uint256" }
-    ],
-    "name": "RevenueDistributed",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
-      { "indexed": false, "internalType": "uint256", "name": "crashPoint", "type": "uint256" },
-      { "indexed": false, "internalType": "bytes32", "name": "serverSeed", "type": "bytes32" }
-    ],
-    "name": "RoundCrashed",
-    "type": "event"
-  },
-  { "anonymous": false, "inputs": [{ "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" }], "name": "RoundFlying", "type": "event" },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
-      { "indexed": false, "internalType": "bytes32", "name": "seedHash", "type": "bytes32" },
-      { "indexed": false, "internalType": "uint256", "name": "startTime", "type": "uint256" }
-    ],
-    "name": "RoundStarted",
-    "type": "event"
-  },
-  { "anonymous": false, "inputs": [{ "indexed": false, "internalType": "address", "name": "account", "type": "address" }], "name": "Unpaused", "type": "event" },
-  {
-    "anonymous": false,
-    "inputs": [
-      { "indexed": true, "internalType": "uint256", "name": "roundId", "type": "uint256" },
       { "indexed": true, "internalType": "address", "name": "player", "type": "address" },
-      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" }
+      { "indexed": false, "internalType": "uint256", "name": "amount", "type": "uint256" },
+      { "indexed": true, "internalType": "bytes32", "name": "roundId", "type": "bytes32" },
+      { "indexed": false, "internalType": "uint256", "name": "nonce", "type": "uint256" }
     ],
     "name": "WinningsClaimed",
     "type": "event"
   },
-  { "inputs": [], "name": "MAX_POOL_PERCENTAGE", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "MIN_POOL_PERCENTAGE", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "bettingDuration", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "LOW_POOL_THRESHOLD", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "claimSigner", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
   {
-    "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }, { "internalType": "address", "name": "_player", "type": "address" }],
-    "name": "canClaimWinnings",
-    "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  { "inputs": [{ "internalType": "uint256", "name": "_currentMultiplier", "type": "uint256" }], "name": "cashout", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }],
+    "inputs": [
+      { "internalType": "uint256", "name": "_amount", "type": "uint256" },
+      { "internalType": "bytes32", "name": "_roundId", "type": "bytes32" },
+      { "internalType": "uint256", "name": "_nonce", "type": "uint256" },
+      { "internalType": "bytes", "name": "_signature", "type": "bytes" }
+    ],
     "name": "claimWinnings",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
-  { "inputs": [{ "internalType": "bytes32", "name": "_serverSeed", "type": "bytes32" }, { "internalType": "uint256", "name": "_crashPoint", "type": "uint256" }], "name": "crashRound", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "currentRoundId", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "distributeUsdtRevenue", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "distributeWoverRevenue", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "factoryDeployerWallet", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "uint256", "name": "_amount", "type": "uint256" }], "name": "emergencyWithdraw", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "name": "getPrizePool", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
   {
     "inputs": [],
-    "name": "getCurrentRound",
-    "outputs": [{
-      "components": [
-        { "internalType": "uint256", "name": "roundNumber", "type": "uint256" },
-        { "internalType": "bytes32", "name": "seedHash", "type": "bytes32" },
-        { "internalType": "bytes32", "name": "serverSeed", "type": "bytes32" },
-        { "internalType": "uint256", "name": "crashPoint", "type": "uint256" },
-        { "internalType": "uint256", "name": "totalWagered", "type": "uint256" },
-        { "internalType": "uint256", "name": "totalPayout", "type": "uint256" },
-        { "internalType": "uint256", "name": "startTime", "type": "uint256" },
-        { "internalType": "uint256", "name": "endTime", "type": "uint256" },
-        { "internalType": "enum CrashGame.RoundStatus", "name": "status", "type": "uint8" }
-      ],
-      "internalType": "struct CrashGame.Round",
-      "name": "",
-      "type": "tuple"
-    }],
+    "name": "getStats",
+    "outputs": [
+      { "internalType": "uint256", "name": "_prizePool", "type": "uint256" },
+      { "internalType": "uint256", "name": "_totalDeposited", "type": "uint256" },
+      { "internalType": "uint256", "name": "_totalClaimed", "type": "uint256" },
+      { "internalType": "bool", "name": "_isLow", "type": "bool" }
+    ],
     "stateMutability": "view",
     "type": "function"
   },
-  { "inputs": [], "name": "getPendingRevenue", "outputs": [{ "internalType": "uint256", "name": "wover", "type": "uint256" }, { "internalType": "uint256", "name": "usdt", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }, { "internalType": "address", "name": "_player", "type": "address" }],
-    "name": "getPendingClaimAmount",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }, { "internalType": "address", "name": "_player", "type": "address" }],
-    "name": "getPlayerBet",
-    "outputs": [{
-      "components": [
-        { "internalType": "address", "name": "player", "type": "address" },
-        { "internalType": "uint256", "name": "amount", "type": "uint256" },
-        { "internalType": "uint256", "name": "autoCashoutAt", "type": "uint256" },
-        { "internalType": "uint256", "name": "cashedOutAt", "type": "uint256" },
-        { "internalType": "bool", "name": "isWover", "type": "bool" },
-        { "internalType": "bool", "name": "claimed", "type": "bool" }
-      ],
-      "internalType": "struct CrashGame.Bet",
-      "name": "",
-      "type": "tuple"
-    }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  { "inputs": [], "name": "getPrizePoolBalance", "outputs": [{ "internalType": "uint256", "name": "wover", "type": "uint256" }, { "internalType": "uint256", "name": "usdt", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }],
-    "name": "getRoundBets",
-    "outputs": [{
-      "components": [
-        { "internalType": "address", "name": "player", "type": "address" },
-        { "internalType": "uint256", "name": "amount", "type": "uint256" },
-        { "internalType": "uint256", "name": "autoCashoutAt", "type": "uint256" },
-        { "internalType": "uint256", "name": "cashedOutAt", "type": "uint256" },
-        { "internalType": "bool", "name": "isWover", "type": "bool" },
-        { "internalType": "bool", "name": "claimed", "type": "bool" }
-      ],
-      "internalType": "struct CrashGame.Bet[]",
-      "name": "",
-      "type": "tuple[]"
-    }],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  { "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "address", "name": "", "type": "address" }], "name": "hasPlayerBet", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "instantCrashProbability", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "maxBet", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "maxMultiplier", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "minBet", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "isPoolLow", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
   { "inputs": [], "name": "owner", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pause", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "paused", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pendingRevenueUsdt", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "pendingRevenueWover", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_amount", "type": "uint256" }, { "internalType": "bool", "name": "_isWover", "type": "bool" }, { "internalType": "uint256", "name": "_autoCashoutAt", "type": "uint256" }], "name": "placeBet", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "address", "name": "", "type": "address" }], "name": "playerBetIndex", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "prizePoolPercentage", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "prizePoolUsdt", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "prizePoolWover", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_amount", "type": "uint256" }, { "internalType": "bool", "name": "_isWover", "type": "bool" }], "name": "refillPrizePool", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "name": "prizePool", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "uint256", "name": "_amount", "type": "uint256" }], "name": "refillPrizePool", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
   { "inputs": [], "name": "renounceOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }, { "internalType": "uint256", "name": "", "type": "uint256" }],
-    "name": "roundBets",
-    "outputs": [
-      { "internalType": "address", "name": "player", "type": "address" },
-      { "internalType": "uint256", "name": "amount", "type": "uint256" },
-      { "internalType": "uint256", "name": "autoCashoutAt", "type": "uint256" },
-      { "internalType": "uint256", "name": "cashedOutAt", "type": "uint256" },
-      { "internalType": "bool", "name": "isWover", "type": "bool" },
-      { "internalType": "bool", "name": "claimed", "type": "bool" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "name": "rounds",
-    "outputs": [
-      { "internalType": "uint256", "name": "roundNumber", "type": "uint256" },
-      { "internalType": "bytes32", "name": "seedHash", "type": "bytes32" },
-      { "internalType": "bytes32", "name": "serverSeed", "type": "bytes32" },
-      { "internalType": "uint256", "name": "crashPoint", "type": "uint256" },
-      { "internalType": "uint256", "name": "totalWagered", "type": "uint256" },
-      { "internalType": "uint256", "name": "totalPayout", "type": "uint256" },
-      { "internalType": "uint256", "name": "startTime", "type": "uint256" },
-      { "internalType": "uint256", "name": "endTime", "type": "uint256" },
-      { "internalType": "enum CrashGame.RoundStatus", "name": "status", "type": "uint8" }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  { "inputs": [{ "internalType": "uint256", "name": "_duration", "type": "uint256" }], "name": "setBettingDuration", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_maxBet", "type": "uint256" }], "name": "setMaxBet", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_maxMultiplier", "type": "uint256" }], "name": "setMaxMultiplier", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_minBet", "type": "uint256" }], "name": "setMinBet", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_percentage", "type": "uint256" }], "name": "setPrizePoolPercentage", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "address", "name": "_wallet", "type": "address" }], "name": "setTreasuryWallet", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "startFlying", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [{ "internalType": "bytes32", "name": "_seedHash", "type": "bytes32" }], "name": "startRound", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [{ "internalType": "address", "name": "_newSigner", "type": "address" }], "name": "setClaimSigner", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
+  { "inputs": [], "name": "totalClaimed", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [], "name": "totalDeposited", "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }], "stateMutability": "view", "type": "function" },
   { "inputs": [{ "internalType": "address", "name": "newOwner", "type": "address" }], "name": "transferOwnership", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "treasuryWallet", "outputs": [{ "internalType": "address", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [], "name": "unpause", "outputs": [], "stateMutability": "nonpayable", "type": "function" },
-  { "inputs": [], "name": "usdtToken", "outputs": [{ "internalType": "contract IERC20", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" },
-  { "inputs": [{ "internalType": "uint256", "name": "_roundId", "type": "uint256" }, { "internalType": "bytes32", "name": "_serverSeed", "type": "bytes32" }], "name": "verifyRound", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
+  { "inputs": [{ "internalType": "bytes32", "name": "", "type": "bytes32" }], "name": "usedClaims", "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }], "stateMutability": "view", "type": "function" },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "_player", "type": "address" },
+      { "internalType": "uint256", "name": "_amount", "type": "uint256" },
+      { "internalType": "bytes32", "name": "_roundId", "type": "bytes32" },
+      { "internalType": "uint256", "name": "_nonce", "type": "uint256" },
+      { "internalType": "bytes", "name": "_signature", "type": "bytes" }
+    ],
+    "name": "verifyClaimSignature",
+    "outputs": [
+      { "internalType": "bool", "name": "isValid", "type": "bool" },
+      { "internalType": "bool", "name": "isUsed", "type": "bool" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
   { "inputs": [], "name": "woverToken", "outputs": [{ "internalType": "contract IERC20", "name": "", "type": "address" }], "stateMutability": "view", "type": "function" }
 ] as const;
 
 // Contract bytecode - compiled from CrashGame.sol with Solidity 0.8.20
 // EVM Version: PARIS (NO PUSH0 opcode for Over Protocol compatibility)
-// Uses SafeERC20 for WOVER token compatibility
-// Source: Remix IDE with EVM Version explicitly set to "paris"
-// IMPORTANT: This bytecode needs to be recompiled in Remix with the updated contract
-// Placeholder - compile in Remix IDE and replace with actual bytecode
-export const CRASH_GAME_BYTECODE = "COMPILE_IN_REMIX_WITH_SOLIDITY_0.8.20_AND_EVM_PARIS";
+export const CRASH_GAME_BYTECODE = "60a06040523480156200001157600080fd5b50604051620013e7380380620013e78339810160408190526200003491620001b2565b33806200005c57604051631e4fbdf760e01b8152600060048201526024015b60405180910390fd5b620000678162000145565b50600180556001600160a01b038216620000c45760405162461bcd60e51b815260206004820152601560248201527f496e76616c696420574f56455220616464726573730000000000000000000000604482015260640162000053565b6001600160a01b0381166200011c5760405162461bcd60e51b815260206004820152601660248201527f496e76616c6964207369676e6572206164647265737300000000000000000000604482015260640162000053565b6001600160a01b03918216608052600280546001600160a01b03191691909216179055620001ea565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b80516001600160a01b0381168114620001ad57600080fd5b919050565b60008060408385031215620001c657600080fd5b620001d18362000195565b9150620001e16020840162000195565b90509250929050565b6080516111be620002296000396000818161026a0152818161037b015281816106f8015281816108660152818161093b0152610a0e01526111be6000f3fe608060405234801561001057600080fd5b50600436106101165760003560e01c8063a4cd7893116100a2578063debf448311610071578063debf448314610265578063f011832f1461028c578063f2fde38b1461029f578063fed80d43146102b2578063ff50abdc146102c557600080fd5b8063a4cd789314610204578063c59d484714610214578063d54ad2a114610249578063d8ee36cb1461025257600080fd5b806380c6e6c2116100e957806380c6e6c214610187578063884bf67c146101b15780638da5cb5b146101b9578063975f8e0c146101de5780639a32b4ad146101f157600080fd5b80635312ea8e1461011b57806365c6bbcb14610130578063715018a614610168578063719ce73e14610170575b600080fd5b61012e610129366004610e99565b6102ce565b005b61015361013e366004610e99565b60066020526000908152604090205460ff1681565b60405190151581526020015b60405180910390f35b61012e610445565b61017960035481565b60405190815260200161015f565b61019a610195366004610f71565b610459565b60408051921515835290151560208301520161015f565b600354610179565b6000546001600160a01b03165b6040516001600160a01b03909116815260200161015f565b61012e6101ec366004610fdc565b610501565b60035468056bc75e2d6310000011610153565b61017968056bc75e2d6310000081565b60035460055460045460408051848152602081019390935282015268056bc75e2d63100000909110606082015260800161015f565b61017960045481565b6002546101c6906001600160a01b031681565b6101c67f000000000000000000000000000000000000000000000000000000000000000081565b61012e61029a366004610e99565b610827565b61012e6102ad366004611036565b610b0b565b61012e6102c0366004611036565b610b49565b61017960055481565b6102d6610bed565b600081116102ff5760405162461bcd60e51b81526004016102f690611058565b60405180910390fd5b6003548111156103485760405162461bcd60e51b81526020600482015260146024820152734578636565647320706f6f6c2062616c616e636560601b60448201526064016102f6565b806003600082825461035a91906110a5565b909155505060405163a9059cbb60e01b8152336004820152602481018290527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063a9059cbb906044016020604051808303816000875af11580156103cc573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906103f091906110b8565b61040c5760405162461bcd60e51b81526004016102f6906110da565b60405181815233907f5fafa99d0643513820be26656b45130b01e1c03062e1266bf36f88cbd3bd9695906020015b60405180910390a250565b61044d610bed565b6104576000610c1a565b565b600080600087878787463060405160200161047996959493929190611103565b60408051601f19818403018152918152815160209283012060008181526006909352908220547f19457468657265756d205369676e6564204d6573736167653a0a3332000000008352601c829052603c832060ff9091169450909250906104e08287610c6a565b6002546001600160a01b039182169116149a93995092975050505050505050565b610509610c96565b600084116105295760405162461bcd60e51b81526004016102f690611058565b83600354101561057b5760405162461bcd60e51b815260206004820152601760248201527f496e73756666696369656e74207072697a6520706f6f6c00000000000000000060448201526064016102f6565b600033858585463060405160200161059896959493929190611103565b60408051601f1981840301815291815281516020928301206000818152600690935291205490915060ff16156106055760405162461bcd60e51b815260206004820152601260248201527110db185a5b48185b1c9958591e481d5cd95960721b60448201526064016102f6565b7f19457468657265756d205369676e6564204d6573736167653a0a3332000000006000908152601c829052603c81209061063f8285610c6a565b6002549091506001600160a01b038083169116146106935760405162461bcd60e51b8152602060048201526011602482015270496e76616c6964207369676e617475726560781b60448201526064016102f6565b6000838152600660205260408120805460ff19166001179055600380548992906106be9084906110a5565b9250508190555086600460008282546106d79190611146565b909155505060405163a9059cbb60e01b8152336004820152602481018890527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063a9059cbb906044016020604051808303816000875af1158015610749573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061076d91906110b8565b6107895760405162461bcd60e51b81526004016102f6906110da565b6040805188815260208101879052879133917f829435fd7ea1a00f35f099dc70958e49a980719759e57e9b85267542e642270d910160405180910390a368056bc75e2d631000006003541015610815577f8d496d311a3392a95cb23fcbc1aebfa494da92cd2ef3ba9cf1bfbc91b4ff990360035460405161080c91815260200190565b60405180910390a15b50505061082160018055565b50505050565b61082f610bed565b6000811161084f5760405162461bcd60e51b81526004016102f690611058565b6040516370a0823160e01b815233600482015281907f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316906370a0823190602401602060405180830381865afa1580156108b5573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906108d99190611159565b101561091e5760405162461bcd60e51b8152602060048201526014602482015273496e73756666696369656e742062616c616e636560601b60448201526064016102f6565b604051636eb1769f60e11b815233600482015230602482015281907f00000000000000000000000000000000000000000000000000000000000000006001600160a01b03169063dd62ed3e90604401602060405180830381865afa15801561098a573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906109ae9190611159565b10156109ec5760405162461bcd60e51b815260206004820152600d60248201526c105c1c1c9bdd9948199a5c9cdd609a1b60448201526064016102f6565b6040516323b872dd60e01b8152336004820152306024820152604481018290527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316906323b872dd906064016020604051808303816000875af1158015610a5f573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610a8391906110b8565b610a9f5760405162461bcd60e51b81526004016102f6906110da565b8060036000828254610ab19190611146565b925050819055508060056000828254610aca9190611146565b909155505060035460405133917f0ad37d687c48925229236707230442db1e71dda8ee51016f62f8e6b9575b79359161043a91858252602082015260400190565b610b13610bed565b6001600160a01b038116610b3d57604051631e4fbdf760e01b8152600060048201526024016102f6565b610b4681610c1a565b50565b610b51610bed565b6001600160a01b038116610b995760405162461bcd60e51b815260206004820152600f60248201526e496e76616c6964206164647265737360881b60448201526064016102f6565b600280546001600160a01b0319166001600160a01b0383169081179091556040519081527f688eddabef309cc490bbcec8c809fcab3151e810cfee046d17659adcc2383c9c9060200160405180910390a150565b6000546001600160a01b031633146104575760405163118cdaa760e01b81523360048201526024016102f6565b600080546001600160a01b038381166001600160a01b0319831681178455604051919092169283917f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e09190a35050565b600080600080610c7a8686610cc0565b925092509250610c8a8282610d0d565b50909150505b92915050565b600260015403610cb957604051633ee5aeb560e01b815260040160405180910390fd5b6002600155565b60008060008351604103610cfa5760208401516040850151606086015160001a610cec88828585610dca565b955095509550505050610d06565b50508151600091506002905b9250925092565b6000826003811115610d2157610d21611172565b03610d2a575050565b6001826003811115610d3e57610d3e611172565b03610d5c5760405163f645eedf60e01b815260040160405180910390fd5b6002826003811115610d7057610d70611172565b03610d915760405163fce698f760e01b8152600481018290526024016102f6565b6003826003811115610da557610da5611172565b03610dc6576040516335e2f38360e21b8152600481018290526024016102f6565b5050565b600080807f7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0841115610e055750600091506003905082610e8f565b604080516000808252602082018084528a905260ff891692820192909252606081018790526080810186905260019060a0016020604051602081039080840390855afa158015610e59573d6000803e3d6000fd5b5050604051601f1901519150506001600160a01b038116610e8557506000925060019150829050610e8f565b9250600091508190505b9450945094915050565b600060208284031215610eab57600080fd5b5035919050565b80356001600160a01b0381168114610ec957600080fd5b919050565b634e487b7160e01b600052604160045260246000fd5b600082601f830112610ef557600080fd5b813567ffffffffffffffff80821115610f1057610f10610ece565b604051601f8301601f19908116603f01168101908282118183101715610f3857610f38610ece565b81604052838152866020858801011115610f5157600080fd5b836020870160208301376000602085830101528094505050505092915050565b600080600080600060a08688031215610f8957600080fd5b610f9286610eb2565b9450602086013593506040860135925060608601359150608086013567ffffffffffffffff811115610fc357600080fd5b610fcf88828901610ee4565b9150509295509295909350565b60008060008060808587031215610ff257600080fd5b843593506020850135925060408501359150606085013567ffffffffffffffff81111561101e57600080fd5b61102a87828801610ee4565b91505092959194509250565b60006020828403121561104857600080fd5b61105182610eb2565b9392505050565b60208082526017908201527f416d6f756e74206d75737420626520706f736974697665000000000000000000604082015260600190565b634e487b7160e01b600052601160045260246000fd5b81810381811115610c9057610c9061108f565b6000602082840312156110ca57600080fd5b8151801515811461105157600080fd5b6020808252600f908201526e151c985b9cd9995c8819985a5b1959608a1b604082015260600190565b6bffffffffffffffffffffffff19606097881b81168252601482019690965260348101949094526054840192909252607483015290921b16609482015260a80190565b80820180821115610c9057610c9061108f565b60006020828403121561116b57600080fd5b5051919050565b634e487b7160e01b600052602160045260246000fdfea2646970667358221220d54d4ca0d105a7c99dde8378a5d6c991e50a3f2403f972d48ecc772b322a033564736f6c63430008140033";
 
-// Network addresses for deployed CrashGame contracts
+// Deployed addresses - to be filled after deployment
 export const CRASH_GAME_ADDRESSES: Record<number, string | null> = {
   // Over Protocol Mainnet
   54176: null,
-  // Over Protocol Testnet (Dolphin)
+  // Over Protocol Testnet  
   541764: null,
 };
+
+// Claim signer address - public address derived from CLAIM_SIGNER_KEY
+export const CLAIM_SIGNER_ADDRESS = '0x853fb991522ba11172326ff33b9bcbda89b3259f';

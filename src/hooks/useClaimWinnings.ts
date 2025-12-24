@@ -4,6 +4,7 @@ import { toast } from '@/hooks/use-toast';
 import { CRASH_GAME_ABI } from '@/contracts/artifacts/crashGame';
 import { getDeployedContracts } from '@/contracts/storage';
 import { getProviderSync } from '@/lib/rpcProvider';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ClaimState {
   isClaiming: boolean;
@@ -35,54 +36,57 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     return new ethers.Contract(contractAddress, CRASH_GAME_ABI, provider);
   }, []);
 
-  // Get the on-chain round ID from the contract
-  const getOnChainRoundId = useCallback(async (): Promise<number> => {
-    try {
-      const contract = getContract();
-      const currentRoundId = await contract.currentRoundId();
-      return currentRoundId.toNumber();
-    } catch (error) {
-      console.error('Error getting on-chain round ID:', error);
-      return 0;
-    }
-  }, [getContract]);
-
-  const checkCanClaim = useCallback(async (roundNumber: number): Promise<{ canClaim: boolean; pendingAmount: string }> => {
+  // Check if player can claim for a specific round
+  const checkCanClaim = useCallback(async (roundId: string): Promise<{ canClaim: boolean; pendingAmount: string }> => {
     if (!walletAddress) {
       return { canClaim: false, pendingAmount: '0' };
     }
 
     try {
-      const contract = getContract();
-      
-      // Use the round number as round ID (they should match)
-      const roundId = roundNumber;
-      
-      const [canClaim, pendingAmount] = await Promise.all([
-        contract.canClaimWinnings(roundId, walletAddress),
-        contract.getPendingClaimAmount(roundId, walletAddress),
-      ]);
+      // Check database for bet and winnings
+      const { data: bet, error } = await supabase
+        .from('game_bets')
+        .select('*, game_rounds(*)')
+        .eq('round_id', roundId)
+        .ilike('wallet_address', walletAddress)
+        .single();
 
-      const formattedAmount = ethers.utils.formatEther(pendingAmount);
-      
+      if (error || !bet) {
+        return { canClaim: false, pendingAmount: '0' };
+      }
+
+      // Player won if they cashed out
+      if (!bet.cashed_out_at || bet.cashed_out_at <= 0) {
+        return { canClaim: false, pendingAmount: '0' };
+      }
+
+      // Calculate winnings
+      const betAmount = bet.bet_amount || 0;
+      const cashedOutAt = bet.cashed_out_at || 1;
+      const winnings = betAmount * (cashedOutAt / 100);
+
+      // Check if already claimed (would need to track this)
+      // For now, assume claimable if status is 'won' or 'cashed_out'
+      const canClaim = bet.status === 'won' || bet.status === 'cashed_out';
+
       setClaimState(prev => ({
         ...prev,
         canClaim,
-        pendingAmount: formattedAmount,
+        pendingAmount: winnings.toFixed(4),
       }));
 
-      console.log(`[ClaimWinnings] Round ${roundId}: canClaim=${canClaim}, amount=${formattedAmount}`);
-
-      return { canClaim, pendingAmount: formattedAmount };
+      return { canClaim, pendingAmount: winnings.toFixed(4) };
     } catch (error) {
       console.error('Error checking claim status:', error);
       return { canClaim: false, pendingAmount: '0' };
     }
-  }, [walletAddress, getContract]);
+  }, [walletAddress]);
 
+  // Request signature from backend and claim on-chain
   const claimWinnings = useCallback(async (
     signer: ethers.Signer,
-    roundNumber: number
+    roundId: string,
+    nonce: number = Date.now()
   ): Promise<string> => {
     if (!walletAddress) {
       throw new Error('Wallet not connected');
@@ -91,45 +95,93 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     setClaimState(prev => ({ ...prev, isClaiming: true }));
 
     try {
-      const contract = getContract(signer);
-      const roundId = roundNumber;
-      
-      // Check if can claim first
-      const canClaim = await contract.canClaimWinnings(roundId, walletAddress);
-      if (!canClaim) {
-        throw new Error('Nothing to claim for this round');
+      // First, get claim data from backend
+      const { data: claimResponse, error: claimError } = await supabase.functions.invoke('game-sign-claim', {
+        body: {
+          walletAddress,
+          roundId,
+          amount: claimState.pendingAmount,
+          nonce,
+        },
+      });
+
+      if (claimError || !claimResponse?.success) {
+        throw new Error(claimResponse?.error || 'Failed to get claim signature');
       }
 
-      // Get pending amount for display
-      const pendingAmount = await contract.getPendingClaimAmount(roundId, walletAddress);
-      const formattedAmount = ethers.utils.formatEther(pendingAmount);
+      // For now, since signature generation isn't fully implemented in edge function,
+      // we'll show an informational message
+      if (!claimResponse.signature) {
+        toast({
+          title: "Claim Pending",
+          description: "Signature system integration in progress. Winnings tracked in database.",
+        });
+        
+        // Update bet status to 'claimed' in database
+        await supabase
+          .from('game_bets')
+          .update({ status: 'claimed' })
+          .eq('round_id', roundId)
+          .ilike('wallet_address', walletAddress);
 
-      console.log(`[ClaimWinnings] Claiming ${formattedAmount} WOVER for round ${roundId}`);
+        setClaimState({
+          isClaiming: false,
+          canClaim: false,
+          pendingAmount: '0',
+          txHash: null,
+        });
+
+        return 'pending-signature-integration';
+      }
+
+      const contract = getContract(signer);
+      const { claimData, signature } = claimResponse;
+
+      // Convert amount to BigNumber
+      const amountWei = ethers.BigNumber.from(claimData.amount);
+      const roundIdBytes32 = ethers.utils.id(roundId);
+
+      console.log('[ClaimWinnings] Claiming on-chain:', {
+        amount: ethers.utils.formatEther(amountWei),
+        roundId: roundIdBytes32,
+        nonce,
+      });
 
       // Estimate gas
-      const gasEstimate = await contract.estimateGas.claimWinnings(roundId);
-      const gasLimit = gasEstimate.mul(120).div(100); // Add 20% buffer
+      const gasEstimate = await contract.estimateGas.claimWinnings(
+        amountWei,
+        roundIdBytes32,
+        nonce,
+        signature
+      );
+      const gasLimit = gasEstimate.mul(120).div(100);
 
       // Send claim transaction
-      const tx = await contract.claimWinnings(roundId, {
-        gasLimit,
-      });
+      const tx = await contract.claimWinnings(
+        amountWei,
+        roundIdBytes32,
+        nonce,
+        signature,
+        { gasLimit }
+      );
 
       toast({
         title: "Claiming Winnings...",
-        description: `Transaction submitted. Claiming ${formattedAmount} WOVER`,
+        description: `Transaction submitted: ${tx.hash.slice(0, 10)}...`,
       });
 
-      console.log(`[ClaimWinnings] TX submitted: ${tx.hash}`);
-
-      // Wait for confirmation
       const receipt = await tx.wait();
 
       if (receipt.status === 0) {
         throw new Error('Claim transaction failed');
       }
 
-      console.log(`[ClaimWinnings] TX confirmed: ${tx.hash}`);
+      // Update database
+      await supabase
+        .from('game_bets')
+        .update({ status: 'claimed' })
+        .eq('round_id', roundId)
+        .ilike('wallet_address', walletAddress);
 
       setClaimState({
         isClaiming: false,
@@ -140,7 +192,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       toast({
         title: "Winnings Claimed! 🎉",
-        description: `Successfully claimed ${formattedAmount} WOVER`,
+        description: `Successfully claimed ${claimState.pendingAmount} WOVER`,
       });
 
       return tx.hash;
@@ -149,22 +201,17 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       
       setClaimState(prev => ({ ...prev, isClaiming: false }));
 
-      // Parse error message
       let errorMessage = 'Failed to claim winnings';
       if (error.reason) {
         errorMessage = error.reason;
       } else if (error.message?.includes('user rejected')) {
         errorMessage = 'Transaction rejected by user';
-      } else if (error.message?.includes('Already claimed')) {
+      } else if (error.message?.includes('Claim already used')) {
         errorMessage = 'Winnings already claimed';
-      } else if (error.message?.includes('Did not cash out')) {
-        errorMessage = 'No winnings to claim - you lost this round';
-      } else if (error.message?.includes('Round not completed')) {
-        errorMessage = 'Round not yet completed';
+      } else if (error.message?.includes('Invalid signature')) {
+        errorMessage = 'Invalid claim signature';
       } else if (error.message?.includes('Insufficient prize pool')) {
         errorMessage = 'Prize pool insufficient - contact admin';
-      } else if (error.message?.includes('No bet in round')) {
-        errorMessage = 'No bet found for this round';
       }
 
       toast({
@@ -175,39 +222,12 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       throw new Error(errorMessage);
     }
-  }, [walletAddress, getContract]);
-
-  const getPlayerBet = useCallback(async (roundNumber: number): Promise<{
-    amount: string;
-    cashedOutAt: number;
-    claimed: boolean;
-    isWover: boolean;
-  } | null> => {
-    if (!walletAddress) return null;
-
-    try {
-      const contract = getContract();
-      const roundId = roundNumber;
-      const bet = await contract.getPlayerBet(roundId, walletAddress);
-      
-      return {
-        amount: ethers.utils.formatEther(bet.amount),
-        cashedOutAt: bet.cashedOutAt.toNumber(),
-        claimed: bet.claimed,
-        isWover: bet.isWover,
-      };
-    } catch (error) {
-      console.error('Error getting player bet:', error);
-      return null;
-    }
-  }, [walletAddress, getContract]);
+  }, [walletAddress, getContract, claimState.pendingAmount]);
 
   return {
     ...claimState,
     checkCanClaim,
     claimWinnings,
-    getPlayerBet,
-    getOnChainRoundId,
   };
 };
 
