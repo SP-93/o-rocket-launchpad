@@ -263,6 +263,14 @@ export const clearCrashGameAddress = (): void => {
   logger.info('CrashGame address cleared from storage');
 };
 
+// Clear only TicketNFT contract address (for redeploy)
+export const clearTicketNFTAddress = (): void => {
+  const contracts = getDeployedContracts();
+  contracts.ticketNFT = null;
+  secureStorage.setItem(STORAGE_KEYS.contracts, contracts);
+  logger.info('TicketNFT address cleared from storage');
+};
+
 // Check if a contract is deployed
 export const isContractDeployed = (contractId: keyof DeployedContracts): boolean => {
   const contracts = getDeployedContracts();

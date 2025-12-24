@@ -28,6 +28,7 @@ import AuditLogSection from '@/components/admin/AuditLogSection';
 import GameManagementSection from '@/components/admin/GameManagementSection';
 import GameRevenueSection from '@/components/admin/GameRevenueSection';
 import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
+import TicketNFTContractSection from '@/components/admin/TicketNFTContractSection';
 import OnChainRoundManagement from '@/components/admin/OnChainRoundManagement';
 import AutoGameControl from '@/components/admin/AutoGameControl';
 import { toast } from 'sonner';
@@ -1013,6 +1014,25 @@ const Admin = () => {
 
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
+              {/* Smart Contracts Section */}
+              <GlowCard className="p-6" glowColor="purple">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-purple-400" />
+                  Game Smart Contracts
+                </h2>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Deploy and manage the game smart contracts. Deploy TicketNFT first, then CrashGame.
+                </p>
+                
+                <div className="space-y-6">
+                  {/* TicketNFT Contract */}
+                  <TicketNFTContractSection />
+                  
+                  {/* CrashGame Contract */}
+                  <CrashGameContractSection />
+                </div>
+              </GlowCard>
+
               {/* Auto Game Loop - Primary Control */}
               <GlowCard className="p-6" glowColor="cyan">
                 <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
