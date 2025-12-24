@@ -60,10 +60,8 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         return { canClaim: false, pendingAmount: '0' };
       }
 
-      // Calculate winnings
-      const betAmount = bet.bet_amount || 0;
-      const cashedOutAt = bet.cashed_out_at || 1;
-      const winnings = betAmount * (cashedOutAt / 100);
+      // Use stored winnings or calculate from bet amount and multiplier
+      const winnings = bet.winnings || (bet.bet_amount * (bet.cashed_out_at || 1));
 
       // Check if already claimed (would need to track this)
       // For now, assume claimable if status is 'won' or 'cashed_out'

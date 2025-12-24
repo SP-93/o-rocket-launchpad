@@ -28,7 +28,7 @@ const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundSta
     roundStatus === 'flying' && 
     !myBet.cashed_out_at;
 
-  const potentialWin = myBet ? Math.floor(myBet.bet_amount * currentMultiplier) : 0;
+  const potentialWin = myBet ? (myBet.bet_amount * currentMultiplier).toFixed(2) : '0.00';
 
   const handleCashOut = async () => {
     if (!myBet || !canCashOut || !walletAddress) return;
@@ -47,7 +47,7 @@ const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundSta
       if (data?.error) throw new Error(data.error);
       
       setJustCashedOut(true);
-      const actualWin = data?.cashout?.winnings || potentialWin;
+      const actualWin = data?.cashout?.winnings?.toFixed(2) || potentialWin;
       toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin.toFixed(2)} WOVER`);
       onCashout?.();
     } catch (error: any) {
