@@ -6,19 +6,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { 
   Rocket, Loader2, CheckCircle, XCircle, ExternalLink, 
-  Copy, RefreshCw, Wallet, DollarSign, Shield, Play, Pause,
-  TrendingUp, AlertTriangle, Database, Info, Search, Trash2
+  Copy, RefreshCw, Wallet, Shield, AlertTriangle, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
-import { useOnChainBytecodeAnalysis } from '@/hooks/useOnChainBytecodeAnalysis';
 import { getDeployedContracts, getDeployedContractsAsync, clearCrashGameAddress } from '@/contracts/storage';
 import { useWallet } from '@/hooks/useWallet';
-import { TOKEN_ADDRESSES, NETWORK_CONFIG, TREASURY_WALLET } from '@/config/admin';
-import { CRASH_GAME_BYTECODE } from '@/contracts/artifacts/crashGame';
+import { TOKEN_ADDRESSES } from '@/config/admin';
+import { CRASH_GAME_BYTECODE, CLAIM_SIGNER_ADDRESS } from '@/contracts/artifacts/crashGame';
 import { analyzeBytecode } from '@/lib/bytecodeAnalyzer';
-
-const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
 
 const CrashGameContractSection = () => {
   const { address, getProvider, isConnected } = useWallet();
@@ -30,61 +26,39 @@ const CrashGameContractSection = () => {
     fetchContractState,
     getContractOwner,
     refillPrizePool,
-    distributeWoverRevenue,
-    distributeUsdtRevenue,
-    setPrizePoolPercentage,
-    pauseGame,
-    unpauseGame,
+    emergencyWithdraw,
   } = useCrashGameContract();
 
   const [deployedContracts, setDeployedContracts] = useState(getDeployedContracts());
   const [refillAmount, setRefillAmount] = useState('');
-  // Prize pool only uses WOVER (per spec)
-  const [newPercentage, setNewPercentage] = useState(70);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
-  const [deployGasLimit, setDeployGasLimit] = useState<string>('12000000');
+  const [deployGasLimit, setDeployGasLimit] = useState<string>('5000000');
   const [contractOwner, setContractOwner] = useState<string | null>(null);
 
-  // On-chain bytecode analysis hook
-  const { 
-    isAnalyzing: isAnalyzingOnChain, 
-    analysis: onChainAnalysis, 
-    error: analysisError,
-    analyzeOnChain,
-    clearAnalysis
-  } = useOnChainBytecodeAnalysis();
-
-  // Check if current wallet is owner
   const isOwner = useMemo(() => {
     if (!address || !contractOwner) return false;
     return address.toLowerCase() === contractOwner.toLowerCase();
   }, [address, contractOwner]);
 
-  // Analyze bytecode for PUSH0 compatibility
-  // Note: depend on CRASH_GAME_BYTECODE so HMR / rebuilds always reflect the latest artifacts.
   const bytecodeAnalysis = useMemo(() => {
     return analyzeBytecode(CRASH_GAME_BYTECODE);
-  }, [CRASH_GAME_BYTECODE]);
+  }, []);
 
-  // Get ethers signer from wallet client
   const getSigner = useCallback(async () => {
     const client = await getProvider();
     if (!client) return null;
-    
-    // Convert viem wallet client to ethers signer
     const provider = new ethers.providers.Web3Provider(client as any);
     return provider.getSigner();
   }, [getProvider]);
 
   useEffect(() => {
     const init = async () => {
-      // Use async version to sync from backend if needed
       const contracts = await getDeployedContractsAsync();
       setDeployedContracts(contracts);
       
       if (contracts.crashGame) {
         fetchContractState();
-        // Fetch owner
         const owner = await getContractOwner();
         if (owner) setContractOwner(owner);
       }
@@ -105,15 +79,12 @@ const CrashGameContractSection = () => {
     const gasLimit = Number.isFinite(parsedGas) && parsedGas > 0 ? Math.floor(parsedGas) : undefined;
 
     try {
+      // New contract only needs WOVER token and claim signer
       await deployCrashGame(
         signer,
         TOKEN_ADDRESSES.WOVER,
-        TOKEN_ADDRESSES.USDT,
-        TREASURY_WALLET,
-        FACTORY_DEPLOYER_WALLET,
-        {
-          gasLimit,
-        }
+        CLAIM_SIGNER_ADDRESS,
+        { gasLimit }
       );
       setDeployedContracts(getDeployedContracts());
       fetchContractState();
@@ -131,7 +102,7 @@ const CrashGameContractSection = () => {
 
     setIsUpdating(true);
     try {
-      await refillPrizePool(signer, refillAmount, true); // Always WOVER for prize pool
+      await refillPrizePool(signer, refillAmount);
       setRefillAmount('');
       fetchContractState();
     } catch (error: any) {
@@ -141,76 +112,34 @@ const CrashGameContractSection = () => {
     }
   };
 
-  const handleDistributeWover = async () => {
+  const handleEmergencyWithdraw = async () => {
     const signer = await getSigner();
-    if (!signer) return;
+    if (!signer || !withdrawAmount) {
+      toast.error('Please enter amount and connect wallet');
+      return;
+    }
+
+    if (!window.confirm('Are you sure you want to withdraw from the prize pool?')) {
+      return;
+    }
+
     setIsUpdating(true);
     try {
-      await distributeWoverRevenue(signer);
+      await emergencyWithdraw(signer, withdrawAmount);
+      setWithdrawAmount('');
       fetchContractState();
     } catch (error: any) {
-      toast.error('Distribution failed: ' + error.message);
+      toast.error('Withdraw failed: ' + error.message);
     } finally {
       setIsUpdating(false);
     }
-  };
-
-  const handleDistributeUsdt = async () => {
-    const signer = await getSigner();
-    if (!signer) return;
-    setIsUpdating(true);
-    try {
-      await distributeUsdtRevenue(signer);
-      fetchContractState();
-    } catch (error: any) {
-      toast.error('Distribution failed: ' + error.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleSetPercentage = async () => {
-    const signer = await getSigner();
-    if (!signer) return;
-    setIsUpdating(true);
-    try {
-      await setPrizePoolPercentage(signer, newPercentage);
-      fetchContractState();
-    } catch (error: any) {
-      toast.error('Update failed: ' + error.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handlePauseToggle = async () => {
-    const signer = await getSigner();
-    if (!signer) return;
-    setIsUpdating(true);
-    try {
-      if (contractState?.isPaused) {
-        await unpauseGame(signer);
-      } else {
-        await pauseGame(signer);
-      }
-      fetchContractState();
-    } catch (error: any) {
-      toast.error('Toggle failed: ' + error.message);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleAnalyzeOnChain = async () => {
-    await analyzeOnChain(TOKEN_ADDRESSES.WOVER, TOKEN_ADDRESSES.USDT);
   };
 
   const handleClearAddress = () => {
-    if (window.confirm('Are you sure you want to clear the stored CrashGame address? This will NOT affect the deployed contract on-chain.')) {
+    if (window.confirm('Are you sure you want to clear the stored CrashGame address?')) {
       clearCrashGameAddress();
-      clearAnalysis();
       setDeployedContracts(getDeployedContracts());
-      toast.success('CrashGame address cleared from local storage');
+      toast.success('CrashGame address cleared');
     }
   };
 
@@ -227,7 +156,7 @@ const CrashGameContractSection = () => {
       <GlowCard className="p-6" glowColor="cyan">
         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Rocket className="w-5 h-5 text-primary" />
-          CrashGame Smart Contract
+          CrashGame Smart Contract (v2 - Signature Claims)
         </h3>
 
         {isContractDeployed ? (
@@ -240,26 +169,21 @@ const CrashGameContractSection = () => {
                     <CheckCircle className="w-5 h-5 text-success" />
                     <span className="font-medium">Contract Deployed</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => copyToClipboard(deployedContracts.crashGame!)} 
-                      className="text-muted-foreground hover:text-primary flex items-center gap-1 text-xs"
-                      title="Copy address"
-                    >
-                      <Copy className="w-3 h-3" />
-                      Copy
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => copyToClipboard(deployedContracts.crashGame!)} 
+                    className="text-muted-foreground hover:text-primary flex items-center gap-1 text-xs"
+                  >
+                    <Copy className="w-3 h-3" />
+                    Copy
+                  </button>
                 </div>
                 
-                {/* Full address display */}
                 <div className="bg-background/30 rounded p-2 break-all">
                   <code className="text-[10px] font-mono text-success">
                     {deployedContracts.crashGame}
                   </code>
                 </div>
                 
-                {/* Explorer link - proper <a> tag */}
                 <a 
                   href={`https://scan.over.network/address/${deployedContracts.crashGame}`}
                   target="_blank"
@@ -276,151 +200,61 @@ const CrashGameContractSection = () => {
             {contractState && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-                  <p className="text-xs text-muted-foreground">Round</p>
-                  <p className="text-lg font-bold">#{contractState.currentRoundId}</p>
+                  <p className="text-xs text-muted-foreground">Prize Pool</p>
+                  <p className="text-lg font-bold text-primary">
+                    {parseFloat(contractState.prizePool).toFixed(2)} WOVER
+                  </p>
                 </div>
                 <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-                  <p className="text-xs text-muted-foreground">Pool %</p>
-                  <p className="text-lg font-bold">{contractState.prizePoolPercentage}%</p>
+                  <p className="text-xs text-muted-foreground">Total Deposited</p>
+                  <p className="text-lg font-bold">
+                    {parseFloat(contractState.totalDeposited).toFixed(2)}
+                  </p>
                 </div>
                 <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-                  <p className="text-xs text-muted-foreground">Min Bet</p>
-                  <p className="text-lg font-bold">{contractState.minBet}</p>
+                  <p className="text-xs text-muted-foreground">Total Claimed</p>
+                  <p className="text-lg font-bold">
+                    {parseFloat(contractState.totalClaimed).toFixed(2)}
+                  </p>
                 </div>
                 <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-                  <p className="text-xs text-muted-foreground">Status</p>
-                  <p className={`text-lg font-bold ${contractState.isPaused ? 'text-destructive' : 'text-success'}`}>
-                    {contractState.isPaused ? 'Paused' : 'Active'}
+                  <p className="text-xs text-muted-foreground">Pool Status</p>
+                  <p className={`text-lg font-bold ${contractState.isPoolLow ? 'text-destructive' : 'text-success'}`}>
+                    {contractState.isPoolLow ? '⚠️ Low' : '✓ OK'}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* On-Chain Diagnostics Panel */}
-            <div className="bg-background/50 rounded-lg p-4 border border-border/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Search className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">On-Chain Bytecode Diagnostics</span>
+            {/* Claim Signer Info */}
+            {contractState && (
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Claim Signer</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <NeonButton 
-                    variant="secondary" 
-                    onClick={handleAnalyzeOnChain}
-                    disabled={isAnalyzingOnChain}
-                    className="text-xs px-3 py-1"
-                  >
-                    {isAnalyzingOnChain ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <>
-                        <Search className="w-3 h-3 mr-1" />
-                        Analyze
-                      </>
-                    )}
-                  </NeonButton>
-                </div>
+                <code className="text-xs font-mono text-muted-foreground">
+                  {contractState.claimSigner}
+                </code>
               </div>
+            )}
 
-              {analysisError && (
-                <div className="bg-destructive/10 border border-destructive/30 rounded p-2 text-xs text-destructive">
-                  {analysisError}
-                </div>
-              )}
-
-              {onChainAnalysis && (
-                <div className="space-y-2">
-                  {/* PUSH0 Status - Main Indicator */}
-                  <div className={`rounded p-3 border ${
-                    onChainAnalysis.bytecodeAnalysis.hasPush0 
-                      ? 'bg-destructive/10 border-destructive/30' 
-                      : 'bg-success/10 border-success/30'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      {onChainAnalysis.bytecodeAnalysis.hasPush0 ? (
-                        <XCircle className="w-5 h-5 text-destructive" />
-                      ) : (
-                        <CheckCircle className="w-5 h-5 text-success" />
-                      )}
-                      <span className="font-medium">
-                        On-Chain PUSH0: {onChainAnalysis.bytecodeAnalysis.hasPush0 ? 'PRESENT ⚠️' : 'Not Found ✓'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {onChainAnalysis.bytecodeAnalysis.hasPush0 
-                        ? 'Contract uses Shanghai opcode - may cause "invalid jump destination" errors'
-                        : 'Contract uses Paris-compatible opcodes'
-                      }
-                    </p>
-                  </div>
-
-                  {/* Bytecode Details */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-background/30 rounded p-2">
-                      <span className="text-muted-foreground">Bytecode Size: </span>
-                      <span className="font-mono">{onChainAnalysis.bytecodeLength.toLocaleString()} bytes</span>
-                    </div>
-                    <div className="bg-background/30 rounded p-2">
-                      <span className="text-muted-foreground">EVM Version: </span>
-                      <span className={`font-mono ${
-                        onChainAnalysis.bytecodeAnalysis.evmVersion === 'shanghai' 
-                          ? 'text-destructive' 
-                          : 'text-success'
-                      }`}>
-                        {onChainAnalysis.bytecodeAnalysis.evmVersion.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Bytecode Hash */}
-                  <div className="bg-background/30 rounded p-2">
-                    <span className="text-xs text-muted-foreground">Hash: </span>
-                    <code className="text-[10px] font-mono break-all">{onChainAnalysis.bytecodeHash}</code>
-                  </div>
-
-                  {/* Token Balances in Contract */}
-                  {onChainAnalysis.tokenBalances && (
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="bg-warning/10 border border-warning/30 rounded p-2">
-                        <span className="text-muted-foreground">Contract WOVER Balance: </span>
-                        <span className="font-bold text-warning">{onChainAnalysis.tokenBalances.wover}</span>
-                      </div>
-                      <div className="bg-success/10 border border-success/30 rounded p-2">
-                        <span className="text-muted-foreground">Contract USDT Balance: </span>
-                        <span className="font-bold text-success">{onChainAnalysis.tokenBalances.usdt}</span>
-                      </div>
-                    </div>
+            {/* Owner Info */}
+            {contractOwner && (
+              <div className={`rounded-lg p-3 ${isOwner ? 'bg-success/10 border border-success/30' : 'bg-warning/10 border border-warning/30'}`}>
+                <p className="text-xs text-muted-foreground mb-1">Contract Owner</p>
+                <code className="text-xs font-mono">{truncateAddress(contractOwner)}</code>
+                <p className="text-xs mt-1">
+                  {isOwner ? (
+                    <span className="text-success">✓ You are the owner</span>
+                  ) : (
+                    <span className="text-warning">⚠️ You are NOT the owner</span>
                   )}
+                </p>
+              </div>
+            )}
 
-                  {/* Compare with Internal State */}
-                  {onChainAnalysis.tokenBalances && contractState && (
-                    <div className="bg-primary/10 border border-primary/30 rounded p-2">
-                      <p className="text-xs font-medium mb-1">Balance vs Internal State Comparison:</p>
-                      <div className="grid grid-cols-2 gap-2 text-[10px]">
-                        <div>
-                          <span className="text-muted-foreground">WOVER Real: </span>
-                          <span className="font-mono">{onChainAnalysis.tokenBalances.wover}</span>
-                          <span className="text-muted-foreground"> | Internal: </span>
-                          <span className="font-mono">{contractState.prizePoolWover}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">USDT Real: </span>
-                          <span className="font-mono">{onChainAnalysis.tokenBalances.usdt}</span>
-                          <span className="text-muted-foreground"> | Internal: </span>
-                          <span className="font-mono">{contractState.prizePoolUsdt}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <p className="text-[10px] text-muted-foreground">
-                    Analyzed at: {onChainAnalysis.fetchedAt.toLocaleTimeString()}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons Row */}
+            {/* Actions */}
             <div className="flex gap-2">
               <NeonButton 
                 variant="secondary" 
@@ -429,7 +263,7 @@ const CrashGameContractSection = () => {
                 className="flex-1"
               >
                 {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                Refresh State
+                Refresh
               </NeonButton>
               
               <NeonButton 
@@ -443,136 +277,66 @@ const CrashGameContractSection = () => {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* Not Deployed Warning */}
             <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertTriangle className="w-5 h-5 text-warning" />
                 <span className="font-medium">Contract Not Deployed</span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Deploy the CrashGame contract to enable on-chain game functionality with provably fair mechanics.
+                Deploy the CrashGame v2 contract to enable on-chain claims.
               </p>
             </div>
 
-            {/* Deployment Info */}
-            <div className="bg-background/50 rounded-lg p-4 border border-border/30 text-sm space-y-2">
-              <p><strong>WOVER Token:</strong> {truncateAddress(TOKEN_ADDRESSES.WOVER)}</p>
-              <p><strong>USDT Token:</strong> {truncateAddress(TOKEN_ADDRESSES.USDT)}</p>
-              <p><strong>Treasury:</strong> {truncateAddress(TREASURY_WALLET)}</p>
-              <p><strong>Factory Deployer:</strong> {truncateAddress(FACTORY_DEPLOYER_WALLET)}</p>
+            {/* Config Display */}
+            <div className="bg-background/50 rounded-lg p-4 border border-border/30">
+              <h4 className="text-sm font-semibold mb-3">Contract Configuration</h4>
+              <div className="grid grid-cols-1 gap-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">WOVER Token:</span>
+                  <code className="font-mono">{truncateAddress(TOKEN_ADDRESSES.WOVER)}</code>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Claim Signer:</span>
+                  <code className="font-mono">{truncateAddress(CLAIM_SIGNER_ADDRESS)}</code>
+                </div>
+              </div>
             </div>
 
-            {/* PUSH0 Warning */}
+            {/* Bytecode Check */}
             {bytecodeAnalysis.hasPush0 && (
               <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <XCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" />
-                  <div className="space-y-2">
-                    <p className="font-medium text-destructive">EVM Compatibility Issue Detected</p>
-                    <p className="text-sm text-muted-foreground">
-                      Bytecode contains <code className="bg-background/50 px-1 rounded">PUSH0</code> opcode 
-                      (Solidity 0.8.20 Shanghai). Over Protocol may not support this opcode yet.
-                    </p>
-                    <div className="bg-background/30 rounded p-3 text-sm">
-                      <p className="font-medium mb-2">How to fix:</p>
-                      <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                        <li>Open Remix IDE (<code>remix.ethereum.org</code>)</li>
-                        <li>Load CrashGame.sol</li>
-                        <li>In Compiler → Advanced → set <strong>EVM Version: Paris</strong></li>
-                        <li>Compile and copy new ABI + Bytecode</li>
-                        <li>Update <code>crashGame.ts</code> artifacts</li>
-                      </ol>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <XCircle className="w-5 h-5 text-destructive" />
+                  <span className="font-medium text-destructive">PUSH0 Detected</span>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Bytecode uses Shanghai opcodes. Recompile with EVM Paris target.
+                </p>
               </div>
             )}
 
-            {/* Bytecode Info */}
-            <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Info className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Bytecode Status</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground">EVM Target: </span>
-                  <span className={bytecodeAnalysis.hasPush0 ? 'text-destructive' : 'text-success'}>
-                    {bytecodeAnalysis.evmVersion.toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">PUSH0: </span>
-                  <span className={bytecodeAnalysis.hasPush0 ? 'text-destructive' : 'text-success'}>
-                    {bytecodeAnalysis.hasPush0 ? 'Present ⚠️' : 'Not found ✓'}
-                  </span>
-                </div>
-
-                {bytecodeAnalysis.hasPush0 && (
-                  <div className="col-span-2 text-muted-foreground">
-                    Found <span className="font-medium">{bytecodeAnalysis.push0Count}</span> PUSH0 opcode(s)
-                    {bytecodeAnalysis.firstPush0ByteOffset !== null && (
-                      <> (first at byte <span className="font-medium">#{bytecodeAnalysis.firstPush0ByteOffset}</span>)</>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Deploy gas controls */}
-            <div className="bg-background/30 rounded-lg p-4 border border-border/30 space-y-2">
-              <Label htmlFor="deployGasLimit" className="text-sm">Deploy Gas Limit</Label>
+            {/* Gas Limit */}
+            <div>
+              <Label className="text-xs">Deploy Gas Limit</Label>
               <Input
-                id="deployGasLimit"
-                inputMode="numeric"
-                placeholder="12000000"
+                type="number"
                 value={deployGasLimit}
                 onChange={(e) => setDeployGasLimit(e.target.value)}
+                className="mt-1"
               />
-              <p className="text-xs text-muted-foreground">
-                Default: 12M. If deploy reverts without PUSH0 issue, try increasing to 15-20M.
-              </p>
             </div>
 
-            {/* Local Bytecode PUSH0 Check - Critical Pre-Deploy Status */}
-            <div className={`rounded-lg p-4 border ${
-              bytecodeAnalysis.hasPush0 
-                ? 'bg-destructive/10 border-destructive/50' 
-                : 'bg-success/10 border-success/50'
-            }`}>
-              <div className="flex items-center gap-3">
-                {bytecodeAnalysis.hasPush0 ? (
-                  <XCircle className="w-6 h-6 text-destructive" />
-                ) : (
-                  <CheckCircle className="w-6 h-6 text-success" />
-                )}
-                <div>
-                  <p className="font-bold text-sm">
-                    Local Bytecode PUSH0: {bytecodeAnalysis.hasPush0 ? 'FOUND ❌' : 'NOT FOUND ✅'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {bytecodeAnalysis.hasPush0 
-                      ? 'Deploy BLOCKED - Recompile with Remix EVM Version: Paris'
-                      : 'Ready for Over Protocol deployment'
-                    }
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <NeonButton 
-              onClick={handleDeploy} 
-              disabled={isDeploying || bytecodeAnalysis.hasPush0}
+            {/* Deploy Button */}
+            <NeonButton
+              onClick={handleDeploy}
+              disabled={isDeploying || !isConnected || bytecodeAnalysis.hasPush0}
               className="w-full"
             >
               {isDeploying ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Deploying...
-                </>
-              ) : bytecodeAnalysis.hasPush0 ? (
-                <>
-                  <XCircle className="w-4 h-4 mr-2" />
-                  Deploy Blocked (PUSH0 Detected)
                 </>
               ) : (
                 <>
@@ -585,185 +349,57 @@ const CrashGameContractSection = () => {
         )}
       </GlowCard>
 
-      {/* On-Chain Management - Only show if deployed */}
-      {isContractDeployed && contractState && (
-        <>
-          {/* Prize Pool Management */}
-          <GlowCard className="p-6" glowColor="purple">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-warning" />
-              On-Chain Prize Pool
-            </h3>
+      {/* Prize Pool Management - Only show if deployed and owner */}
+      {isContractDeployed && isOwner && (
+        <GlowCard className="p-6" glowColor="purple">
+          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-primary" />
+            Prize Pool Management
+          </h3>
 
-            {/* Ownership Info */}
-            {contractOwner && (
-              <div className={`rounded-lg p-3 mb-4 border ${isOwner ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'}`}>
-                <div className="flex items-center gap-2">
-                  {isOwner ? (
-                    <CheckCircle className="w-4 h-4 text-success" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-destructive" />
-                  )}
-                  <span className="text-sm font-medium">
-                    {isOwner ? 'You are the contract owner' : 'You are NOT the contract owner'}
-                  </span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Owner: <code className="text-[10px]">{contractOwner}</code>
-                </p>
-                {!isOwner && (
-                  <p className="text-xs text-destructive mt-1">
-                    Only the owner can refill prize pool and distribute revenue
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* WOVER Prize Pool - Only WOVER for payouts per spec */}
-            <div className="bg-warning/10 rounded-lg p-4 border border-warning/30 mb-4">
-              <p className="text-xs text-muted-foreground mb-1">🎮 Prize Pool (WOVER only)</p>
-              <p className="text-2xl font-bold text-warning">{contractState.prizePoolWover} WOVER</p>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                All player payouts are in WOVER tokens
-              </p>
-            </div>
-
-            {/* Debug Info - Token Addresses */}
-            <div className="bg-background/30 rounded-lg p-3 mb-4 border border-border/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Database className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs font-medium">Contract Token Config</span>
-              </div>
-              <div className="grid gap-1 text-[10px] font-mono">
-                <p><span className="text-muted-foreground">WOVER: </span>{TOKEN_ADDRESSES.WOVER}</p>
-                <p><span className="text-muted-foreground">USDT: </span>{TOKEN_ADDRESSES.USDT}</p>
-              </div>
-            </div>
-
-            {/* Refill Pool - WOVER only */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Refill */}
             <div className="space-y-3">
-              <Label>Refill Prize Pool (WOVER)</Label>
+              <Label className="text-sm font-medium">Refill Prize Pool</Label>
               <div className="flex gap-2">
                 <Input
                   type="number"
-                  placeholder="Amount in WOVER"
+                  placeholder="Amount (WOVER)"
                   value={refillAmount}
                   onChange={(e) => setRefillAmount(e.target.value)}
-                  className="flex-1"
-                  disabled={!isOwner}
                 />
-                <NeonButton onClick={handleRefill} disabled={isUpdating || !refillAmount || !isOwner}>
-                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4" />}
-                </NeonButton>
-              </div>
-              {!isOwner && (
-                <p className="text-xs text-destructive">Connect with owner wallet to refill</p>
-              )}
-            </div>
-          </GlowCard>
-
-          {/* Revenue Distribution */}
-          <GlowCard className="p-6" glowColor="cyan">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-success" />
-              On-Chain Revenue
-            </h3>
-
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="bg-background/50 rounded-lg p-4 border border-warning/30">
-                <p className="text-xs text-muted-foreground mb-1">Pending WOVER</p>
-                <p className="text-2xl font-bold text-warning">{contractState.pendingRevenueWover}</p>
-                <NeonButton 
-                  onClick={handleDistributeWover} 
-                  disabled={isUpdating || parseFloat(contractState.pendingRevenueWover) <= 0}
-                  className="w-full mt-2"
-                  variant="secondary"
+                <NeonButton
+                  onClick={handleRefill}
+                  disabled={isUpdating || !refillAmount}
+                  className="shrink-0"
                 >
-                  {isUpdating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                  Distribute
-                </NeonButton>
-              </div>
-              <div className="bg-background/50 rounded-lg p-4 border border-success/30">
-                <p className="text-xs text-muted-foreground mb-1">Pending USDT</p>
-                <p className="text-2xl font-bold text-success">{contractState.pendingRevenueUsdt}</p>
-                <NeonButton 
-                  onClick={handleDistributeUsdt} 
-                  disabled={isUpdating || parseFloat(contractState.pendingRevenueUsdt) <= 0}
-                  className="w-full mt-2"
-                  variant="secondary"
-                >
-                  {isUpdating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <DollarSign className="w-4 h-4 mr-2" />}
-                  Distribute
+                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refill'}
                 </NeonButton>
               </div>
             </div>
 
-            {/* Prize Pool Percentage */}
-            <div className="bg-background/30 rounded-lg p-4 mt-4">
-              <Label className="mb-2 block">Prize Pool Distribution %</Label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min="20"
-                  max="80"
-                  value={newPercentage}
-                  onChange={(e) => setNewPercentage(parseInt(e.target.value))}
-                  className="flex-1 h-2 bg-gradient-to-r from-primary to-accent rounded-lg appearance-none cursor-pointer"
+            {/* Emergency Withdraw */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium text-destructive">Emergency Withdraw</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Amount (WOVER)"
+                  value={withdrawAmount}
+                  onChange={(e) => setWithdrawAmount(e.target.value)}
                 />
-                <span className="font-mono font-bold w-16 text-center">{newPercentage}%</span>
-                <NeonButton 
-                  onClick={handleSetPercentage} 
-                  disabled={isUpdating || newPercentage === contractState.prizePoolPercentage}
+                <NeonButton
                   variant="secondary"
-                  className="px-3"
+                  onClick={handleEmergencyWithdraw}
+                  disabled={isUpdating || !withdrawAmount}
+                  className="shrink-0 text-destructive"
                 >
-                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                  {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Withdraw'}
                 </NeonButton>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">
-                {newPercentage}% → Prize Pool, {100 - newPercentage}% → Platform
-              </p>
             </div>
-          </GlowCard>
-
-          {/* Game Controls */}
-          <GlowCard className="p-6" glowColor="purple">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Shield className="w-5 h-5 text-primary" />
-              Contract Controls
-            </h3>
-
-            <div className="flex gap-4">
-              <NeonButton 
-                onClick={handlePauseToggle} 
-                disabled={isUpdating}
-                variant={contractState.isPaused ? 'primary' : 'secondary'}
-                className="flex-1"
-              >
-                {isUpdating ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : contractState.isPaused ? (
-                  <Play className="w-4 h-4 mr-2" />
-                ) : (
-                  <Pause className="w-4 h-4 mr-2" />
-                )}
-                {contractState.isPaused ? 'Unpause Game' : 'Pause Game'}
-              </NeonButton>
-            </div>
-
-            {contractState.isPaused && (
-              <div className="mt-4 bg-destructive/10 border border-destructive/30 rounded-lg p-3">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="text-sm font-medium">Game is currently paused</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Players cannot place bets while the game is paused.
-                </p>
-              </div>
-            )}
-          </GlowCard>
-        </>
+          </div>
+        </GlowCard>
       )}
     </div>
   );
