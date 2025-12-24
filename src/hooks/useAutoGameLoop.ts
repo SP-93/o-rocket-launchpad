@@ -1,13 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useWallet } from '@/hooks/useWallet';
+import { isAdmin } from '@/config/admin';
 import { toast } from 'sonner';
 
 interface AutoGameConfig {
-  bettingDuration: number; // seconds for betting phase
-  countdownDuration: number; // seconds for countdown
-  minFlyingDuration: number; // minimum seconds flying before crash
-  maxFlyingDuration: number; // maximum seconds flying
-  pauseBetweenRounds: number; // seconds pause after payout
+  bettingDuration: number;
+  countdownDuration: number;
+  minFlyingDuration: number;
+  maxFlyingDuration: number;
+  pauseBetweenRounds: number;
 }
 
 interface GameLoopState {
@@ -19,6 +21,7 @@ interface GameLoopState {
   crashPoint: number | null;
   timeRemaining: number;
   error: string | null;
+  lastAction: string | null;
   totalRoundsPlayed: number;
 }
 
@@ -31,6 +34,7 @@ const DEFAULT_CONFIG: AutoGameConfig = {
 };
 
 export function useAutoGameLoop() {
+  const { address } = useWallet();
   const [config, setConfig] = useState<AutoGameConfig>(DEFAULT_CONFIG);
   const [state, setState] = useState<GameLoopState>({
     isRunning: false,
@@ -41,6 +45,7 @@ export function useAutoGameLoop() {
     crashPoint: null,
     timeRemaining: 0,
     error: null,
+    lastAction: null,
     totalRoundsPlayed: 0,
   });
 
@@ -49,28 +54,43 @@ export function useAutoGameLoop() {
   const multiplierRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
 
-  // Call backend edge function
+  // Call backend with admin wallet header (no session needed)
   const callRoundManager = useCallback(async (action: string, body: Record<string, any> = {}) => {
+    setState(prev => ({ ...prev, lastAction: action }));
+    
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
+      if (!address || !isAdmin(address)) {
+        throw new Error('Not authorized - admin wallet required');
+      }
+
+      console.log(`[AutoGame] ${action} with admin wallet: ${address}`);
+
       const response = await supabase.functions.invoke('game-round-manager', {
-        body: { action, ...body },
-        headers: session?.access_token ? {
-          Authorization: `Bearer ${session.access_token}`
-        } : undefined,
+        body: { 
+          action, 
+          admin_wallet: address, // Direct wallet-based auth
+          ...body 
+        },
       });
 
       if (response.error) {
-        throw new Error(response.error.message);
+        console.error(`[AutoGame] ${action} error:`, response.error);
+        throw new Error(response.error.message || 'Function error');
       }
 
+      if (response.data?.error) {
+        console.error(`[AutoGame] ${action} returned error:`, response.data.error);
+        throw new Error(response.data.error);
+      }
+
+      console.log(`[AutoGame] ${action} success:`, response.data);
       return response.data;
     } catch (error: any) {
       console.error(`[AutoGame] ${action} failed:`, error);
+      setState(prev => ({ ...prev, error: `${action}: ${error.message}` }));
       throw error;
     }
-  }, []);
+  }, [address]);
 
   // Countdown timer
   const startCountdown = useCallback((seconds: number, onComplete: () => void) => {
@@ -98,7 +118,6 @@ export function useAutoGameLoop() {
     
     multiplierRef.current = setInterval(() => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      // Exponential growth: ~2x in 10 seconds
       const multiplier = Math.pow(1.0718, elapsed);
       const capped = Math.min(multiplier, 10.00);
       
@@ -116,7 +135,7 @@ export function useAutoGameLoop() {
     if (!loopRef.current) return;
 
     try {
-      // PHASE 1: Start new round (betting phase)
+      // PHASE 1: Start new round
       console.log('[AutoGame] Starting new round...');
       setState(prev => ({ ...prev, currentPhase: 'betting', error: null, multiplier: 1.00 }));
       
@@ -135,7 +154,7 @@ export function useAutoGameLoop() {
         crashPoint: null,
       }));
 
-      console.log(`[AutoGame] Round ${roundNumber} started, betting phase...`);
+      console.log(`[AutoGame] Round ${roundNumber} started`);
 
       // Wait for betting duration
       await new Promise<void>(resolve => {
@@ -164,11 +183,8 @@ export function useAutoGameLoop() {
       
       await callRoundManager('start_flying', { round_id: roundId });
 
-      // Determine when to crash (random between min and max duration)
       const flyDuration = config.minFlyingDuration + 
         Math.random() * (config.maxFlyingDuration - config.minFlyingDuration);
-      
-      // Calculate approximate crash point based on duration
       const approximateCrashPoint = Math.pow(1.0718, flyDuration);
       
       await new Promise<void>(resolve => {
@@ -179,7 +195,7 @@ export function useAutoGameLoop() {
       if (!loopRef.current) return;
 
       // PHASE 4: Crash
-      console.log('[AutoGame] Crashing round...');
+      console.log('[AutoGame] Crashing...');
       setState(prev => ({ ...prev, currentPhase: 'crashed' }));
       
       const crashResult = await callRoundManager('crash', { round_id: roundId });
@@ -192,7 +208,6 @@ export function useAutoGameLoop() {
         }));
       }
 
-      // Wait a moment to show crash
       await new Promise(resolve => setTimeout(resolve, 1500));
 
       if (!loopRef.current) return;
@@ -208,8 +223,8 @@ export function useAutoGameLoop() {
         totalRoundsPlayed: prev.totalRoundsPlayed + 1 
       }));
 
-      // PHASE 6: Pause before next round
-      console.log('[AutoGame] Pausing before next round...');
+      // PHASE 6: Pause
+      console.log('[AutoGame] Pausing...');
       setState(prev => ({ ...prev, currentPhase: 'pausing' }));
       
       await new Promise<void>(resolve => {
@@ -217,22 +232,20 @@ export function useAutoGameLoop() {
         startCountdown(config.pauseBetweenRounds, resolve);
       });
 
-      // Continue loop
       if (loopRef.current) {
         runGameLoop();
       }
 
     } catch (error: any) {
-      console.error('[AutoGame] Error in game loop:', error);
+      console.error('[AutoGame] Error:', error);
       setState(prev => ({ 
         ...prev, 
         error: error.message || 'Game loop error',
         currentPhase: 'idle',
       }));
       
-      // If still running, retry after delay
       if (loopRef.current) {
-        toast.error(`Game loop error: ${error.message}. Retrying in 5s...`);
+        toast.error(`Game error: ${error.message}. Retrying in 5s...`);
         await new Promise(resolve => setTimeout(resolve, 5000));
         if (loopRef.current) {
           runGameLoop();
@@ -241,26 +254,30 @@ export function useAutoGameLoop() {
     }
   }, [config, callRoundManager, startCountdown, startMultiplierAnimation]);
 
-  // Start auto-play
   const startAutoPlay = useCallback(() => {
+    if (!address || !isAdmin(address)) {
+      toast.error('Admin wallet required to start game');
+      return;
+    }
+    
     if (loopRef.current) return;
     
-    console.log('[AutoGame] Starting auto-play...');
+    console.log('[AutoGame] Starting with wallet:', address);
     loopRef.current = true;
     setState(prev => ({ 
       ...prev, 
       isRunning: true, 
       error: null,
+      lastAction: null,
       totalRoundsPlayed: 0,
     }));
     
     toast.success('Auto-gameplay started!');
     runGameLoop();
-  }, [runGameLoop]);
+  }, [address, runGameLoop]);
 
-  // Stop auto-play
   const stopAutoPlay = useCallback(() => {
-    console.log('[AutoGame] Stopping auto-play...');
+    console.log('[AutoGame] Stopping...');
     loopRef.current = false;
     
     if (timerRef.current) {
@@ -282,12 +299,10 @@ export function useAutoGameLoop() {
     toast.info('Auto-gameplay stopped');
   }, []);
 
-  // Update config
   const updateConfig = useCallback((updates: Partial<AutoGameConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       loopRef.current = false;
