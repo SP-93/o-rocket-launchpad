@@ -318,7 +318,36 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     .eq('config_key', 'game_status')
     .single();
 
-  if (!gameStatus?.config_value?.active) {
+  // AUTO-RESUME: If paused due to low prize pool, check if we can resume
+  if (!gameStatus?.config_value?.active && gameStatus?.config_value?.reason === 'Low prize pool') {
+    const { data: pool } = await supabase
+      .from('game_pool')
+      .select('current_balance')
+      .limit(1)
+      .single();
+
+    const { data: threshold } = await supabase
+      .from('game_config')
+      .select('config_value')
+      .eq('config_key', 'auto_pause_threshold')
+      .single();
+
+    const minBalance = threshold?.config_value?.wover || 55;
+
+    if (pool && pool.current_balance >= minBalance) {
+      await supabase
+        .from('game_config')
+        .upsert({ 
+          config_key: 'game_status',
+          config_value: { active: true, resumed_at: new Date().toISOString(), resumed_reason: 'Pool replenished' } 
+        }, { onConflict: 'config_key' });
+
+      console.log(`[${requestId}] AUTO-RESUME: Pool balance ${pool.current_balance} >= threshold ${minBalance}`);
+      // Continue to start new round (don't return, let it flow through)
+    } else {
+      return { action: 'paused', details: { reason: 'Low prize pool', balance: pool?.current_balance, threshold: minBalance } };
+    }
+  } else if (!gameStatus?.config_value?.active) {
     return { action: 'paused', details: { reason: gameStatus?.config_value?.reason || 'Game paused' } };
   }
 
@@ -350,7 +379,7 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
       .eq('config_key', 'auto_pause_threshold')
       .single();
 
-    const minBalance = threshold?.config_value?.wover || 100;
+    const minBalance = threshold?.config_value?.wover || 55;
 
     if (pool && pool.current_balance < minBalance) {
       await supabase
