@@ -69,7 +69,7 @@ const BettingPanel = ({
       const provider = new ethers.providers.Web3Provider(window.ethereum as any);
       const signer = provider.getSigner();
       
-      const txHash = await claimWinnings(signer, currentRound.id);
+      const txHash = await claimWinnings(signer, currentRound.id, pendingAmount);
       console.log(`[BettingPanel] Claim successful: ${txHash}`);
       playSound('cashout');
     } catch (error) {
@@ -277,11 +277,11 @@ const BettingPanel = ({
                 // Claim first pending win
                 if (!pendingWinnings[0] || !window.ethereum) return;
                 try {
-                  const { ethers } = await import('ethers');
-                  const provider = new ethers.providers.Web3Provider(window.ethereum as any);
-                  const signer = provider.getSigner();
-                  await claimWinnings(signer, pendingWinnings[0].round_id);
-                  refetchPending();
+                const { ethers } = await import('ethers');
+                const provider = new ethers.providers.Web3Provider(window.ethereum as any);
+                const signer = provider.getSigner();
+                await claimWinnings(signer, pendingWinnings[0].round_id, pendingWinnings[0].winnings);
+                refetchPending();
                 } catch (error) {
                   console.error('Claim error:', error);
                 }
