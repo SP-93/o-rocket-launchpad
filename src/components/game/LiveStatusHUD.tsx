@@ -18,7 +18,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.
   countdown: { label: 'Countdown', color: 'text-warning', icon: <Zap className="w-3 h-3" /> },
   flying: { label: 'In Flight!', color: 'text-primary', icon: <Rocket className="w-3 h-3" /> },
   crashed: { label: 'Crashed', color: 'text-destructive', icon: <AlertTriangle className="w-3 h-3" /> },
-  payout: { label: 'Payout', color: 'text-muted-foreground', icon: <Clock className="w-3 h-3" /> },
+  payout: { label: 'Settling...', color: 'text-destructive', icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
 export function LiveStatusHUD({ engineStatus, roundStatus, roundNumber }: LiveStatusHUDProps) {
