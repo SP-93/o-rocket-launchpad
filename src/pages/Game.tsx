@@ -27,6 +27,7 @@ const Game = () => {
   const [winMultiplier, setWinMultiplier] = useState(1);
   const [gamePaused, setGamePaused] = useState(false);
   const [pauseReason, setPauseReason] = useState<string | null>(null);
+  const [nextRoundIn, setNextRoundIn] = useState<number | null>(null);
   const { address, isConnected } = useWallet();
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
@@ -36,11 +37,15 @@ const Game = () => {
   const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext } = useGameSounds(soundEnabled);
   const prevStatusRef = useRef<string | null>(null);
   const initialLoadRef = useRef(true);
+  const crashedAtRef = useRef<number | null>(null);
 
   const isFlying = currentRound?.status === 'flying';
-  const isWaitingForRound = !currentRound || currentRound?.status === 'crashed' || currentRound?.status === 'payout';
+  const isCountdown = currentRound?.status === 'countdown';
+  const isBetting = currentRound?.status === 'betting';
+  const isCrashed = currentRound?.status === 'crashed' || currentRound?.status === 'payout';
+  const isWaitingForRound = !currentRound || isCrashed;
 
-  // Fetch game status (paused/active)
+  // Fetch game status (paused/active) and handle countdown between rounds
   useEffect(() => {
     const fetchGameStatus = async () => {
       try {
@@ -56,10 +61,29 @@ const Game = () => {
       }
     };
     fetchGameStatus();
-    // Poll every 30 seconds
-    const interval = setInterval(fetchGameStatus, 30000);
+    const interval = setInterval(fetchGameStatus, 10000); // Poll every 10 seconds
     return () => clearInterval(interval);
   }, []);
+
+  // Countdown after crash
+  useEffect(() => {
+    if (isCrashed && !crashedAtRef.current) {
+      crashedAtRef.current = Date.now();
+      setNextRoundIn(5); // Start countdown
+    } else if (!isCrashed) {
+      crashedAtRef.current = null;
+      setNextRoundIn(null);
+    }
+  }, [isCrashed]);
+
+  useEffect(() => {
+    if (nextRoundIn !== null && nextRoundIn > 0) {
+      const timer = setTimeout(() => {
+        setNextRoundIn(prev => (prev !== null && prev > 0 ? prev - 1 : null));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [nextRoundIn]);
 
   // Handle game status changes for sounds
   useEffect(() => {
@@ -242,12 +266,25 @@ const Game = () => {
 
                       {/* Waiting for Round Overlay */}
                       {!gamePaused && isWaitingForRound && !isLoading && (
-                        <div className="absolute inset-0 z-20 flex items-center justify-center">
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/40 backdrop-blur-sm">
                           <div className="text-center p-6">
-                            <Loader2 className="w-10 h-10 mx-auto mb-3 text-primary animate-spin" />
-                            <p className="text-muted-foreground text-sm">
-                              Waiting for next round...
-                            </p>
+                            {nextRoundIn !== null && nextRoundIn > 0 ? (
+                              <>
+                                <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-primary/20 flex items-center justify-center">
+                                  <span className="text-2xl font-bold text-primary">{nextRoundIn}</span>
+                                </div>
+                                <p className="text-foreground font-medium">
+                                  Next round starting...
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <Loader2 className="w-10 h-10 mx-auto mb-3 text-primary animate-spin" />
+                                <p className="text-muted-foreground text-sm">
+                                  Waiting for next round...
+                                </p>
+                              </>
+                            )}
                           </div>
                         </div>
                       )}
