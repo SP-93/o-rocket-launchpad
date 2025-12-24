@@ -54,7 +54,7 @@ const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
 
 const GameManagementSection = () => {
   const { getProvider } = useWallet();
-  const { refillPrizePool } = useCrashGameContract();
+  const { refillPrizePool, fetchContractState, contractState } = useCrashGameContract();
   
   const [pool, setPool] = useState<GamePool | null>(null);
   const [revenue, setRevenue] = useState<GameRevenue | null>(null);
@@ -79,10 +79,35 @@ const GameManagementSection = () => {
   const [isRefilling, setIsRefilling] = useState(false);
   const [refillAmount, setRefillAmount] = useState('');
   const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
+  const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
+  const [isSyncingChain, setIsSyncingChain] = useState(false);
 
   useEffect(() => {
     fetchData();
+    fetchOnChainBalance();
   }, []);
+
+  const fetchOnChainBalance = async () => {
+    try {
+      const state = await fetchContractState();
+      if (state) {
+        setOnChainBalance(state.prizePoolWover);
+        // Auto-sync database with on-chain state
+        const onChainBalanceNum = parseFloat(state.prizePoolWover);
+        if (!isNaN(onChainBalanceNum)) {
+          await supabase
+            .from('game_pool')
+            .update({ 
+              current_balance: onChainBalanceNum,
+              updated_at: new Date().toISOString()
+            })
+            .neq('id', '00000000-0000-0000-0000-000000000000'); // Update all rows
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch on-chain balance:', error);
+    }
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -372,14 +397,33 @@ const GameManagementSection = () => {
           </h3>
           
           <div className="space-y-4">
+            {/* On-Chain Balance - Source of Truth */}
+            <div className="bg-success/10 rounded-lg p-4 border border-success/30">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm text-success font-medium">🔗 On-Chain Balance (Source of Truth)</span>
+                <NeonButton 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={fetchOnChainBalance}
+                  className="h-6 px-2 text-xs"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                </NeonButton>
+              </div>
+              <p className={`text-2xl font-bold ${parseFloat(onChainBalance || '0') < 1000 ? 'text-destructive' : 'text-success'}`}>
+                {onChainBalance !== null ? parseFloat(onChainBalance).toLocaleString() : 'Loading...'} WOVER
+              </p>
+            </div>
+
+            {/* Database Balance - for reference */}
             <div className="bg-background/50 rounded-lg p-4 border border-border/30">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">Current Balance</span>
-                <span className={`text-2xl font-bold ${(pool?.current_balance || 0) < 1000 ? 'text-destructive' : 'text-success'}`}>
+                <span className="text-sm text-muted-foreground">Database Balance (synced)</span>
+                <span className={`text-lg font-semibold ${(pool?.current_balance || 0) < 1000 ? 'text-warning' : 'text-foreground'}`}>
                   {pool?.current_balance?.toLocaleString() || 0} WOVER
                 </span>
               </div>
-              {(pool?.current_balance || 0) < 1000 && (
+              {parseFloat(onChainBalance || '0') < 1000 && (
                 <div className="flex items-center gap-2 text-destructive text-xs mt-2">
                   <AlertTriangle className="w-3 h-3" />
                   Low balance - consider refilling
