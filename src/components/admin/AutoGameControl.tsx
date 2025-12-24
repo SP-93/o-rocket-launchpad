@@ -1,54 +1,184 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { 
-  Play, Square, Settings, Rocket, Clock, 
+  Play, Square, Rocket, Clock, 
   Zap, AlertTriangle, CheckCircle, Loader2,
-  Timer, TrendingUp, Pause
+  Timer, TrendingUp, Pause, Power
 } from 'lucide-react';
-import { useAutoGameLoop } from '@/hooks/useAutoGameLoop';
+import { useWallet } from '@/hooks/useWallet';
+import { isAdmin } from '@/config/admin';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const PHASE_CONFIG = {
+interface EngineState {
+  isEnabled: boolean;
+  gameActive: boolean;
+  currentRound: any | null;
+  prizePool: number;
+  lastAction: string | null;
+  error: string | null;
+}
+
+const PHASE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   idle: { label: 'Idle', color: 'text-muted-foreground', icon: Pause },
   betting: { label: 'Betting', color: 'text-primary', icon: Timer },
   countdown: { label: 'Countdown', color: 'text-warning', icon: Clock },
   flying: { label: 'Flying', color: 'text-success', icon: Rocket },
   crashed: { label: 'Crashed!', color: 'text-destructive', icon: Zap },
   payout: { label: 'Payouts', color: 'text-info', icon: CheckCircle },
-  pausing: { label: 'Next Round...', color: 'text-muted-foreground', icon: Pause },
 };
 
 const AutoGameControl = () => {
-  const { state, config, startAutoPlay, stopAutoPlay, updateConfig } = useAutoGameLoop();
-  const [showSettings, setShowSettings] = useState(false);
+  const { address } = useWallet();
+  const [state, setState] = useState<EngineState>({
+    isEnabled: false,
+    gameActive: false,
+    currentRound: null,
+    prizePool: 0,
+    lastAction: null,
+    error: null,
+  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
-  const phaseConfig = PHASE_CONFIG[state.currentPhase];
+  // Fetch current status
+  const fetchStatus = useCallback(async () => {
+    try {
+      const response = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'get_status' },
+      });
+
+      if (response.data) {
+        setState(prev => ({
+          ...prev,
+          isEnabled: response.data.engine_enabled ?? false,
+          gameActive: response.data.game_active ?? false,
+          currentRound: response.data.current_round,
+          prizePool: response.data.prize_pool ?? 0,
+          error: null,
+        }));
+        setLastUpdate(new Date());
+      }
+    } catch (err: any) {
+      console.error('[AdminEngine] Status fetch failed:', err);
+      setState(prev => ({ ...prev, error: err.message }));
+    }
+  }, []);
+
+  // Poll for status updates
+  useEffect(() => {
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 2000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  // Enable engine
+  const handleEnableEngine = async () => {
+    if (!address || !isAdmin(address)) {
+      toast.error('Admin wallet required');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'enable_engine', admin_wallet: address },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      toast.success('Game engine started!');
+      setState(prev => ({ ...prev, isEnabled: true, error: null }));
+    } catch (err: any) {
+      toast.error(`Failed to start engine: ${err.message}`);
+      setState(prev => ({ ...prev, error: err.message }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Disable engine
+  const handleDisableEngine = async () => {
+    if (!address || !isAdmin(address)) {
+      toast.error('Admin wallet required');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const response = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'disable_engine', admin_wallet: address },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      toast.info('Game engine stopped');
+      setState(prev => ({ ...prev, isEnabled: false }));
+    } catch (err: any) {
+      toast.error(`Failed to stop engine: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const currentStatus = state.currentRound?.status || 'idle';
+  const phaseConfig = PHASE_CONFIG[currentStatus] || PHASE_CONFIG.idle;
   const PhaseIcon = phaseConfig.icon;
 
   return (
     <div className="space-y-4">
       {/* Main Control Card */}
-      <GlowCard className="p-6" glowColor={state.isRunning ? 'cyan' : 'purple'}>
+      <GlowCard className="p-6" glowColor={state.isEnabled ? 'cyan' : 'purple'}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className={cn(
               "w-3 h-3 rounded-full",
-              state.isRunning ? "bg-success animate-pulse" : "bg-muted"
+              state.isEnabled ? "bg-success animate-pulse" : "bg-muted"
             )} />
-            <h3 className="text-lg font-semibold">Auto Game Loop</h3>
+            <h3 className="text-lg font-semibold">Game Engine</h3>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSettings(!showSettings)}
-          >
-            <Settings className={cn("w-4 h-4", showSettings && "text-primary")} />
-          </Button>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {lastUpdate && (
+              <span>Updated: {lastUpdate.toLocaleTimeString()}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Engine Status Banner */}
+        <div className={cn(
+          "rounded-lg p-4 mb-4 border",
+          state.isEnabled 
+            ? "bg-success/10 border-success/20" 
+            : "bg-muted/30 border-border/30"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Power className={cn(
+                "w-6 h-6",
+                state.isEnabled ? "text-success" : "text-muted-foreground"
+              )} />
+              <div>
+                <p className={cn(
+                  "font-semibold",
+                  state.isEnabled ? "text-success" : "text-muted-foreground"
+                )}>
+                  {state.isEnabled ? 'Engine Running' : 'Engine Stopped'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {state.isEnabled 
+                    ? 'Game loop is running automatically on the server' 
+                    : 'Click Start to begin automatic gameplay'}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Status Display */}
@@ -63,78 +193,25 @@ const AutoGameControl = () => {
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
             <p className="text-xs text-muted-foreground">Round #</p>
-            <p className="text-xl font-bold">{state.roundNumber || '---'}</p>
+            <p className="text-xl font-bold">{state.currentRound?.round_number || '---'}</p>
           </div>
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
-            <p className="text-xs text-muted-foreground">Multiplier</p>
-            <p className={cn(
-              "text-xl font-bold font-mono",
-              state.currentPhase === 'crashed' ? "text-destructive" : 
-              state.currentPhase === 'flying' ? "text-success" : ""
-            )}>
-              {state.multiplier.toFixed(2)}x
-            </p>
+            <p className="text-xs text-muted-foreground">Prize Pool</p>
+            <p className="text-xl font-bold text-warning">{state.prizePool.toLocaleString()}</p>
           </div>
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
             <p className="text-xs text-muted-foreground">
-              {state.currentPhase === 'flying' ? 'Flying...' : 'Time Left'}
+              {currentStatus === 'crashed' ? 'Crash Point' : 'Players'}
             </p>
             <p className="text-xl font-bold font-mono">
-              {state.currentPhase === 'flying' ? (
-                <TrendingUp className="w-5 h-5 text-success animate-pulse" />
-              ) : (
-                `${state.timeRemaining}s`
-              )}
+              {currentStatus === 'crashed' 
+                ? `${state.currentRound?.crash_point?.toFixed(2)}x`
+                : state.currentRound?.total_bets || 0}
             </p>
           </div>
         </div>
-
-        {/* Progress Bar */}
-        {state.isRunning && state.currentPhase !== 'idle' && (
-          <div className="mb-4">
-            <div className="h-2 bg-background/50 rounded-full overflow-hidden">
-              <div 
-                className={cn(
-                  "h-full transition-all duration-300",
-                  state.currentPhase === 'betting' ? "bg-primary" :
-                  state.currentPhase === 'countdown' ? "bg-warning" :
-                  state.currentPhase === 'flying' ? "bg-success animate-pulse" :
-                  state.currentPhase === 'crashed' ? "bg-destructive" :
-                  "bg-muted"
-                )}
-                style={{ 
-                  width: state.currentPhase === 'flying' 
-                    ? `${Math.min(100, (state.multiplier - 1) * 20)}%`
-                    : state.timeRemaining > 0 
-                      ? `${100 - (state.timeRemaining / config.bettingDuration) * 100}%`
-                      : '100%'
-                }}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Stats Row */}
-        <div className="flex items-center justify-between text-sm mb-4">
-          <div className="text-muted-foreground">
-            Total rounds played: <span className="font-medium text-foreground">{state.totalRoundsPlayed}</span>
-          </div>
-          {state.crashPoint && (
-            <div className="text-muted-foreground">
-              Last crash: <span className="font-medium text-destructive">{state.crashPoint.toFixed(2)}x</span>
-            </div>
-          )}
-        </div>
-
-        {/* Last Action - helpful for debugging */}
-        {state.lastAction && state.isRunning && (
-          <div className="text-xs text-muted-foreground mb-2 flex items-center gap-2">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Last action: <code className="bg-background/50 px-1 rounded">{state.lastAction}</code></span>
-          </div>
-        )}
 
         {/* Error Display */}
         {state.error && (
@@ -146,112 +223,50 @@ const AutoGameControl = () => {
                 <p className="text-xs mt-0.5 opacity-80">{state.error}</p>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Will auto-retry in 5 seconds if still running...
-            </p>
           </div>
         )}
 
         {/* Control Buttons */}
         <div className="flex gap-3">
-          {!state.isRunning ? (
-            <NeonButton onClick={startAutoPlay} className="flex-1">
-              <Play className="w-4 h-4 mr-2" />
-              Start Auto Game
+          {!state.isEnabled ? (
+            <NeonButton 
+              onClick={handleEnableEngine} 
+              className="flex-1"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 mr-2" />
+              )}
+              Start Engine
             </NeonButton>
           ) : (
             <NeonButton 
-              onClick={stopAutoPlay} 
+              onClick={handleDisableEngine} 
               variant="destructive"
               className="flex-1"
+              disabled={isLoading}
             >
-              <Square className="w-4 h-4 mr-2" />
-              Stop Auto Game
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Square className="w-4 h-4 mr-2" />
+              )}
+              Stop Engine
             </NeonButton>
           )}
         </div>
-      </GlowCard>
 
-      {/* Settings Panel */}
-      {showSettings && (
-        <GlowCard className="p-4" glowColor="purple">
-          <h4 className="font-semibold mb-4 flex items-center gap-2">
-            <Settings className="w-4 h-4" />
-            Game Loop Settings
-          </h4>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <Label className="text-xs">Betting Duration (sec)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={60}
-                value={config.bettingDuration}
-                onChange={(e) => updateConfig({ bettingDuration: parseInt(e.target.value) || 15 })}
-                disabled={state.isRunning}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label className="text-xs">Countdown (sec)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={config.countdownDuration}
-                onChange={(e) => updateConfig({ countdownDuration: parseInt(e.target.value) || 3 })}
-                disabled={state.isRunning}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label className="text-xs">Min Flying (sec)</Label>
-              <Input
-                type="number"
-                min={2}
-                max={30}
-                value={config.minFlyingDuration}
-                onChange={(e) => updateConfig({ minFlyingDuration: parseInt(e.target.value) || 3 })}
-                disabled={state.isRunning}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label className="text-xs">Max Flying (sec)</Label>
-              <Input
-                type="number"
-                min={5}
-                max={60}
-                value={config.maxFlyingDuration}
-                onChange={(e) => updateConfig({ maxFlyingDuration: parseInt(e.target.value) || 15 })}
-                disabled={state.isRunning}
-                className="mt-1"
-              />
-            </div>
-            
-            <div>
-              <Label className="text-xs">Pause Between Rounds (sec)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={config.pauseBetweenRounds}
-                onChange={(e) => updateConfig({ pauseBetweenRounds: parseInt(e.target.value) || 3 })}
-                disabled={state.isRunning}
-                className="mt-1"
-              />
-            </div>
-          </div>
-
-          <p className="text-xs text-muted-foreground mt-4">
-            ⚠️ Settings can only be changed when auto-game is stopped.
+        {/* Info Text */}
+        <div className="mt-4 p-3 bg-muted/20 rounded-lg">
+          <p className="text-xs text-muted-foreground">
+            <strong>How it works:</strong> The game engine runs on the server. Once started, it automatically 
+            manages rounds: betting → countdown → flying → crash → payouts. All game clients help keep 
+            the engine ticking by periodically syncing with the server.
           </p>
-        </GlowCard>
-      )}
+        </div>
+      </GlowCard>
     </div>
   );
 };

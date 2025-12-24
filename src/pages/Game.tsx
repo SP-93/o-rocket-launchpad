@@ -14,8 +14,9 @@ import QuickCashoutOverlay from '@/components/game/QuickCashoutOverlay';
 import MobileBetBar from '@/components/game/MobileBetBar';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
+import { useGameEngine } from '@/hooks/useGameEngine';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock } from 'lucide-react';
+import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import useGameSounds from '@/hooks/useGameSounds';
 import { supabase } from '@/integrations/supabase/client';
@@ -36,6 +37,7 @@ const Game = () => {
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
+  const { status: engineStatus } = useGameEngine(); // Drives tick-based game loop
   
   const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext } = useGameSounds(soundEnabled);
   const prevStatusRef = useRef<string | null>(null);

@@ -8,7 +8,7 @@ const corsHeaders = {
 
 // Rate limiting map (simple in-memory)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 30; // max 30 requests per minute for auto-game
+const RATE_LIMIT = 60; // max 60 requests per minute for tick
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 
 // Simple encryption key from environment (or fallback)
@@ -19,6 +19,14 @@ const ADMIN_WALLETS = [
   '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8',
   '0x8334966329b7f4b459633696a8ca59118253bc89',
 ];
+
+// Game timing configuration (in seconds)
+const GAME_CONFIG = {
+  bettingDuration: 15,
+  countdownDuration: 3,
+  crashDisplayDuration: 3,
+  pauseDuration: 2,
+};
 
 function isWalletAdmin(walletAddress: string): boolean {
   if (!walletAddress) return false;
@@ -119,7 +127,10 @@ function validateAction(action: string): boolean {
     'process_auto_cashouts',
     'crash',
     'process_payouts',
-    'get_status'
+    'get_status',
+    'tick',           // New: automatic state machine tick
+    'enable_engine',  // New: enable/disable engine
+    'disable_engine', // New: disable engine
   ];
   return validActions.includes(action);
 }
@@ -236,6 +247,271 @@ async function deleteSeedFromDb(supabase: any, roundId: string): Promise<void> {
   }
 }
 
+// ============ MULTIPLIER CALCULATION ============
+
+function calculateMultiplier(flyingStartedAt: string): number {
+  const startTime = new Date(flyingStartedAt).getTime();
+  const elapsed = (Date.now() - startTime) / 1000;
+  // Exponential growth formula - same as frontend
+  const multiplier = Math.pow(1.0718, elapsed);
+  return Math.min(Math.round(multiplier * 100) / 100, 100.00);
+}
+
+// ============ TICK ENGINE - SERVER-SIDE STATE MACHINE ============
+
+async function handleTick(supabase: any, requestId: string): Promise<{ action: string; details: any }> {
+  // Check if engine is enabled
+  const { data: engineConfig } = await supabase
+    .from('game_config')
+    .select('config_value')
+    .eq('config_key', 'engine_enabled')
+    .single();
+
+  if (!engineConfig?.config_value?.enabled) {
+    return { action: 'idle', details: { reason: 'Engine disabled' } };
+  }
+
+  // Check if game is active
+  const { data: gameStatus } = await supabase
+    .from('game_config')
+    .select('config_value')
+    .eq('config_key', 'game_status')
+    .single();
+
+  if (!gameStatus?.config_value?.active) {
+    return { action: 'paused', details: { reason: gameStatus?.config_value?.reason || 'Game paused' } };
+  }
+
+  // Get current round
+  const { data: currentRound } = await supabase
+    .from('game_rounds')
+    .select('*')
+    .in('status', ['betting', 'countdown', 'flying', 'crashed'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  const now = Date.now();
+
+  // No active round - start a new one
+  if (!currentRound) {
+    console.log(`[${requestId}] TICK: No active round, starting new round`);
+    
+    // Check prize pool balance first
+    const { data: pool } = await supabase
+      .from('game_pool')
+      .select('current_balance')
+      .limit(1)
+      .single();
+
+    const { data: threshold } = await supabase
+      .from('game_config')
+      .select('config_value')
+      .eq('config_key', 'auto_pause_threshold')
+      .single();
+
+    const minBalance = threshold?.config_value?.wover || 150;
+
+    if (pool && pool.current_balance < minBalance) {
+      await supabase
+        .from('game_config')
+        .upsert({ 
+          config_key: 'game_status',
+          config_value: { active: false, reason: 'Low prize pool' } 
+        }, { onConflict: 'config_key' });
+
+      return { action: 'auto_paused', details: { reason: 'Low prize pool', balance: pool.current_balance } };
+    }
+
+    // Generate server seed and hash
+    const serverSeed = generateServerSeed();
+    const serverSeedHash = await hashSeed(serverSeed);
+
+    // Create new round
+    const { data: newRound, error: roundError } = await supabase
+      .from('game_rounds')
+      .insert({
+        status: 'betting',
+        server_seed_hash: serverSeedHash,
+        server_seed: null,
+        crash_point: null,
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (roundError) {
+      console.error(`[${requestId}] Failed to create round:`, roundError);
+      return { action: 'error', details: { error: 'Failed to create round' } };
+    }
+
+    // Store seed
+    await storeSeedInDb(supabase, newRound.id, serverSeed, serverSeedHash);
+
+    console.log(`[${requestId}] TICK: Round ${newRound.round_number} started (betting)`);
+    return { action: 'round_started', details: { roundId: newRound.id, roundNumber: newRound.round_number } };
+  }
+
+  const startedAt = currentRound.started_at ? new Date(currentRound.started_at).getTime() : now;
+  const elapsed = (now - startedAt) / 1000;
+
+  // Handle based on current status
+  switch (currentRound.status) {
+    case 'betting': {
+      // After betting duration, move to countdown
+      if (elapsed >= GAME_CONFIG.bettingDuration) {
+        await supabase
+          .from('game_rounds')
+          .update({ 
+            status: 'countdown', 
+            started_at: new Date().toISOString() 
+          })
+          .eq('id', currentRound.id);
+
+        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} → countdown`);
+        return { action: 'countdown_started', details: { roundId: currentRound.id } };
+      }
+      return { action: 'betting', details: { timeRemaining: Math.ceil(GAME_CONFIG.bettingDuration - elapsed) } };
+    }
+
+    case 'countdown': {
+      // After countdown duration, move to flying
+      if (elapsed >= GAME_CONFIG.countdownDuration) {
+        await supabase
+          .from('game_rounds')
+          .update({ 
+            status: 'flying', 
+            started_at: new Date().toISOString() 
+          })
+          .eq('id', currentRound.id);
+
+        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} → flying`);
+        return { action: 'flying_started', details: { roundId: currentRound.id } };
+      }
+      return { action: 'countdown', details: { timeRemaining: Math.ceil(GAME_CONFIG.countdownDuration - elapsed) } };
+    }
+
+    case 'flying': {
+      // Calculate current multiplier and check if should crash
+      const currentMultiplier = calculateMultiplier(currentRound.started_at);
+      
+      // Get crash point from seed
+      const seedData = await getSeedFromDb(supabase, currentRound.id);
+      if (!seedData) {
+        console.error(`[${requestId}] No seed found for flying round ${currentRound.id}`);
+        return { action: 'error', details: { error: 'Round seed not found' } };
+      }
+
+      const crashPoint = await generateCrashPoint(seedData.serverSeed);
+
+      // Process auto-cashouts for bets that should cash out at current multiplier
+      const { data: autoCashouts } = await supabase
+        .from('game_bets')
+        .select('*')
+        .eq('round_id', currentRound.id)
+        .eq('status', 'active')
+        .not('auto_cashout_at', 'is', null)
+        .lte('auto_cashout_at', currentMultiplier);
+
+      for (const bet of autoCashouts || []) {
+        const winnings = Math.floor(bet.bet_amount * bet.auto_cashout_at);
+        await supabase
+          .from('game_bets')
+          .update({
+            status: 'won',
+            cashed_out_at: bet.auto_cashout_at,
+            winnings,
+          })
+          .eq('id', bet.id);
+        console.log(`[${requestId}] Auto-cashout: ${bet.wallet_address} at ${bet.auto_cashout_at}x → ${winnings}`);
+      }
+
+      // Check if should crash
+      if (currentMultiplier >= crashPoint) {
+        // Update round with crash info
+        await supabase
+          .from('game_rounds')
+          .update({
+            status: 'crashed',
+            crash_point: crashPoint,
+            server_seed: seedData.serverSeed,
+            crashed_at: new Date().toISOString(),
+            started_at: new Date().toISOString(), // Reset for crash display timer
+          })
+          .eq('id', currentRound.id);
+
+        // Mark all remaining active bets as lost
+        await supabase
+          .from('game_bets')
+          .update({ status: 'lost' })
+          .eq('round_id', currentRound.id)
+          .eq('status', 'active');
+
+        // Delete seed from DB
+        await deleteSeedFromDb(supabase, currentRound.id);
+
+        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} crashed at ${crashPoint}x`);
+        return { action: 'crashed', details: { roundId: currentRound.id, crashPoint } };
+      }
+
+      return { action: 'flying', details: { multiplier: currentMultiplier, crashPoint } };
+    }
+
+    case 'crashed': {
+      // After crash display duration, process payouts and prepare next round
+      if (elapsed >= GAME_CONFIG.crashDisplayDuration) {
+        // Calculate totals
+        const { data: bets } = await supabase
+          .from('game_bets')
+          .select('bet_amount, winnings, status')
+          .eq('round_id', currentRound.id);
+
+        const totalWagered = (bets || []).reduce((sum: number, b: any) => sum + (b.bet_amount || 0), 0);
+        const totalPayouts = (bets || []).filter((b: any) => b.status === 'won').reduce((sum: number, b: any) => sum + (b.winnings || 0), 0);
+
+        // Update round stats
+        await supabase
+          .from('game_rounds')
+          .update({
+            status: 'payout',
+            total_wagered: totalWagered,
+            total_payouts: totalPayouts,
+            total_bets: bets?.length || 0,
+          })
+          .eq('id', currentRound.id);
+
+        // Update pool balance
+        const netChange = totalWagered - totalPayouts;
+        const { data: pool } = await supabase
+          .from('game_pool')
+          .select('current_balance, total_payouts')
+          .limit(1)
+          .single();
+
+        if (pool) {
+          await supabase
+            .from('game_pool')
+            .update({
+              current_balance: pool.current_balance + netChange,
+              total_payouts: (pool.total_payouts || 0) + totalPayouts,
+              last_payout_at: new Date().toISOString(),
+            })
+            .limit(1);
+        }
+
+        console.log(`[${requestId}] TICK: Round ${currentRound.round_number} payouts processed (net: ${netChange})`);
+        
+        // Immediately start new round (tick will be called again)
+        return { action: 'payout_complete', details: { totalWagered, totalPayouts, netChange } };
+      }
+      return { action: 'crashed_display', details: { timeRemaining: Math.ceil(GAME_CONFIG.crashDisplayDuration - elapsed) } };
+    }
+
+    default:
+      return { action: 'unknown', details: { status: currentRound.status } };
+  }
+}
+
 // ============ MAIN HANDLER ============
 
 serve(async (req) => {
@@ -258,7 +534,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           error: 'Invalid action',
-          valid_actions: ['start_round', 'start_countdown', 'start_flying', 'process_auto_cashouts', 'crash', 'process_payouts', 'get_status']
+          valid_actions: ['start_round', 'start_countdown', 'start_flying', 'process_auto_cashouts', 'crash', 'process_payouts', 'get_status', 'tick', 'enable_engine', 'disable_engine']
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -286,6 +562,12 @@ serve(async (req) => {
         .eq('config_key', 'game_status')
         .single();
 
+      const { data: engineConfig } = await supabase
+        .from('game_config')
+        .select('config_value')
+        .eq('config_key', 'engine_enabled')
+        .single();
+
       const { data: pool } = await supabase
         .from('game_pool')
         .select('current_balance')
@@ -304,9 +586,28 @@ serve(async (req) => {
         JSON.stringify({
           game_active: gameStatus?.config_value?.active ?? false,
           game_paused_reason: gameStatus?.config_value?.reason ?? null,
+          engine_enabled: engineConfig?.config_value?.enabled ?? false,
           prize_pool: pool?.current_balance ?? 0,
           current_round: currentRound ?? null,
         }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // PUBLIC ACTION: tick - drives the game state machine (rate limited but no auth)
+    if (action === 'tick') {
+      const clientIP = req.headers.get('x-forwarded-for') || 'tick';
+      const rateCheck = checkRateLimit(clientIP);
+      if (!rateCheck.allowed) {
+        return new Response(
+          JSON.stringify({ error: 'Rate limit exceeded', remaining: 0 }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const result = await handleTick(supabase, requestId);
+      return new Response(
+        JSON.stringify({ success: true, ...result }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -339,6 +640,44 @@ serve(async (req) => {
     // ============ HANDLE ACTIONS ============
 
     switch (action) {
+      case 'enable_engine': {
+        await supabase
+          .from('game_config')
+          .upsert({ 
+            config_key: 'engine_enabled',
+            config_value: { enabled: true, started_at: new Date().toISOString(), started_by: authResult.walletAddress } 
+          }, { onConflict: 'config_key' });
+
+        // Also ensure game is active
+        await supabase
+          .from('game_config')
+          .upsert({ 
+            config_key: 'game_status',
+            config_value: { active: true } 
+          }, { onConflict: 'config_key' });
+
+        console.log(`[${requestId}] ✓ Engine enabled by ${authResult.walletAddress}`);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Engine enabled' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'disable_engine': {
+        await supabase
+          .from('game_config')
+          .upsert({ 
+            config_key: 'engine_enabled',
+            config_value: { enabled: false, stopped_at: new Date().toISOString(), stopped_by: authResult.walletAddress } 
+          }, { onConflict: 'config_key' });
+
+        console.log(`[${requestId}] ✓ Engine disabled by ${authResult.walletAddress}`);
+        return new Response(
+          JSON.stringify({ success: true, message: 'Engine disabled' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       case 'start_round': {
         // Check if game is active
         const { data: gameStatus } = await supabase
@@ -398,6 +737,7 @@ serve(async (req) => {
             server_seed_hash: serverSeedHash,
             server_seed: null,
             crash_point: null,
+            started_at: new Date().toISOString(),
           })
           .select()
           .single();
