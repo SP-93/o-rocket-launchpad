@@ -25,7 +25,6 @@ import TreasurySection from '@/components/admin/TreasurySection';
 import WalletLinkSection from '@/components/admin/WalletLinkSection';
 import ProtocolConfigSection from '@/components/admin/ProtocolConfigSection';
 import AuditLogSection from '@/components/admin/AuditLogSection';
-import GameManagementSection from '@/components/admin/GameManagementSection';
 import GameRevenueSection from '@/components/admin/GameRevenueSection';
 import CrashGameContractSection from '@/components/admin/CrashGameContractSection';
 import TicketNFTContractSection from '@/components/admin/TicketNFTContractSection';
