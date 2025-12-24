@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.game-get-tickets]
 verify_jwt = false
+
+[functions.game-sign-claim]
+verify_jwt = false
