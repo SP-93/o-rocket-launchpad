@@ -4,7 +4,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, Gift } from 'lucide-react';
 import { useGameTickets, type GameTicket, type GroupedTicket } from '@/hooks/useGameTickets';
-import { useGameBetting } from '@/hooks/useGameBetting';
+import { useGameBetting, setTicketRefreshCallback } from '@/hooks/useGameBetting';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import { usePendingWinnings } from '@/hooks/usePendingWinnings';
 import type { GameRound, GameBet } from '@/hooks/useGameRound';
@@ -34,7 +34,7 @@ const BettingPanel = ({
   const [selectedTicket, setSelectedTicket] = useState<GameTicket | null>(null);
   const [autoCashout, setAutoCashout] = useState<AutoCashout>('off');
   
-  const { availableTickets, groupedTickets } = useGameTickets(walletAddress);
+  const { availableTickets, groupedTickets, refetch: refetchTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
   const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount } = useClaimWinnings(walletAddress);
   const { pendingWinnings, claimingWinnings, totalPending, isLoading: isPendingLoading, refetch: refetchPending } = usePendingWinnings(walletAddress);
@@ -42,7 +42,15 @@ const BettingPanel = ({
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
 
-  const canBet = currentRound?.status === 'betting' && !myBet && isConnected;
+  // Register ticket refresh callback
+  useEffect(() => {
+    setTicketRefreshCallback(refetchTickets);
+    return () => setTicketRefreshCallback(null);
+  }, [refetchTickets]);
+
+  // Check if myBet is for CURRENT round - allow betting in new rounds
+  const isMyBetForCurrentRound = myBet && currentRound && myBet.round_id === currentRound.id;
+  const canBet = currentRound?.status === 'betting' && !isMyBetForCurrentRound && isConnected;
   const canCashOutState = currentRound?.status === 'flying' && myBet?.status === 'active';
   
   // Check if player can claim winnings when they won
@@ -131,9 +139,7 @@ const BettingPanel = ({
   };
 
   // Active bet view - only show if myBet is for the CURRENT round
-  // This prevents showing stale bet info after a round ends
-  const isMyBetForCurrentRound = myBet && currentRound && myBet.round_id === currentRound.id;
-  
+  // isMyBetForCurrentRound already defined above
   if (isMyBetForCurrentRound) {
     const potentialWin = myBet.bet_amount * currentMultiplier;
     

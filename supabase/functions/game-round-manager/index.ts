@@ -144,32 +144,39 @@ async function generateCrashPoint(serverSeed: string): Promise<number> {
   const view = new DataView(hashBuffer);
   const randomValue = view.getUint32(0, true) / 0xFFFFFFFF;
   
-  // 8% chance of instant crash (x1.00) - higher for mainnet profitability
-  if (randomValue < 0.08) {
+  // AGGRESSIVE MAINNET DISTRIBUTION - Most crashes under 2x
+  // 10% instant crash (1.00x)
+  if (randomValue < 0.10) {
     return 1.00;
   }
   
-  // MAINNET-OPTIMIZED DISTRIBUTION with logarithmic curve:
-  // Produces fewer big wins, most crashes under 2x
-  // Target distribution:
-  // - 8% instant crash (1.00x)
-  // - ~40% between 1.01x - 1.50x
-  // - ~25% between 1.50x - 2.00x
-  // - ~15% between 2.00x - 3.00x
-  // - ~8% between 3.00x - 5.00x
-  // - ~4% above 5.00x
+  // PIECEWISE DISTRIBUTION for precise control:
+  // Target: ~75% under 2x, ~90% under 3x, ~97% under 5x
   
-  // Normalize remaining probability (0.08-1.0 -> 0-1)
-  const normalized = (randomValue - 0.08) / 0.92;
+  const normalized = (randomValue - 0.10) / 0.90; // 0-1 range
   
-  // Logarithmic distribution favoring low values
-  // Formula: 1 + (e^(normalized * 1.5) - 1) * 0.5
-  // This creates a steeper curve with most values clustered low
-  const crashPoint = 1 + (Math.exp(normalized * 1.5) - 1) * 0.5;
+  let crashPoint: number;
   
-  // Cap at 10x - most values will be under 3x due to logarithmic curve
-  const result = Math.min(crashPoint, 10.00);
-  return Math.round(result * 100) / 100;
+  if (normalized < 0.70) {
+    // 70% of remaining (63% total) → 1.01x to 2.00x
+    // Use power curve to favor lower end
+    const subNorm = normalized / 0.70;
+    crashPoint = 1.01 + Math.pow(subNorm, 1.8) * 0.99; // 1.01 to 2.00
+  } else if (normalized < 0.88) {
+    // 18% of remaining (16.2% total) → 2.00x to 3.00x
+    const subNorm = (normalized - 0.70) / 0.18;
+    crashPoint = 2.00 + subNorm * 1.00; // 2.00 to 3.00
+  } else if (normalized < 0.97) {
+    // 9% of remaining (8.1% total) → 3.00x to 5.00x
+    const subNorm = (normalized - 0.88) / 0.09;
+    crashPoint = 3.00 + subNorm * 2.00; // 3.00 to 5.00
+  } else {
+    // 3% of remaining (2.7% total) → 5.00x to 10.00x (rare big wins)
+    const subNorm = (normalized - 0.97) / 0.03;
+    crashPoint = 5.00 + subNorm * 5.00; // 5.00 to 10.00
+  }
+  
+  return Math.round(crashPoint * 100) / 100;
 }
 
 function generateServerSeed(): string {
@@ -440,15 +447,15 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
   }
 
   // Use effective start time with proper fallback chain
+  // For crashed status, use crashed_at for payout timer
+  // For other statuses, use started_at (phase start time)
   const getEffectiveStartTime = (): number => {
     if (currentRound.status === 'crashed' && currentRound.crashed_at) {
+      // Use crashed_at for payout phase timing
       return new Date(currentRound.crashed_at).getTime();
     }
     if (currentRound.started_at) {
       return new Date(currentRound.started_at).getTime();
-    }
-    if (currentRound.crashed_at) {
-      return new Date(currentRound.crashed_at).getTime();
     }
     return new Date(currentRound.created_at).getTime();
   };
@@ -530,7 +537,8 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
       // Check if should crash
       if (currentMultiplier >= crashPoint) {
         const crashedAt = new Date().toISOString();
-        // Update round with crash info
+        // Update round with crash info - DO NOT overwrite started_at!
+        // Keep original flying started_at for accurate multiplier calculation
         await supabase
           .from('game_rounds')
           .update({
@@ -538,7 +546,8 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
             crash_point: crashPoint,
             server_seed: seedData.serverSeed,
             crashed_at: crashedAt,
-            started_at: crashedAt, // Use crashed_at as started_at for payout timer
+            // NOTE: We keep started_at as original flying start time
+            // crashed_at is now used for payout phase timing
           })
           .eq('id', currentRound.id);
 

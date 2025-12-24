@@ -147,6 +147,9 @@ export function useGameRound() {
     const pollInterval = setInterval(() => {
       fetchCurrentRound();
     }, POLL_INTERVAL);
+    
+    // Reference to stop animation for realtime handler
+    const handleStopAnimation = stopMultiplierAnimation;
 
     // Realtime subscription for immediate updates
     const channel = supabase
@@ -160,22 +163,35 @@ export function useGameRound() {
         },
         (payload) => {
           console.log('Realtime round update:', payload);
-          // Immediately fetch to get the latest data
-          fetchCurrentRound();
           
           if (payload.eventType === 'UPDATE') {
             const newStatus = (payload.new as any).status;
-            if (newStatus === 'crashed') {
+            const newCrashPoint = (payload.new as any).crash_point;
+            
+            // INSTANT sync when crashed - don't wait for fetch
+            if (newStatus === 'crashed' || newStatus === 'payout') {
+              // Stop multiplier animation immediately
+              stopMultiplierAnimation();
+              
+              // Set crash point directly from realtime payload
+              if (newCrashPoint) {
+                setCurrentMultiplier(newCrashPoint);
+              }
+              
+              // Refresh history
               fetchRoundHistory();
             }
           }
+          
+          // Fetch updated round data
+          fetchCurrentRound();
         }
       )
       .subscribe();
 
     return () => {
       clearInterval(pollInterval);
-      stopMultiplierAnimation();
+      handleStopAnimation();
       supabase.removeChannel(channel);
     };
   }, [fetchCurrentRound, fetchRoundHistory, stopMultiplierAnimation]);
