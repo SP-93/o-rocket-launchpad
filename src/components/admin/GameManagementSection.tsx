@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import { supabase } from '@/integrations/supabase/client';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
@@ -11,6 +12,9 @@ import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { useCrashGameContract } from '@/hooks/useCrashGameContract';
+import { useWallet } from '@/hooks/useWallet';
+import { getDeployedContracts } from '@/contracts/storage';
 
 interface GamePool {
   id: string;
@@ -49,6 +53,9 @@ interface RoundStats {
 const FACTORY_DEPLOYER_WALLET = '0x8334966329b7f4b459633696A8CA59118253bC89';
 
 const GameManagementSection = () => {
+  const { getProvider } = useWallet();
+  const { refillPrizePool } = useCrashGameContract();
+  
   const [pool, setPool] = useState<GamePool | null>(null);
   const [revenue, setRevenue] = useState<GameRevenue | null>(null);
   const [config, setConfig] = useState<GameConfig>({
@@ -69,6 +76,7 @@ const GameManagementSection = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDistributingWover, setIsDistributingWover] = useState(false);
   const [isDistributingUsdt, setIsDistributingUsdt] = useState(false);
+  const [isRefilling, setIsRefilling] = useState(false);
   const [refillAmount, setRefillAmount] = useState('');
   const [prizePoolPercentage, setPrizePoolPercentage] = useState(70);
 
@@ -218,9 +226,29 @@ const GameManagementSection = () => {
       toast.error('Enter a valid amount');
       return;
     }
+
+    // Check if contract is deployed
+    const contracts = getDeployedContracts();
+    if (!contracts.crashGame) {
+      toast.error('CrashGame contract not deployed');
+      return;
+    }
     
+    setIsRefilling(true);
     try {
-      // Update pool balance
+      // Get signer from wallet
+      const provider = await getProvider();
+      if (!provider) {
+        throw new Error('Wallet not connected');
+      }
+      const ethersProvider = new ethers.providers.Web3Provider(provider as any);
+      const signer = ethersProvider.getSigner();
+
+      // Execute on-chain refill (approves token + transfers to contract)
+      toast.info('Approving WOVER transfer...');
+      await refillPrizePool(signer, refillAmount, true); // true = WOVER
+
+      // Update database after successful on-chain transaction
       const newBalance = (pool?.current_balance || 0) + amount;
       
       const { error } = await supabase
@@ -232,13 +260,18 @@ const GameManagementSection = () => {
         })
         .eq('id', pool?.id);
       
-      if (error) throw error;
+      if (error) {
+        console.error('Database update failed but on-chain succeeded:', error);
+      }
       
-      toast.success(`Pool refilled with ${amount} WOVER`);
+      toast.success(`Pool refilled with ${amount} WOVER on-chain!`);
       setRefillAmount('');
       fetchData();
     } catch (error: any) {
-      toast.error('Refill failed: ' + error.message);
+      console.error('Refill failed:', error);
+      toast.error('Refill failed: ' + (error.reason || error.message));
+    } finally {
+      setIsRefilling(false);
     }
   };
 
@@ -372,11 +405,20 @@ const GameManagementSection = () => {
                 value={refillAmount}
                 onChange={(e) => setRefillAmount(e.target.value)}
                 className="flex-1"
+                disabled={isRefilling}
               />
-              <NeonButton onClick={handleRefillPool} className="px-4">
-                <DollarSign className="w-4 h-4 mr-1" /> Refill
+              <NeonButton onClick={handleRefillPool} disabled={isRefilling} className="px-4">
+                {isRefilling ? (
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                ) : (
+                  <DollarSign className="w-4 h-4 mr-1" />
+                )}
+                {isRefilling ? 'Refilling...' : 'Refill'}
               </NeonButton>
             </div>
+            <p className="text-[10px] text-muted-foreground">
+              💡 This executes an on-chain transaction to transfer WOVER to the contract
+            </p>
           </div>
         </GlowCard>
 

@@ -202,6 +202,21 @@ const OnChainRoundManagement = () => {
 
   return (
     <div className="space-y-6">
+      {/* Info Banner */}
+      <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+        <div className="flex items-start gap-3">
+          <Shield className="w-5 h-5 text-primary mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-foreground mb-1">Manual Round Control (Testing Mode)</p>
+            <p className="text-muted-foreground text-xs">
+              Ova 3-koračna kontrola omogućava ručno testiranje "Provably Fair" sistema. 
+              U produkciji će ovo biti automatizovano preko backend servisa.
+              Koraci: 1) Započni rundu sa seed-om → 2) Aktiviraj let → 3) Crash sa multiplierom.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Current Round Status */}
       <GlowCard className="p-6" glowColor="cyan">
         <div className="flex items-center justify-between mb-4">
