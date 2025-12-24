@@ -3,76 +3,90 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-admin-wallet',
 };
 
 // Rate limiting map (simple in-memory)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const RATE_LIMIT = 10; // max 10 requests per minute
+const RATE_LIMIT = 30; // max 30 requests per minute for auto-game
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 
 // Simple encryption key from environment (or fallback)
 const ENCRYPTION_KEY = Deno.env.get('SEED_ENCRYPTION_KEY') || 'orocket-seed-encryption-key-2024';
+
+// Hardcoded admin wallets (same as frontend)
+const ADMIN_WALLETS = [
+  '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8',
+  '0x8334966329b7f4b459633696a8ca59118253bc89',
+];
+
+function isWalletAdmin(walletAddress: string): boolean {
+  if (!walletAddress) return false;
+  return ADMIN_WALLETS.some(
+    wallet => wallet.toLowerCase() === walletAddress.toLowerCase()
+  );
+}
 
 // ============ SECURITY FUNCTIONS ============
 
 async function verifyAdminAuthorization(
   req: Request, 
   supabaseAuth: any, 
-  supabaseService: any
+  supabaseService: any,
+  body: any
 ): Promise<{ authorized: boolean; walletAddress?: string; error?: string }> {
   try {
-    // Extract JWT from Authorization header
+    // METHOD 1: Direct wallet address from trusted admin (for auto-game loop)
+    const adminWalletHeader = req.headers.get('x-admin-wallet');
+    const adminWalletBody = body?.admin_wallet;
+    const directWallet = adminWalletHeader || adminWalletBody;
+    
+    if (directWallet && isWalletAdmin(directWallet)) {
+      console.log(`[SECURITY] ✓ Direct admin wallet verified: ${directWallet}`);
+      return { authorized: true, walletAddress: directWallet };
+    }
+
+    // METHOD 2: JWT-based auth (legacy - for UI with login)
     const authHeader = req.headers.get('authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.log('[SECURITY] No valid Authorization header');
-      return { authorized: false, error: 'Missing authorization' };
+    if (authHeader?.startsWith('Bearer ')) {
+      const jwt = authHeader.replace('Bearer ', '');
+      
+      const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(jwt);
+      
+      if (!userError && user) {
+        console.log(`[SECURITY] Authenticated user: ${user.id}`);
+
+        const { data: wallet, error: walletError } = await supabaseService
+          .from('user_wallets')
+          .select('wallet_address')
+          .eq('user_id', user.id)
+          .limit(1)
+          .single();
+
+        if (!walletError && wallet) {
+          const walletAddress = wallet.wallet_address;
+          console.log(`[SECURITY] User wallet: ${walletAddress}`);
+
+          // Check hardcoded admin list first (faster)
+          if (isWalletAdmin(walletAddress)) {
+            console.log(`[SECURITY] ✓ Admin verified (hardcoded): ${walletAddress}`);
+            return { authorized: true, walletAddress };
+          }
+
+          // Fallback: Check DB
+          const { data: isAdmin, error: adminError } = await supabaseService
+            .rpc('is_wallet_admin', { _wallet_address: walletAddress });
+
+          if (!adminError && isAdmin) {
+            console.log(`[SECURITY] ✓ Admin verified (DB): ${walletAddress}`);
+            return { authorized: true, walletAddress };
+          }
+        }
+      }
     }
 
-    const jwt = authHeader.replace('Bearer ', '');
-    
-    // Verify JWT and get user using anon client
-    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(jwt);
-    
-    if (userError || !user) {
-      console.log('[SECURITY] Invalid JWT:', userError?.message);
-      return { authorized: false, error: 'Invalid token' };
-    }
-
-    console.log(`[SECURITY] Authenticated user: ${user.id}`);
-
-    // Get user's wallet address using SERVICE ROLE client (bypasses RLS)
-    const { data: wallet, error: walletError } = await supabaseService
-      .from('user_wallets')
-      .select('wallet_address')
-      .eq('user_id', user.id)
-      .limit(1)
-      .single();
-
-    if (walletError || !wallet) {
-      console.log('[SECURITY] No wallet linked for user. Error:', walletError?.message);
-      return { authorized: false, error: 'No wallet linked' };
-    }
-
-    const walletAddress = wallet.wallet_address;
-    console.log(`[SECURITY] User wallet: ${walletAddress}`);
-
-    // Check if wallet is admin using RPC function (service role)
-    const { data: isAdmin, error: adminError } = await supabaseService
-      .rpc('is_wallet_admin', { _wallet_address: walletAddress });
-
-    if (adminError) {
-      console.error('[SECURITY] Admin check error:', adminError);
-      return { authorized: false, error: 'Admin check failed' };
-    }
-
-    if (!isAdmin) {
-      console.log(`[SECURITY] Wallet ${walletAddress} is NOT admin`);
-      return { authorized: false, error: 'Not authorized' };
-    }
-
-    console.log(`[SECURITY] ✓ Admin verified: ${walletAddress}`);
-    return { authorized: true, walletAddress };
+    console.log('[SECURITY] No valid admin authorization found');
+    return { authorized: false, error: 'Not authorized' };
 
   } catch (error) {
     console.error('[SECURITY] Authorization error:', error);
@@ -105,7 +119,7 @@ function validateAction(action: string): boolean {
     'process_auto_cashouts',
     'crash',
     'process_payouts',
-    'get_status' // Public action - no auth needed
+    'get_status'
   ];
   return validActions.includes(action);
 }
@@ -150,7 +164,6 @@ function encryptSeed(seed: string): string {
   for (let i = 0; i < seed.length; i++) {
     encrypted += String.fromCharCode(seed.charCodeAt(i) ^ key.charCodeAt(i % key.length));
   }
-  // Base64 encode for safe storage
   return btoa(encrypted);
 }
 
@@ -256,7 +269,6 @@ serve(async (req) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
-    // Auth client uses anon key to verify JWT
     const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
@@ -264,7 +276,6 @@ serve(async (req) => {
       }
     });
     
-    // Service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // PUBLIC ACTION: get_status - no auth needed
@@ -302,8 +313,8 @@ serve(async (req) => {
 
     // ============ ADMIN-ONLY ACTIONS BELOW ============
 
-    // Rate limit check (by IP or identifier)
-    const clientIP = req.headers.get('x-forwarded-for') || 'unknown';
+    // Rate limit check
+    const clientIP = req.headers.get('x-forwarded-for') || 'admin';
     const rateCheck = checkRateLimit(clientIP);
     if (!rateCheck.allowed) {
       console.log(`[${requestId}] Rate limited: ${clientIP}`);
@@ -313,8 +324,8 @@ serve(async (req) => {
       );
     }
 
-    // SECURITY: Verify admin authorization (use service role for DB queries)
-    const authResult = await verifyAdminAuthorization(req, supabaseAuth, supabase);
+    // SECURITY: Verify admin authorization (supports both wallet and JWT)
+    const authResult = await verifyAdminAuthorization(req, supabaseAuth, supabase, body);
     if (!authResult.authorized) {
       console.log(`[${requestId}] Unauthorized: ${authResult.error}`);
       return new Response(
@@ -399,11 +410,10 @@ serve(async (req) => {
           );
         }
 
-        // Store seed in DATABASE (persists across restarts!)
+        // Store seed in DATABASE
         const stored = await storeSeedInDb(supabase, round.id, serverSeed, serverSeedHash);
         if (!stored) {
           console.error(`[${requestId}] Failed to store seed in DB`);
-          // Rollback round creation
           await supabase.from('game_rounds').delete().eq('id', round.id);
           return new Response(
             JSON.stringify({ error: 'Failed to secure round seed' }),
@@ -468,7 +478,7 @@ serve(async (req) => {
 
         const { error } = await supabase
           .from('game_rounds')
-          .update({ status: 'flying' })
+          .update({ status: 'flying', started_at: new Date().toISOString() })
           .eq('id', round_id)
           .eq('status', 'countdown');
 
@@ -504,32 +514,40 @@ serve(async (req) => {
           );
         }
 
-        const { data: autoCashouts } = await supabase
+        // Find bets with auto_cashout_at <= current_multiplier that are still active
+        const { data: autoCashouts, error: fetchError } = await supabase
           .from('game_bets')
           .select('*')
           .eq('round_id', round_id)
           .eq('status', 'active')
-          .lte('auto_cashout_at', current_multiplier)
-          .not('auto_cashout_at', 'is', null);
+          .not('auto_cashout_at', 'is', null)
+          .lte('auto_cashout_at', current_multiplier);
 
-        if (autoCashouts && autoCashouts.length > 0) {
-          for (const bet of autoCashouts) {
-            const winnings = bet.bet_amount * bet.auto_cashout_at;
-            await supabase
-              .from('game_bets')
-              .update({
-                cashed_out_at: bet.auto_cashout_at,
-                winnings: winnings,
-                status: 'won',
-              })
-              .eq('id', bet.id)
-              .eq('status', 'active');
-          }
+        if (fetchError) {
+          console.error(`[${requestId}] Auto-cashout fetch error:`, fetchError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to fetch auto-cashouts' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
         }
 
-        console.log(`[${requestId}] ✓ Auto-cashouts processed: ${autoCashouts?.length || 0}`);
+        let processed = 0;
+        for (const bet of autoCashouts || []) {
+          const winnings = Math.floor(bet.bet_amount * bet.auto_cashout_at);
+          await supabase
+            .from('game_bets')
+            .update({
+              status: 'won',
+              cashed_out_at: bet.auto_cashout_at,
+              winnings,
+            })
+            .eq('id', bet.id);
+          processed++;
+        }
+
+        console.log(`[${requestId}] ✓ Auto-cashed out ${processed} bets at ${current_multiplier}x`);
         return new Response(
-          JSON.stringify({ success: true, processed: autoCashouts?.length || 0 }),
+          JSON.stringify({ success: true, processed }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -543,27 +561,28 @@ serve(async (req) => {
           );
         }
 
-        // Get seed from DATABASE instead of in-memory
+        // Get seed from DB
         const seedData = await getSeedFromDb(supabase, round_id);
-        
         if (!seedData) {
-          console.error(`[${requestId}] No seed found in DB for round ${round_id}`);
+          console.error(`[${requestId}] No seed found for round ${round_id}`);
           return new Response(
-            JSON.stringify({ error: 'Round seed not found in database' }),
+            JSON.stringify({ error: 'Round seed not found' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        const { serverSeed, serverSeedHash } = seedData;
-        const crashPoint = await generateCrashPoint(serverSeed);
+        // Calculate crash point
+        const crashPoint = await generateCrashPoint(seedData.serverSeed);
+        console.log(`[${requestId}] Crash point calculated: ${crashPoint}x`);
 
+        // Update round with crash info
         const { error: updateError } = await supabase
           .from('game_rounds')
-          .update({ 
-            status: 'crashed', 
-            crashed_at: new Date().toISOString(),
-            server_seed: serverSeed,
+          .update({
+            status: 'crashed',
             crash_point: crashPoint,
+            server_seed: seedData.serverSeed,
+            crashed_at: new Date().toISOString(),
           })
           .eq('id', round_id);
 
@@ -575,25 +594,19 @@ serve(async (req) => {
           );
         }
 
-        // Mark active bets as lost
+        // Mark all active bets as lost
         await supabase
           .from('game_bets')
-          .update({ status: 'lost', winnings: 0 })
+          .update({ status: 'lost' })
           .eq('round_id', round_id)
           .eq('status', 'active');
 
-        // Delete seed from database (no longer needed)
+        // Delete seed from DB
         await deleteSeedFromDb(supabase, round_id);
 
         console.log(`[${requestId}] ✓ Round ${round_id} crashed at ${crashPoint}x`);
-
         return new Response(
-          JSON.stringify({
-            success: true,
-            crash_point: crashPoint,
-            server_seed: serverSeed,
-            server_seed_hash: serverSeedHash,
-          }),
+          JSON.stringify({ success: true, crash_point: crashPoint }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -607,63 +620,49 @@ serve(async (req) => {
           );
         }
 
-        // Get all winning bets
-        const { data: winningBets } = await supabase
+        // Calculate total wagered and payouts
+        const { data: bets } = await supabase
           .from('game_bets')
-          .select('*')
-          .eq('round_id', round_id)
-          .eq('status', 'won');
-
-        const totalPayouts = winningBets?.reduce((sum, bet) => sum + (bet.winnings || 0), 0) || 0;
-        const winnerCount = winningBets?.length || 0;
-
-        // Update round with final stats
-        const { data: allBets } = await supabase
-          .from('game_bets')
-          .select('bet_amount')
+          .select('bet_amount, winnings, status')
           .eq('round_id', round_id);
 
-        const totalWagered = allBets?.reduce((sum, bet) => sum + (bet.bet_amount || 0), 0) || 0;
-        const totalBets = allBets?.length || 0;
+        const totalWagered = (bets || []).reduce((sum, b) => sum + (b.bet_amount || 0), 0);
+        const totalPayouts = (bets || []).filter(b => b.status === 'won').reduce((sum, b) => sum + (b.winnings || 0), 0);
 
+        // Update round stats
         await supabase
           .from('game_rounds')
-          .update({ 
+          .update({
             status: 'payout',
-            total_bets: totalBets,
             total_wagered: totalWagered,
             total_payouts: totalPayouts,
+            total_bets: bets?.length || 0,
           })
           .eq('id', round_id);
 
-        // Update game pool
-        const { data: currentPool } = await supabase
+        // Update pool balance (add wagered, subtract payouts)
+        const netChange = totalWagered - totalPayouts;
+        const { data: pool } = await supabase
           .from('game_pool')
-          .select('*')
+          .select('current_balance')
           .limit(1)
           .single();
 
-        if (currentPool) {
-          const newBalance = Math.max(0, (currentPool.current_balance || 0) - totalPayouts + totalWagered);
+        if (pool) {
           await supabase
             .from('game_pool')
-            .update({ 
-              current_balance: newBalance,
-              total_payouts: (currentPool.total_payouts || 0) + totalPayouts,
-              last_payout_at: totalPayouts > 0 ? new Date().toISOString() : currentPool.last_payout_at,
+            .update({
+              current_balance: pool.current_balance + netChange,
+              total_deposits: pool.current_balance + totalWagered,
+              total_payouts: (pool as any).total_payouts + totalPayouts,
+              last_payout_at: new Date().toISOString(),
             })
-            .eq('id', currentPool.id);
+            .limit(1);
         }
 
-        console.log(`[${requestId}] ✓ Payouts processed: ${winnerCount} winners, ${totalPayouts} total`);
-
+        console.log(`[${requestId}] ✓ Payouts processed: wagered=${totalWagered}, paid=${totalPayouts}, net=${netChange}`);
         return new Response(
-          JSON.stringify({
-            success: true,
-            winning_bets: winnerCount,
-            total_payouts: totalPayouts,
-            total_wagered: totalWagered,
-          }),
+          JSON.stringify({ success: true, totalWagered, totalPayouts, netChange }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -675,10 +674,10 @@ serve(async (req) => {
         );
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error(`[${requestId}] Internal error:`, error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error', message: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
