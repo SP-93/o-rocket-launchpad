@@ -40,6 +40,41 @@ const TicketNFTContractSection = () => {
   const [isSettingPrice, setIsSettingPrice] = useState(false);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
   const [isSyncingBackend, setIsSyncingBackend] = useState(false);
+  const [isSyncingCex, setIsSyncingCex] = useState(false);
+
+  // Calculate price deviation
+  const contractPriceNum = contractState?.woverPrice ? parseFloat(contractState.woverPrice) : 0;
+  const priceDeviation = contractPriceNum > 0 && cexPrice > 0 
+    ? ((cexPrice - contractPriceNum) / contractPriceNum) * 100 
+    : 0;
+  const isPriceOutdated = Math.abs(priceDeviation) > 5; // 5% threshold
+
+  // One-click sync to CEX price
+  const handleSyncToCex = async () => {
+    if (!cexPrice || cexPrice <= 0) {
+      toast.error('CEX price not available');
+      return;
+    }
+    
+    const signer = await getSigner();
+    if (!signer) {
+      toast.error('Please connect your wallet');
+      return;
+    }
+
+    setIsSyncingCex(true);
+    try {
+      const priceWei = ethers.utils.parseEther(cexPrice.toFixed(6));
+      await setWoverPrice(signer, priceWei.toString());
+      await fetchContractState();
+      toast.success(`Price synced to $${cexPrice.toFixed(6)}`);
+    } catch (error: any) {
+      console.error('Failed to sync price:', error);
+      toast.error('Failed to sync: ' + (error.reason || error.message));
+    } finally {
+      setIsSyncingCex(false);
+    }
+  };
 
   const addressMismatch = localAddress && backendAddress && 
     localAddress.toLowerCase() !== backendAddress.toLowerCase();
@@ -381,14 +416,61 @@ const TicketNFTContractSection = () => {
             </div>
             
             {contractState ? (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <span className="text-xs text-muted-foreground">Total Supply:</span>
-                  <p className="text-lg font-bold text-primary">{contractState.totalSupply}</p>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-xs text-muted-foreground">Total Supply:</span>
+                    <p className="text-lg font-bold text-primary">{contractState.totalSupply}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">WOVER Price:</span>
+                    <p className="text-lg font-bold text-primary">${contractState.woverPrice}</p>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-xs text-muted-foreground">WOVER Price:</span>
-                  <p className="text-lg font-bold text-primary">${contractState.woverPrice}</p>
+
+                {/* CEX Price Comparison */}
+                <div className={`rounded-lg p-3 border ${isPriceOutdated ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className={`w-4 h-4 ${isPriceOutdated ? 'text-warning' : 'text-success'}`} />
+                      <span className="text-xs text-muted-foreground">CEX Price:</span>
+                      <span className="text-sm font-semibold">
+                        {cexLoading ? '...' : `$${cexPrice.toFixed(6)}`}
+                      </span>
+                      {!cexLoading && contractPriceNum > 0 && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          isPriceOutdated 
+                            ? 'bg-warning/20 text-warning' 
+                            : 'bg-success/20 text-success'
+                        }`}>
+                          {priceDeviation >= 0 ? '+' : ''}{priceDeviation.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    
+                    {isPriceOutdated && isOwner && (
+                      <NeonButton
+                        variant="primary"
+                        size="sm"
+                        className="text-xs px-3 py-1"
+                        onClick={handleSyncToCex}
+                        disabled={isSyncingCex || cexLoading}
+                      >
+                        {isSyncingCex ? (
+                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
+                        ) : (
+                          <><RefreshCw className="w-3 h-3 mr-1" /> Sync to CEX</>
+                        )}
+                      </NeonButton>
+                    )}
+                  </div>
+                  
+                  {isPriceOutdated && (
+                    <p className="text-xs text-warning mt-2 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      Price outdated by more than 5%
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
