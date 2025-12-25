@@ -48,7 +48,7 @@ const Game = () => {
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
   const { status: engineStatus } = useGameEngine(); // Drives tick-based game loop
   
-  const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext, playCountdownBeep, playMilestoneSound } = useGameSounds(soundEnabled);
+  const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext, playCountdownBeep, playMilestoneSound, startBackgroundMusic, stopBackgroundMusic, isMusicPlaying } = useGameSounds(soundEnabled);
   const prevStatusRef = useRef<string | null>(null);
   const initialLoadRef = useRef(true);
   const crashedAtRef = useRef<number | null>(null);
@@ -103,12 +103,16 @@ const Game = () => {
     }
   }, [nextRoundIn]);
 
-  // Initialize audio on first user interaction
+  // Initialize audio and start background music on first user interaction
   useEffect(() => {
     const handleFirstInteraction = () => {
       if (!audioInitializedRef.current) {
         initAudioContext();
         audioInitializedRef.current = true;
+        // Start background music after audio context is initialized
+        if (soundEnabled) {
+          setTimeout(() => startBackgroundMusic(), 500);
+        }
       }
     };
     
@@ -119,7 +123,18 @@ const Game = () => {
       document.removeEventListener('click', handleFirstInteraction);
       document.removeEventListener('touchstart', handleFirstInteraction);
     };
-  }, [initAudioContext]);
+  }, [initAudioContext, soundEnabled, startBackgroundMusic]);
+
+  // Toggle background music with sound setting
+  useEffect(() => {
+    if (audioInitializedRef.current) {
+      if (soundEnabled && !isMusicPlaying()) {
+        startBackgroundMusic();
+      } else if (!soundEnabled) {
+        stopBackgroundMusic();
+      }
+    }
+  }, [soundEnabled, startBackgroundMusic, stopBackgroundMusic, isMusicPlaying]);
 
   // Countdown beep timer (3, 2, 1)
   useEffect(() => {

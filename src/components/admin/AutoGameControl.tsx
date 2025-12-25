@@ -4,7 +4,7 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Play, Square, Rocket, Clock, 
   Zap, AlertTriangle, CheckCircle, Loader2,
-  Timer, Pause, Power, RefreshCw, Ticket
+  Timer, Pause, Power, RefreshCw
 } from 'lucide-react';
 import { useWallet } from '@/hooks/useWallet';
 import { isAdmin } from '@/config/admin';
@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
-import { format } from 'date-fns';
+import TicketStatsPanel from './TicketStatsPanel';
 
 interface EngineState {
   isEnabled: boolean;
@@ -35,15 +35,6 @@ const PHASE_CONFIG: Record<string, { label: string; color: string; icon: any }> 
   payout: { label: 'Payouts', color: 'text-info', icon: CheckCircle },
 };
 
-interface TicketPurchase {
-  id: string;
-  wallet_address: string;
-  payment_currency: string;
-  payment_amount: number;
-  ticket_value: number;
-  created_at: string;
-}
-
 const AutoGameControl = () => {
   const { address } = useWallet();
   const { fetchContractState } = useCrashGameContract();
@@ -61,39 +52,6 @@ const AutoGameControl = () => {
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  const [tickets, setTickets] = useState<TicketPurchase[]>([]);
-  const [ticketStats, setTicketStats] = useState({ totalWover: 0, totalUsdt: 0, count: 0 });
-
-  // Fetch ticket purchases via edge function (bypasses RLS)
-  const fetchTickets = useCallback(async () => {
-    if (!address) return;
-    
-    try {
-      const response = await supabase.functions.invoke('game-get-tickets', {
-        body: { 
-          admin_mode: true, 
-          admin_wallet: address,
-          limit: 50 
-        },
-      });
-
-      if (response.error) throw response.error;
-      
-      if (response.data?.tickets) {
-        setTickets(response.data.tickets);
-      }
-      
-      if (response.data?.stats) {
-        setTicketStats({
-          totalWover: response.data.stats.totalWover || 0,
-          totalUsdt: response.data.stats.totalUsdt || 0,
-          count: response.data.stats.count || 0
-        });
-      }
-    } catch (err) {
-      console.error('[AdminEngine] Failed to fetch tickets:', err);
-    }
-  }, [address]);
 
   // Fetch current status and on-chain balance
   const fetchStatus = useCallback(async () => {
@@ -128,17 +86,12 @@ const AutoGameControl = () => {
     }
   }, [fetchContractState]);
 
-  // Poll for status updates and fetch tickets
+  // Poll for status updates
   useEffect(() => {
     fetchStatus();
-    fetchTickets();
     const interval = setInterval(fetchStatus, 3000);
-    const ticketInterval = setInterval(fetchTickets, 10000); // Refresh tickets every 10s
-    return () => {
-      clearInterval(interval);
-      clearInterval(ticketInterval);
-    };
-  }, [fetchStatus, fetchTickets]);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
 
   // Enable engine
   const handleEnableEngine = async () => {
@@ -419,76 +372,8 @@ const AutoGameControl = () => {
         </div>
       </GlowCard>
 
-      {/* Ticket Purchase List */}
-      <GlowCard className="p-6" glowColor="cyan">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Ticket className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold">Recent Ticket Purchases</h3>
-          </div>
-          <div className="flex gap-3 text-xs">
-            <span className="bg-warning/20 text-warning px-2 py-1 rounded">
-              {ticketStats.totalWover.toLocaleString()} WOVER
-            </span>
-            <span className="bg-success/20 text-success px-2 py-1 rounded">
-              {ticketStats.totalUsdt.toLocaleString()} USDT
-            </span>
-            <span className="bg-muted/30 px-2 py-1 rounded">
-              {ticketStats.count} tickets
-            </span>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/30 text-left text-muted-foreground">
-                <th className="pb-2 pr-4">Wallet</th>
-                <th className="pb-2 pr-4">Currency</th>
-                <th className="pb-2 pr-4 text-right">Paid</th>
-                <th className="pb-2 pr-4 text-right">Ticket Value</th>
-                <th className="pb-2 text-right">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-muted-foreground">
-                    No tickets purchased yet
-                  </td>
-                </tr>
-              ) : (
-                tickets.map((ticket) => (
-                  <tr key={ticket.id} className="border-b border-border/10">
-                    <td className="py-2 pr-4 font-mono text-xs">
-                      {ticket.wallet_address.slice(0, 6)}...{ticket.wallet_address.slice(-4)}
-                    </td>
-                    <td className="py-2 pr-4">
-                      <span className={cn(
-                        "px-2 py-0.5 rounded text-xs font-medium",
-                        ticket.payment_currency === 'WOVER' 
-                          ? "bg-warning/20 text-warning" 
-                          : "bg-success/20 text-success"
-                      )}>
-                        {ticket.payment_currency}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-4 text-right font-mono">
-                      {ticket.payment_amount.toLocaleString()}
-                    </td>
-                    <td className="py-2 pr-4 text-right font-mono text-primary">
-                      {ticket.ticket_value.toLocaleString()}
-                    </td>
-                    <td className="py-2 text-right text-xs text-muted-foreground">
-                      {format(new Date(ticket.created_at), 'MMM d, HH:mm')}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </GlowCard>
+      {/* Ticket Stats Panel */}
+      <TicketStatsPanel />
     </div>
   );
 };

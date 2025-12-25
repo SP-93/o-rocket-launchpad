@@ -8,11 +8,19 @@ interface AudioNodes {
   filter?: BiquadFilterNode;
 }
 
+interface BackgroundMusicNodes {
+  oscillators: OscillatorNode[];
+  gains: GainNode[];
+  masterGain: GainNode;
+}
+
 const useGameSounds = (enabled: boolean = true) => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const flyingSoundRef = useRef<AudioNodes | null>(null);
+  const backgroundMusicRef = useRef<BackgroundMusicNodes | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const isInitializedRef = useRef(false);
+  const musicVolumeRef = useRef<number>(0.15);
 
   // Initialize AudioContext with aggressive resume
   const initAudioContext = useCallback(async () => {
@@ -570,15 +578,130 @@ const useGameSounds = (enabled: boolean = true) => {
     }
   }, []);
 
+  // Start ambient background music
+  const startBackgroundMusic = useCallback(async () => {
+    if (!enabled || backgroundMusicRef.current) return;
+    
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
+    
+    const now = ctx.currentTime;
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0, now);
+    masterGain.gain.linearRampToValueAtTime(musicVolumeRef.current, now + 2);
+    masterGain.connect(ctx.destination);
+    
+    const oscillators: OscillatorNode[] = [];
+    const gains: GainNode[] = [];
+    
+    // Ambient pad layers - C major 7 chord voicings
+    const frequencies = [
+      { freq: 65.41, type: 'sine' as OscillatorType, gain: 0.08 },    // C2 bass
+      { freq: 130.81, type: 'sine' as OscillatorType, gain: 0.06 },   // C3
+      { freq: 164.81, type: 'triangle' as OscillatorType, gain: 0.04 }, // E3
+      { freq: 196.00, type: 'sine' as OscillatorType, gain: 0.05 },   // G3
+      { freq: 246.94, type: 'triangle' as OscillatorType, gain: 0.03 }, // B3
+    ];
+    
+    frequencies.forEach(({ freq, type, gain: vol }) => {
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      
+      osc.type = type;
+      osc.frequency.value = freq;
+      // Subtle detuning for richness
+      osc.detune.value = (Math.random() - 0.5) * 8;
+      
+      filter.type = 'lowpass';
+      filter.frequency.value = 800;
+      filter.Q.value = 0.5;
+      
+      gainNode.gain.value = vol;
+      
+      osc.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(masterGain);
+      
+      osc.start(now);
+      oscillators.push(osc);
+      gains.push(gainNode);
+    });
+    
+    // Subtle LFO for movement
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.1; // Very slow modulation
+    lfoGain.gain.value = 50;
+    lfo.connect(lfoGain);
+    
+    // Connect LFO to filter frequencies
+    oscillators.forEach((_, i) => {
+      if (gains[i]) {
+        // Subtle volume modulation
+        const modGain = ctx.createGain();
+        modGain.gain.value = 0.01;
+        lfoGain.connect(modGain);
+      }
+    });
+    
+    lfo.start(now);
+    oscillators.push(lfo);
+    
+    backgroundMusicRef.current = { oscillators, gains, masterGain };
+  }, [enabled, initAudioContext]);
+
+  // Stop background music
+  const stopBackgroundMusic = useCallback(() => {
+    if (backgroundMusicRef.current && audioContextRef.current) {
+      const ctx = audioContextRef.current;
+      const now = ctx.currentTime;
+      
+      // Fade out
+      backgroundMusicRef.current.masterGain.gain.setTargetAtTime(0, now, 0.5);
+      
+      setTimeout(() => {
+        backgroundMusicRef.current?.oscillators.forEach(osc => {
+          try { osc.stop(); } catch {}
+        });
+        backgroundMusicRef.current = null;
+      }, 2000);
+    }
+  }, []);
+
+  // Set music volume (0-1)
+  const setMusicVolume = useCallback((volume: number) => {
+    musicVolumeRef.current = Math.max(0, Math.min(1, volume)) * 0.2; // Max 20% volume
+    
+    if (backgroundMusicRef.current?.masterGain && audioContextRef.current) {
+      const ctx = audioContextRef.current;
+      backgroundMusicRef.current.masterGain.gain.setTargetAtTime(
+        musicVolumeRef.current,
+        ctx.currentTime,
+        0.1
+      );
+    }
+  }, []);
+
+  // Check if music is playing
+  const isMusicPlaying = useCallback(() => {
+    return backgroundMusicRef.current !== null;
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopFlyingSound();
+      stopBackgroundMusic();
       if (audioContextRef.current) {
         audioContextRef.current.close();
       }
     };
-  }, [stopFlyingSound]);
+  }, [stopFlyingSound, stopBackgroundMusic]);
 
   return {
     playSound,
@@ -587,7 +710,11 @@ const useGameSounds = (enabled: boolean = true) => {
     stopFlyingSound,
     initAudioContext,
     playCountdownBeep,
-    playMilestoneSound
+    playMilestoneSound,
+    startBackgroundMusic,
+    stopBackgroundMusic,
+    setMusicVolume,
+    isMusicPlaying
   };
 };
 
