@@ -779,6 +779,14 @@ serve(async (req) => {
         currentRound = data ?? null;
       }
 
+      // Fetch active player count for current round
+      let activePlayers = 0;
+      if (currentRound?.id) {
+        const { data: betCount } = await supabase
+          .rpc('get_round_bet_count', { round_uuid: currentRound.id });
+        activePlayers = betCount ?? 0;
+      }
+
       return new Response(
         JSON.stringify({
           game_active: gameStatus?.config_value?.active ?? false,
@@ -787,6 +795,7 @@ serve(async (req) => {
           threshold: thresholdConfig?.config_value?.wover ?? 100,
           prize_pool: pool?.current_balance ?? 0,
           current_round: currentRound,
+          active_players: activePlayers,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

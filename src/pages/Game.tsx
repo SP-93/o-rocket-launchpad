@@ -15,6 +15,7 @@ import MobileBetBar from '@/components/game/MobileBetBar';
 import GameTutorial, { TutorialHelpButton } from '@/components/game/GameTutorial';
 import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
 import GameDebugOverlay from '@/components/game/GameDebugOverlay';
+import ClaimWinNotification from '@/components/game/ClaimWinNotification';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
@@ -249,6 +250,15 @@ const Game = () => {
       
       <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
+      
+      {/* Claim Win Notification */}
+      <ClaimWinNotification
+        myBet={myBet}
+        roundStatus={currentRound?.status || null}
+        roundId={currentRound?.id}
+        walletAddress={address}
+        onClaimSuccess={refetchBets}
+      />
       
       {/* Live Status HUD */}
       <LiveStatusHUD 
