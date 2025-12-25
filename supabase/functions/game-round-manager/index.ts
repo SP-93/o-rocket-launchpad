@@ -22,10 +22,10 @@ const ADMIN_WALLETS = [
 
 // Game timing configuration (in seconds)
 const GAME_CONFIG = {
-  bettingDuration: 15,
-  countdownDuration: 3,
-  crashDisplayDuration: 3,
-  pauseDuration: 2,
+  bettingDuration: 20,      // More time for bets
+  countdownDuration: 5,     // Dramatic countdown
+  crashDisplayDuration: 5,  // Time to see crash result
+  pauseDuration: 3,         // Pause between rounds
 };
 
 function isWalletAdmin(walletAddress: string): boolean {
