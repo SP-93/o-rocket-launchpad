@@ -152,22 +152,40 @@ const CrashGameContractSection = () => {
     }
   }, []);
 
+  // Effective address: prefer local, fallback to backend
+  const effectiveAddress = localAddress || backendAddress;
+  const usingBackendOnly = !localAddress && !!backendAddress;
+
   useEffect(() => {
     const init = async () => {
       const contracts = await getDeployedContractsAsync();
       setDeployedContracts(contracts);
       await fetchBackendAddresses();
-      
-      if (contracts.crashGame) {
-        fetchContractState();
-        const owner = await getContractOwner();
-        if (owner) setContractOwner(owner);
-      }
     };
     init();
   }, [fetchBackendAddresses]);
 
-  const isContractDeployed = !!localAddress;
+  // Auto-pull from backend if local is missing but backend exists
+  useEffect(() => {
+    if (!localAddress && backendAddress) {
+      // Auto-set local from backend for seamless experience
+      saveDeployedContract('crashGame', backendAddress);
+      setDeployedContracts(getDeployedContracts());
+      toast.info('Contract address loaded from backend');
+    }
+  }, [localAddress, backendAddress]);
+
+  // Fetch contract state when effective address is available
+  useEffect(() => {
+    if (effectiveAddress) {
+      fetchContractState();
+      getContractOwner().then(owner => {
+        if (owner) setContractOwner(owner);
+      });
+    }
+  }, [effectiveAddress, fetchContractState, getContractOwner]);
+
+  const isContractDeployed = !!effectiveAddress;
 
   const handleDeploy = async () => {
     const signer = await getSigner();
