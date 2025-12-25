@@ -143,30 +143,48 @@ async function generateCrashPoint(serverSeed: string): Promise<number> {
   const view = new DataView(hashBuffer);
   const rv = view.getUint32(0, true) / 0xFFFFFFFF;
   
-  if (rv < 0.025) {
-    return 1.00 + rv / 0.025 * 0.14;
+  // REBALANCED DISTRIBUTION (target: ~1.97x avg, 3% house edge)
+  // 4% instant crash at 1.00x
+  if (rv < 0.04) {
+    return 1.00;
   }
   
-  if (rv < 0.075) {
+  // 6% crash at 1.01-1.14x (early crash zone)
+  if (rv < 0.10) {
+    return 1.01 + ((rv - 0.04) / 0.06) * 0.13;
+  }
+  
+  // 8% crash at 1.15x (fixed low point)
+  if (rv < 0.18) {
     return 1.15;
   }
   
-  const n = (rv - 0.075) / 0.925;
+  // Main distribution zone (82% remaining)
+  const n = (rv - 0.18) / 0.82;
   let cp: number;
   
-  if (n < 0.52) {
-    cp = 1.15 + n / 0.52 * 0.85;
-  } else if (n < 0.75) {
-    cp = 2.00 + (n - 0.52) / 0.23 * 1.50;
-  } else if (n < 0.88) {
-    cp = 3.50 + (n - 0.75) / 0.13 * 1.50;
-  } else if (n < 0.96) {
-    cp = 5.00 + (n - 0.88) / 0.08 * 2.50;
-  } else {
-    cp = 7.50 + (n - 0.96) / 0.04 * 2.50; // Reduced from 4.50 to cap at ~10x
+  // 56% in 1.16-2.00x range (more early crashes)
+  if (n < 0.56) {
+    cp = 1.16 + (n / 0.56) * 0.84;
+  }
+  // 22% in 2.01-3.50x range
+  else if (n < 0.78) {
+    cp = 2.01 + ((n - 0.56) / 0.22) * 1.49;
+  }
+  // 12% in 3.51-5.00x range
+  else if (n < 0.90) {
+    cp = 3.51 + ((n - 0.78) / 0.12) * 1.49;
+  }
+  // 7.5% in 5.01-7.00x range
+  else if (n < 0.975) {
+    cp = 5.01 + ((n - 0.90) / 0.075) * 1.99;
+  }
+  // 2.5% in 7.01-10.00x range (reduced high multiplier chance)
+  else {
+    cp = 7.01 + ((n - 0.975) / 0.025) * 2.99;
   }
   
-  // CRITICAL: Cap crash point at 10.00 to match calculateMultiplier max
+  // Cap crash point at 10.00 to match calculateMultiplier max
   return Math.min(Math.round(cp * 100) / 100, 10.00);
 }
 
