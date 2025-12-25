@@ -334,10 +334,13 @@ const Game = () => {
             {/* Center - Game Display */}
             <div className={`order-1 lg:order-2 ${isConnected ? 'lg:col-span-6' : 'lg:col-span-8 lg:col-start-3'}`}>
               <div className="relative">
-                {/* Main Game Card */}
-                <div className="relative glass-card overflow-hidden">
-                  {/* Top gradient accent */}
-                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-warning/60 to-transparent" />
+                {/* Main Game Card - Enhanced Design */}
+                <div className="relative glass-card overflow-hidden shadow-2xl border-2 border-primary/20 hover:border-primary/30 transition-colors duration-500">
+                  {/* Top gradient accent - more vibrant */}
+                  <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-warning/80 to-transparent" />
+                  {/* Side glow effects */}
+                  <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary/0 via-primary/30 to-primary/0" />
+                  <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-b from-primary/0 via-primary/30 to-primary/0" />
                   
                   {/* Top Controls Bar */}
                   <div className="relative px-3 py-2 flex items-center justify-between border-b border-border/20">
@@ -387,16 +390,23 @@ const Game = () => {
                     </div>
                   </div>
                   
-                  {/* Game Screen */}
-                  <div className="relative aspect-[16/10] md:aspect-video bg-gradient-to-b from-card/50 to-background/50" data-tutorial="rocket-display">
-                    {/* Grid overlay */}
+                  {/* Game Screen - Enhanced with glow */}
+                  <div className="relative aspect-[16/10] md:aspect-video bg-gradient-to-b from-card/60 via-background/40 to-background/60" data-tutorial="rocket-display">
+                    {/* Animated grid overlay */}
                     <div 
-                      className="absolute inset-0 opacity-[0.02]" 
+                      className="absolute inset-0 opacity-[0.03]" 
                       style={{
-                        backgroundImage: 'linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)',
-                        backgroundSize: '40px 40px'
+                        backgroundImage: 'linear-gradient(hsl(var(--primary) / 0.5) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--primary) / 0.5) 1px, transparent 1px)',
+                        backgroundSize: '50px 50px'
                       }}
                     />
+                    {/* Corner glow effects during flight */}
+                    {isFlying && (
+                      <>
+                        <div className="absolute top-0 left-0 w-32 h-32 bg-success/10 rounded-full blur-3xl animate-pulse" />
+                        <div className="absolute bottom-0 right-0 w-40 h-40 bg-warning/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.5s' }} />
+                      </>
+                    )}
                     
                     {/* Game Paused Overlay */}
                     {gamePaused && (
@@ -459,40 +469,81 @@ const Game = () => {
                     <CountdownOverlay status={currentRound?.status || 'idle'} />
                   </div>
 
-                  {/* Bottom Stats Bar */}
-                  <div className="border-t border-border/20 bg-card/30 backdrop-blur-sm">
+                  {/* Bottom Stats Bar - Enhanced design */}
+                  <div className="border-t border-border/30 bg-gradient-to-r from-card/40 via-card/60 to-card/40 backdrop-blur-md">
                     <div className="grid grid-cols-4 divide-x divide-border/20">
-                      <div className="p-2.5 md:p-3 text-center">
-                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Status</div>
-                        <div className={`font-semibold text-xs md:text-sm capitalize ${
+                      <div className="p-2.5 md:p-3.5 text-center group hover:bg-card/30 transition-colors">
+                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Status</div>
+                        <div className={`font-semibold text-xs md:text-sm capitalize flex items-center justify-center gap-1.5 ${
                           currentRound?.status === 'flying' ? 'text-success' :
                           currentRound?.status === 'crashed' ? 'text-destructive' :
                           currentRound?.status === 'betting' ? 'text-primary' :
                           'text-muted-foreground'
                         }`}>
-                          {currentRound?.status === 'flying' ? '🚀 Flying' :
-                           currentRound?.status === 'crashed' ? '💥 Crashed' :
-                           currentRound?.status === 'betting' ? '💰 Betting' :
+                          <span className={`w-2 h-2 rounded-full ${
+                            currentRound?.status === 'flying' ? 'bg-success animate-pulse' :
+                            currentRound?.status === 'crashed' ? 'bg-destructive' :
+                            currentRound?.status === 'betting' ? 'bg-primary animate-pulse' :
+                            'bg-muted-foreground'
+                          }`} />
+                          {currentRound?.status === 'flying' ? 'Flying' :
+                           currentRound?.status === 'crashed' ? 'Crashed' :
+                           currentRound?.status === 'betting' ? 'Betting' :
                            currentRound?.status || 'Idle'}
                         </div>
                       </div>
-                      <div className="p-2.5 md:p-3 text-center">
-                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Players</div>
-                        <div className="font-mono font-semibold text-xs md:text-sm text-primary">{bets.length}</div>
+                      <div className="p-2.5 md:p-3.5 text-center group hover:bg-card/30 transition-colors">
+                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium flex items-center justify-center gap-1">
+                          <Users className="w-3 h-3" />
+                          Players
+                        </div>
+                        <div className="font-mono font-bold text-sm md:text-base text-primary">{bets.length}</div>
                       </div>
-                      <div className="p-2.5 md:p-3 text-center">
-                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Pool</div>
-                        <div className="font-mono font-semibold text-xs md:text-sm text-warning">{currentRound?.total_wagered || 0} W</div>
+                      <div className="p-2.5 md:p-3.5 text-center group hover:bg-card/30 transition-colors">
+                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Pool</div>
+                        <div className="font-mono font-bold text-sm md:text-base text-warning">{currentRound?.total_wagered || 0} W</div>
                       </div>
-                      <div className="p-2.5 md:p-3 text-center">
-                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">Multiplier</div>
-                        <div className={`font-mono font-bold text-xs md:text-sm ${
-                          currentMultiplier >= 5 ? 'text-destructive' :
+                      <div className="p-2.5 md:p-3.5 text-center group hover:bg-card/30 transition-colors">
+                        <div className="text-[9px] md:text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Multiplier</div>
+                        <div className={`font-mono font-bold text-sm md:text-base transition-all duration-200 ${
+                          currentMultiplier >= 10 ? 'text-amber-400 scale-110' :
+                          currentMultiplier >= 5 ? 'text-purple-400' :
                           currentMultiplier >= 2 ? 'text-warning' : 'text-success'
                         }`}>
                           {currentMultiplier.toFixed(2)}×
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mobile Quick History Strip - Shows 5 past games directly below game screen */}
+                <div className="mt-2 lg:hidden">
+                  <div className="glass-card px-3 py-2">
+                    <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap font-medium">LAST:</span>
+                      {roundHistory.slice(0, 5).map((round) => {
+                        const crashPoint = round.crash_point || 0;
+                        const bgColor = crashPoint >= 10 ? 'bg-gradient-to-r from-amber-500/30 to-yellow-500/30 border-amber-500/50' :
+                                       crashPoint >= 5 ? 'bg-gradient-to-r from-purple-500/30 to-pink-500/30 border-purple-500/50' :
+                                       crashPoint >= 2 ? 'bg-success/20 border-success/50' :
+                                       'bg-destructive/20 border-destructive/50';
+                        const textColor = crashPoint >= 10 ? 'text-amber-400' :
+                                         crashPoint >= 5 ? 'text-purple-400' :
+                                         crashPoint >= 2 ? 'text-success' :
+                                         'text-destructive';
+                        return (
+                          <div 
+                            key={round.id} 
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold border ${bgColor} ${textColor} flex-shrink-0 transition-transform hover:scale-105`}
+                          >
+                            {crashPoint.toFixed(2)}×
+                          </div>
+                        );
+                      })}
+                      {roundHistory.length === 0 && (
+                        <span className="text-[10px] text-muted-foreground">No history yet</span>
+                      )}
                     </div>
                   </div>
                 </div>
