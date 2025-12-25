@@ -46,6 +46,9 @@ const Game = () => {
   const initialLoadRef = useRef(true);
   const crashedAtRef = useRef<number | null>(null);
   const lastMilestoneRef = useRef<number>(1);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastCountdownBeepRef = useRef<number>(0);
+  const audioInitializedRef = useRef(false);
 
   const isFlying = currentRound?.status === 'flying';
   const isCountdown = currentRound?.status === 'countdown';
@@ -93,6 +96,66 @@ const Game = () => {
     }
   }, [nextRoundIn]);
 
+  // Initialize audio on first user interaction
+  useEffect(() => {
+    const handleFirstInteraction = () => {
+      if (!audioInitializedRef.current) {
+        initAudioContext();
+        audioInitializedRef.current = true;
+      }
+    };
+    
+    document.addEventListener('click', handleFirstInteraction, { once: true });
+    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
+    
+    return () => {
+      document.removeEventListener('click', handleFirstInteraction);
+      document.removeEventListener('touchstart', handleFirstInteraction);
+    };
+  }, [initAudioContext]);
+
+  // Countdown beep timer (3, 2, 1)
+  useEffect(() => {
+    if (isCountdown) {
+      // Clear previous timer
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
+      
+      // Play countdown beeps at 3, 2, 1 seconds
+      const startTime = Date.now();
+      const countdownDuration = 5000; // 5 seconds countdown
+      
+      // Immediate first beep at countdown start
+      playCountdownBeep(5);
+      lastCountdownBeepRef.current = 5;
+      
+      countdownTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const remaining = Math.ceil((countdownDuration - elapsed) / 1000);
+        
+        if (remaining <= 3 && remaining >= 1 && remaining !== lastCountdownBeepRef.current) {
+          playCountdownBeep(remaining);
+          lastCountdownBeepRef.current = remaining;
+        }
+        
+        if (remaining <= 0) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+        }
+      }, 200);
+      
+      return () => {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+      };
+    }
+  }, [isCountdown, playCountdownBeep]);
+
   // Sound effects on status changes
   useEffect(() => {
     const currentStatus = currentRound?.status;
@@ -107,10 +170,6 @@ const Game = () => {
     }
 
     if (currentStatus !== prevStatus) {
-      if (currentStatus === 'countdown' && prevStatus !== 'countdown') {
-        playSound('tick');
-      }
-      
       if (currentStatus === 'flying' && prevStatus !== 'flying') {
         playSound('launch');
         startFlyingSound();
