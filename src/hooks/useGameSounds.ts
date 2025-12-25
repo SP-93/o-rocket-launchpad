@@ -2,7 +2,7 @@ import { useCallback, useRef, useEffect } from 'react';
 
 type SoundType = 'launch' | 'flying' | 'cashout' | 'crash' | 'tick' | 'win' | 'bet' | 'countdown' | 'milestone';
 
-// Mixkit CDN URLs for free sound effects
+// Modern CDN URLs for game sound effects
 const SOUND_URLS: Record<string, string> = {
   launch: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',      // Rocket whoosh
   crash: 'https://assets.mixkit.co/active_storage/sfx/2810/2810-preview.mp3',       // Big explosion
@@ -10,8 +10,9 @@ const SOUND_URLS: Record<string, string> = {
   win: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-preview.mp3',         // Victory fanfare
   countdown: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',   // Beep
   milestone: 'https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3',   // Achievement ding
-  tick: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',        // Tick sound
+  tick: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',        // Tick beep (changed from launch)
   bet: 'https://assets.mixkit.co/active_storage/sfx/146/146-preview.mp3',           // Coin drop
+  flying: 'https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3',        // Engine hum
 };
 
 interface BackgroundMusicNodes {
@@ -25,6 +26,7 @@ const useGameSounds = (enabled: boolean = true) => {
   const backgroundMusicRef = useRef<BackgroundMusicNodes | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const isInitializedRef = useRef(false);
+  const audioUnlockedRef = useRef(false);
   const musicVolumeRef = useRef<number>(0.25);
   const soundCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const flyingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -32,7 +34,7 @@ const useGameSounds = (enabled: boolean = true) => {
 
   const MASTER_VOLUME = 0.8;
 
-  // Preload all sounds on mount
+  // Preload all sounds on mount with mobile-friendly settings
   useEffect(() => {
     if (preloadedRef.current) return;
     preloadedRef.current = true;
@@ -42,6 +44,9 @@ const useGameSounds = (enabled: boolean = true) => {
       audio.preload = 'auto';
       audio.src = url;
       audio.volume = MASTER_VOLUME;
+      // Mobile-friendly attributes
+      (audio as any).playsInline = true;
+      audio.crossOrigin = 'anonymous';
       // Preload by loading metadata
       audio.load();
       soundCacheRef.current.set(key, audio);
@@ -64,27 +69,54 @@ const useGameSounds = (enabled: boolean = true) => {
       await audioContextRef.current.resume().catch(() => {});
     }
     
+    // Unlock audio on mobile by playing silent sounds
+    if (!audioUnlockedRef.current) {
+      try {
+        // Play and immediately pause each cached sound to unlock audio on iOS
+        soundCacheRef.current.forEach((audio) => {
+          const clone = audio.cloneNode() as HTMLAudioElement;
+          clone.volume = 0.001;
+          clone.play().then(() => {
+            clone.pause();
+            clone.currentTime = 0;
+          }).catch(() => {});
+        });
+        audioUnlockedRef.current = true;
+        console.log('[SoundSystem] Audio unlocked for mobile');
+      } catch (e) {
+        console.warn('[SoundSystem] Audio unlock failed:', e);
+      }
+    }
+    
     return audioContextRef.current;
   }, []);
 
-  // Auto-resume on user interaction
+  // Auto-resume on user interaction (critical for mobile)
   useEffect(() => {
     const handleInteraction = () => {
+      // Resume AudioContext
       if (audioContextRef.current?.state === 'suspended') {
         audioContextRef.current.resume().catch(console.error);
+      }
+      
+      // Unlock audio if not yet done
+      if (!audioUnlockedRef.current) {
+        initAudioContext();
       }
     };
 
     document.addEventListener('click', handleInteraction);
     document.addEventListener('touchstart', handleInteraction);
+    document.addEventListener('touchend', handleInteraction);
     document.addEventListener('keydown', handleInteraction);
 
     return () => {
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('touchstart', handleInteraction);
+      document.removeEventListener('touchend', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
     };
-  }, []);
+  }, [initAudioContext]);
 
   // Play MP3 sound from cache
   const playMP3 = useCallback((soundKey: string, volume: number = MASTER_VOLUME) => {
@@ -173,9 +205,12 @@ const useGameSounds = (enabled: boolean = true) => {
       flyingAudioRef.current.pause();
     }
 
-    const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/212/212-preview.mp3');
+    const audio = new Audio(SOUND_URLS.flying);
     audio.loop = true;
     audio.volume = 0.4;
+    (audio as any).playsInline = true;
+    audio.crossOrigin = 'anonymous';
+    
     audio.play().catch(err => {
       console.warn('[SoundSystem] Failed to start flying sound', err.message);
     });

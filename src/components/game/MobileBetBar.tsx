@@ -139,7 +139,7 @@ const MobileBetBar = ({
   };
 
   // Withdrawal button component - shown when there are pending winnings
-  const WithdrawButton = () => {
+  const WithdrawButton = ({ fullWidth = false }: { fullWidth?: boolean }) => {
     if (totalPending <= 0) return null;
     
     return (
@@ -151,11 +151,12 @@ const MobileBetBar = ({
               "h-12 font-bold gap-2",
               "bg-gradient-to-r from-success via-success/90 to-success",
               "text-success-foreground shadow-lg shadow-success/30",
-              "animate-pulse hover:animate-none"
+              "animate-pulse hover:animate-none",
+              fullWidth ? "w-full" : ""
             )}
           >
             <ArrowDownToLine className="w-4 h-4" />
-            <span>Withdraw {totalPending.toFixed(2)}</span>
+            <span>Withdraw {totalPending.toFixed(2)} WOVER</span>
           </Button>
         </SheetTrigger>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[70vh]">
@@ -200,10 +201,13 @@ const MobileBetBar = ({
     );
   };
 
-  // Show cashout button during flying
+  // Show cashout button during flying - but also show withdraw if available
   if (canCashOut) {
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-gradient-to-t from-background via-background/95 to-transparent lg:hidden">
+      <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-gradient-to-t from-background via-background/95 to-transparent lg:hidden space-y-2">
+        {/* Withdraw button always at top when there are pending winnings */}
+        {totalPending > 0 && <WithdrawButton fullWidth />}
+        
         <Button
           onClick={handleCashOut}
           disabled={isCashingOut}

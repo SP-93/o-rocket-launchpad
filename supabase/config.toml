@@ -44,3 +44,6 @@ verify_jwt = false
 
 [functions.game-reset-stuck-claims]
 verify_jwt = false
+
+[functions.game-pending-winnings]
+verify_jwt = false
