@@ -39,6 +39,26 @@ export function useGameRound() {
   const [isLoading, setIsLoading] = useState(true);
   const multiplierIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastStatusRef = useRef<string | null>(null);
+  const lastRoundIdRef = useRef<string | null>(null);
+
+  // Fetch round history using RPC function
+  const fetchRoundHistory = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .rpc('get_game_rounds_public', { limit_count: 15 });
+
+      if (error) throw error;
+      
+      // Filter only crashed/payout rounds for history
+      const historyRounds = (data || [])
+        .filter((r: any) => ['crashed', 'payout'].includes(r.status))
+        .slice(0, 10) as GameRound[];
+      
+      setRoundHistory(historyRounds);
+    } catch (error) {
+      console.error('Error fetching round history:', error);
+    }
+  }, []);
 
   // Fetch current or most recent round using RPC function
   const fetchCurrentRound = useCallback(async () => {
@@ -56,6 +76,13 @@ export function useGameRound() {
         
         const round = (activeRound || rounds[0]) as GameRound;
         setCurrentRound(round);
+        
+        // CRITICAL: When a new round starts (round ID changed and status is betting), refresh history
+        if (round.id !== lastRoundIdRef.current && round.status === 'betting') {
+          console.log('[useGameRound] New round detected, refreshing history');
+          fetchRoundHistory();
+        }
+        lastRoundIdRef.current = round.id;
         
         // Start multiplier animation immediately when flying
         if (round.status === 'flying' && lastStatusRef.current !== 'flying') {
@@ -79,7 +106,7 @@ export function useGameRound() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [fetchRoundHistory]);
 
   // Start multiplier animation
   const startMultiplierAnimation = useCallback((startedAt: string | null) => {
@@ -105,24 +132,7 @@ export function useGameRound() {
     }
   }, []);
 
-  // Fetch round history using RPC function
-  const fetchRoundHistory = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .rpc('get_game_rounds_public', { limit_count: 15 });
-
-      if (error) throw error;
-      
-      // Filter only crashed/payout rounds for history
-      const historyRounds = (data || [])
-        .filter((r: any) => ['crashed', 'payout'].includes(r.status))
-        .slice(0, 10) as GameRound[];
-      
-      setRoundHistory(historyRounds);
-    } catch (error) {
-      console.error('Error fetching round history:', error);
-    }
-  }, []);
+  // fetchRoundHistory is now defined above fetchCurrentRound
 
   // Initial fetch and polling
   useEffect(() => {
