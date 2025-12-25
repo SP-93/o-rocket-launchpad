@@ -40,9 +40,18 @@ const BettingPanel = ({
   
   const { availableTickets, groupedTickets, refetch: refetchTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
-  const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount } = useClaimWinnings(walletAddress);
+  const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount, isRecovering } = useClaimWinnings(walletAddress);
   const { pendingWinnings, claimingWinnings, totalPending, isLoading: isPendingLoading, refetch: refetchPending } = usePendingWinnings(walletAddress);
   
+  // Show recovery indicator if recovering a pending claim
+  useEffect(() => {
+    if (isRecovering) {
+      toast({
+        title: 'Recovering Claim',
+        description: 'Found pending transaction from previous session...',
+      });
+    }
+  }, [isRecovering]);
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
 
@@ -273,20 +282,30 @@ const BettingPanel = ({
 
           {/* Claim Winnings Button - shows when player won */}
           {myBet.status === 'won' && canClaim && (
-            <Button
-              onClick={handleClaimWinnings}
-              disabled={isClaiming}
-              className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30"
-            >
-              {isClaiming ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-5 h-5" />
-                  <span>CLAIM {pendingAmount} WOVER</span>
-                </div>
+            <>
+              <Button
+                onClick={handleClaimWinnings}
+                disabled={isClaiming || isRecovering}
+                className="w-full h-14 text-lg font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30"
+              >
+                {isClaiming || isRecovering ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{isRecovering ? 'Recovering...' : 'Confirming...'}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Wallet className="w-5 h-5" />
+                    <span>CLAIM {pendingAmount} WOVER</span>
+                  </div>
+                )}
+              </Button>
+              {isClaiming && (
+                <p className="text-center text-xs text-warning animate-pulse">
+                  ⚠️ Do not refresh page while claiming!
+                </p>
               )}
-            </Button>
+            </>
           )}
 
           {currentRound.status === 'betting' && (
@@ -330,14 +349,14 @@ const BettingPanel = ({
         <div className="p-2 space-y-1.5 max-h-48 overflow-y-auto">
           {/* Individual wins list */}
           {allWins.map((win) => {
-            const isClaiming = win.status === 'claiming' || claimingBetId === win.id;
+            const isClaimingThis = win.status === 'claiming' || claimingBetId === win.id;
             const isReady = win.status === 'won' && !claimingBetId;
             
             return (
               <div 
                 key={win.id} 
                 className={`flex items-center justify-between p-2 rounded-lg border transition-all ${
-                  isClaiming 
+                  isClaimingThis 
                     ? 'bg-warning/10 border-warning/30' 
                     : 'bg-success/10 border-success/20 hover:border-success/40'
                 }`}
@@ -347,7 +366,7 @@ const BettingPanel = ({
                     <span className="font-bold text-success text-sm">
                       +{win.winnings.toFixed(2)} WOVER
                     </span>
-                    {isClaiming && (
+                    {isClaimingThis && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning animate-pulse">
                         Claiming...
                       </span>
@@ -364,15 +383,15 @@ const BettingPanel = ({
                 
                 <Button
                   onClick={() => handleSingleClaim(win)}
-                  disabled={isClaiming || !isReady}
+                  disabled={isClaiming || isRecovering || !isReady}
                   size="sm"
                   className={`h-7 px-3 text-xs font-bold ${
-                    isClaiming 
+                    isClaimingThis 
                       ? 'bg-warning/20 text-warning cursor-wait'
                       : 'bg-success hover:bg-success/90 text-success-foreground shadow-sm shadow-success/20'
                   }`}
                 >
-                  {isClaiming ? (
+                  {isClaimingThis ? (
                     <Loader2 className="w-3 h-3 animate-spin" />
                   ) : (
                     <div className="flex items-center gap-1">
