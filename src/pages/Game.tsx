@@ -20,8 +20,9 @@ import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock } from 'lucide-react';
+import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Ticket, History, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import useGameSounds from '@/hooks/useGameSounds';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -546,6 +547,50 @@ const Game = () => {
               </div>
             )}
           </div>
+
+          {/* Mobile Tabs Section - Only visible on mobile */}
+          {isConnected && (
+            <div className="mt-4 lg:hidden">
+              <Tabs defaultValue="tickets" className="w-full">
+                <TabsList className="w-full grid grid-cols-3 bg-card/50 backdrop-blur border border-border/30 rounded-xl h-11">
+                  <TabsTrigger 
+                    value="tickets" 
+                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                  >
+                    <Ticket className="w-3.5 h-3.5 mr-1.5" />
+                    Tickets
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="history" 
+                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                  >
+                    <History className="w-3.5 h-3.5 mr-1.5" />
+                    History
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="leaderboard" 
+                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                  >
+                    <Trophy className="w-3.5 h-3.5 mr-1.5" />
+                    Top
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="tickets" className="mt-3">
+                  <TicketPurchase walletAddress={address} isConnected={isConnected} />
+                </TabsContent>
+                
+                <TabsContent value="history" className="mt-3 space-y-3">
+                  <MemoizedCrashHistory history={roundHistory} />
+                  <MemoizedLiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
+                </TabsContent>
+                
+                <TabsContent value="leaderboard" className="mt-3">
+                  <MemoizedLeaderboard />
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
 
           {/* How to Play - Modern minimal cards */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
