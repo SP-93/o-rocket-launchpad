@@ -40,22 +40,21 @@ export function useGameRound() {
   const multiplierIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastStatusRef = useRef<string | null>(null);
 
-  // Fetch current or most recent round
+  // Fetch current or most recent round using RPC function
   const fetchCurrentRound = useCallback(async () => {
     try {
-      // First try to get an active round
-      const { data: activeRound, error: activeError } = await supabase
-        .from('game_rounds_secure')
-        .select('*')
-        .in('status', ['betting', 'countdown', 'flying'])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: rounds, error } = await supabase
+        .rpc('get_game_rounds_public', { limit_count: 5 });
 
-      if (activeError) throw activeError;
+      if (error) throw error;
       
-      if (activeRound) {
-        const round = activeRound as GameRound;
+      if (rounds && rounds.length > 0) {
+        // Find active round first
+        const activeRound = rounds.find((r: any) => 
+          ['betting', 'countdown', 'flying'].includes(r.status)
+        );
+        
+        const round = (activeRound || rounds[0]) as GameRound;
         setCurrentRound(round);
         
         // Start multiplier animation immediately when flying
@@ -68,28 +67,12 @@ export function useGameRound() {
           stopMultiplierAnimation();
           if (round.status === 'betting' || round.status === 'countdown') {
             setCurrentMultiplier(1.00);
+          } else if (round.crash_point) {
+            setCurrentMultiplier(round.crash_point);
           }
         }
         
         lastStatusRef.current = round.status;
-      } else {
-        // No active round, fetch the most recent crashed or payout round
-        const { data: lastRound, error: lastError } = await supabase
-          .from('game_rounds_secure')
-          .select('*')
-          .in('status', ['crashed', 'payout'])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!lastError && lastRound) {
-          setCurrentRound(lastRound as GameRound);
-          stopMultiplierAnimation();
-          // Set final multiplier to crash point if available
-          if (lastRound.crash_point) {
-            setCurrentMultiplier(lastRound.crash_point);
-          }
-        }
       }
     } catch (error) {
       console.error('Error fetching current round:', error);
@@ -122,18 +105,20 @@ export function useGameRound() {
     }
   }, []);
 
-  // Fetch round history (include payout rounds which have crash_point visible)
+  // Fetch round history using RPC function
   const fetchRoundHistory = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('game_rounds_secure')
-        .select('*')
-        .in('status', ['crashed', 'payout'])
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .rpc('get_game_rounds_public', { limit_count: 15 });
 
       if (error) throw error;
-      setRoundHistory((data || []) as GameRound[]);
+      
+      // Filter only crashed/payout rounds for history
+      const historyRounds = (data || [])
+        .filter((r: any) => ['crashed', 'payout'].includes(r.status))
+        .slice(0, 10) as GameRound[];
+      
+      setRoundHistory(historyRounds);
     } catch (error) {
       console.error('Error fetching round history:', error);
     }

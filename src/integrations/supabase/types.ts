@@ -478,6 +478,23 @@ export type Database = {
       }
     }
     Functions: {
+      get_game_rounds_public: {
+        Args: { limit_count?: number }
+        Returns: {
+          crash_point: number
+          crashed_at: string
+          created_at: string
+          id: string
+          round_number: number
+          server_seed: string
+          server_seed_hash: string
+          started_at: string
+          status: string
+          total_bets: number
+          total_payouts: number
+          total_wagered: number
+        }[]
+      }
       get_visible_crash_point: {
         Args: { actual_crash_point: number; round_status: string }
         Returns: number
