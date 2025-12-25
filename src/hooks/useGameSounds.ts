@@ -19,7 +19,7 @@ const useGameSounds = (enabled: boolean = true) => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
-      masterGainRef.current.gain.value = 0.9; // Increased volume
+      masterGainRef.current.gain.value = 1.0; // Maximum volume
       masterGainRef.current.connect(audioContextRef.current.destination);
       isInitializedRef.current = true;
     }
@@ -331,15 +331,15 @@ const useGameSounds = (enabled: boolean = true) => {
 
     switch (type) {
       case 'launch':
-        // Cinematic whoosh with rising pitch
+        // ENHANCED: Cinematic rocket launch with sub-bass rumble
         createSmoothSound(
-          [90, 140, 220],
-          ['sawtooth', 'triangle', 'sine'],
-          1.0,
-          [0.1, 0.07, 0.04],
-          900,
-          0.04,
-          0.25
+          [60, 100, 160, 280],
+          ['sawtooth', 'triangle', 'sine', 'sine'],
+          1.2,
+          [0.18, 0.12, 0.08, 0.05],
+          1200,
+          0.03,
+          0.3
         );
         
         // Rising engine sound - use already awaited ctx
@@ -348,29 +348,45 @@ const useGameSounds = (enabled: boolean = true) => {
         const now = launchCtx.currentTime;
         const master = masterGainRef.current || launchCtx.destination;
         
+        // Sub-bass rumble (30-60Hz)
+        const subBass = launchCtx.createOscillator();
+        const subGain = launchCtx.createGain();
+        subBass.type = 'sine';
+        subBass.frequency.setValueAtTime(35, now);
+        subBass.frequency.exponentialRampToValueAtTime(80, now + 0.8);
+        subGain.gain.setValueAtTime(0, now);
+        subGain.gain.linearRampToValueAtTime(0.25, now + 0.1);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        subBass.connect(subGain);
+        subGain.connect(master!);
+        subBass.start(now);
+        subBass.stop(now + 1.0);
+        
+        // Main rising engine
         const riseOsc = launchCtx.createOscillator();
         const riseGain = launchCtx.createGain();
         const riseFilter = launchCtx.createBiquadFilter();
         
         riseOsc.type = 'sawtooth';
-        riseOsc.frequency.setValueAtTime(120, now);
-        riseOsc.frequency.exponentialRampToValueAtTime(350, now + 0.8);
+        riseOsc.frequency.setValueAtTime(100, now);
+        riseOsc.frequency.exponentialRampToValueAtTime(400, now + 0.9);
         
         riseFilter.type = 'lowpass';
-        riseFilter.frequency.setValueAtTime(250, now);
-        riseFilter.frequency.exponentialRampToValueAtTime(1400, now + 0.6);
+        riseFilter.frequency.setValueAtTime(300, now);
+        riseFilter.frequency.exponentialRampToValueAtTime(2000, now + 0.7);
+        riseFilter.Q.value = 2;
         
         riseGain.gain.setValueAtTime(0, now);
-        riseGain.gain.linearRampToValueAtTime(0.12, now + 0.08);
-        riseGain.gain.linearRampToValueAtTime(0.08, now + 0.6);
-        riseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+        riseGain.gain.linearRampToValueAtTime(0.18, now + 0.06);
+        riseGain.gain.linearRampToValueAtTime(0.12, now + 0.7);
+        riseGain.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
         
         riseOsc.connect(riseFilter);
         riseFilter.connect(riseGain);
         riseGain.connect(master!);
         
         riseOsc.start(now);
-        riseOsc.stop(now + 1.0);
+        riseOsc.stop(now + 1.1);
         break;
 
       case 'cashout':
@@ -382,15 +398,15 @@ const useGameSounds = (enabled: boolean = true) => {
         break;
 
       case 'crash':
-        // Deep impact sound
+        // ENHANCED: Dramatic explosion with deep sub-bass impact
         createSmoothSound(
-          [65, 45, 30],
-          ['sawtooth', 'triangle', 'sine'],
-          0.6,
-          [0.22, 0.18, 0.14],
-          350,
-          0.01,
-          0.35
+          [40, 55, 80, 120],
+          ['sawtooth', 'triangle', 'sine', 'sine'],
+          0.8,
+          [0.30, 0.25, 0.20, 0.12],
+          500,
+          0.008,
+          0.5
         );
         
         // Noise burst for explosion effect - use already awaited ctx
@@ -399,11 +415,25 @@ const useGameSounds = (enabled: boolean = true) => {
         const crashNow = crashCtx.currentTime;
         const crashMaster = masterGainRef.current || crashCtx.destination;
         
-        const bufferSize = crashCtx.sampleRate * 0.4;
+        // Deep sub-bass thud (20-50Hz)
+        const impactBass = crashCtx.createOscillator();
+        const impactGain = crashCtx.createGain();
+        impactBass.type = 'sine';
+        impactBass.frequency.setValueAtTime(50, crashNow);
+        impactBass.frequency.exponentialRampToValueAtTime(25, crashNow + 0.4);
+        impactGain.gain.setValueAtTime(0.35, crashNow);
+        impactGain.gain.exponentialRampToValueAtTime(0.001, crashNow + 0.5);
+        impactBass.connect(impactGain);
+        impactGain.connect(crashMaster!);
+        impactBass.start(crashNow);
+        impactBass.stop(crashNow + 0.5);
+        
+        // Explosion noise burst (louder)
+        const bufferSize = crashCtx.sampleRate * 0.6;
         const buffer = crashCtx.createBuffer(1, bufferSize, crashCtx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
-          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.5);
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 1.2);
         }
         
         const noiseSource = crashCtx.createBufferSource();
@@ -412,11 +442,12 @@ const useGameSounds = (enabled: boolean = true) => {
         const noiseFilter = crashCtx.createBiquadFilter();
         
         noiseFilter.type = 'lowpass';
-        noiseFilter.frequency.setValueAtTime(600, crashNow);
-        noiseFilter.frequency.exponentialRampToValueAtTime(80, crashNow + 0.4);
+        noiseFilter.frequency.setValueAtTime(800, crashNow);
+        noiseFilter.frequency.exponentialRampToValueAtTime(60, crashNow + 0.5);
+        noiseFilter.Q.value = 1.5;
         
-        noiseGain.gain.setValueAtTime(0.25, crashNow);
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, crashNow + 0.4);
+        noiseGain.gain.setValueAtTime(0.35, crashNow);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, crashNow + 0.55);
         
         noiseSource.connect(noiseFilter);
         noiseFilter.connect(noiseGain);

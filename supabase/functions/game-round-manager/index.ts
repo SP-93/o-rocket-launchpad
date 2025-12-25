@@ -163,10 +163,11 @@ async function generateCrashPoint(serverSeed: string): Promise<number> {
   } else if (n < 0.96) {
     cp = 5.00 + (n - 0.88) / 0.08 * 2.50;
   } else {
-    cp = 7.50 + (n - 0.96) / 0.04 * 4.50;
+    cp = 7.50 + (n - 0.96) / 0.04 * 2.50; // Reduced from 4.50 to cap at ~10x
   }
   
-  return Math.round(cp * 100) / 100;
+  // CRITICAL: Cap crash point at 10.00 to match calculateMultiplier max
+  return Math.min(Math.round(cp * 100) / 100, 10.00);
 }
 
 function generateServerSeed(): string {
@@ -490,6 +491,48 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     }
 
     case 'flying': {
+      // TIMEOUT RECOVERY: Force crash rounds stuck for > 2 minutes
+      const MAX_FLYING_DURATION_SECONDS = 120;
+      const flyingElapsed = (now - new Date(currentRound.started_at).getTime()) / 1000;
+      
+      if (flyingElapsed >= MAX_FLYING_DURATION_SECONDS) {
+        console.log(`[${requestId}] TIMEOUT: Round ${currentRound.round_number} stuck for ${flyingElapsed.toFixed(0)}s, force crashing at 10.00x`);
+        
+        const crashedAt = new Date().toISOString();
+        await supabase
+          .from('game_rounds')
+          .update({
+            status: 'crashed',
+            crash_point: 10.00,
+            crashed_at: crashedAt,
+          })
+          .eq('id', currentRound.id);
+        
+        // Mark all active bets as WON at max multiplier (they reached 10x)
+        const { data: activeBets } = await supabase
+          .from('game_bets')
+          .select('id, bet_amount')
+          .eq('round_id', currentRound.id)
+          .eq('status', 'active');
+        
+        for (const bet of activeBets || []) {
+          const winnings = Math.floor(bet.bet_amount * 10);
+          await supabase
+            .from('game_bets')
+            .update({
+              status: 'won',
+              cashed_out_at: 10.00,
+              winnings,
+            })
+            .eq('id', bet.id);
+        }
+        
+        // Cleanup seed
+        await deleteSeedFromDb(supabase, currentRound.id);
+        
+        return { action: 'timeout_crashed', details: { roundId: currentRound.id, crashPoint: 10.00, flyingDuration: flyingElapsed } };
+      }
+      
       // SAFETY CHECK: If round already has crash_point, it was already crashed
       // This can happen due to race conditions between concurrent ticks
       if (currentRound.crash_point !== null) {
