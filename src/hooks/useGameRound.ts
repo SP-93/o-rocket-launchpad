@@ -196,17 +196,15 @@ export function useGameBets(roundId: string | undefined, walletAddress: string |
   const [myBet, setMyBet] = useState<GameBet | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch bets for current round
+  // Fetch bets for current round using public RPC function
   const fetchBets = useCallback(async () => {
     if (!roundId) return;
 
     setIsLoading(true);
     try {
+      // Use public RPC function that bypasses RLS for viewing bets
       const { data, error } = await supabase
-        .from('game_bets')
-        .select('*')
-        .eq('round_id', roundId)
-        .order('created_at', { ascending: false });
+        .rpc('get_round_bets_public', { round_uuid: roundId });
 
       if (error) throw error;
       setBets((data || []) as GameBet[]);
@@ -214,7 +212,7 @@ export function useGameBets(roundId: string | undefined, walletAddress: string |
       // Find user's bet
       if (walletAddress) {
         const userBet = data?.find(
-          b => b.wallet_address.toLowerCase() === walletAddress.toLowerCase()
+          (b: any) => b.wallet_address.toLowerCase() === walletAddress.toLowerCase()
         );
         setMyBet(userBet as GameBet || null);
       }

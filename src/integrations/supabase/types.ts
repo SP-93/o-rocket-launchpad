@@ -495,6 +495,20 @@ export type Database = {
           total_wagered: number
         }[]
       }
+      get_round_bet_count: { Args: { round_uuid: string }; Returns: number }
+      get_round_bets_public: {
+        Args: { round_uuid: string }
+        Returns: {
+          auto_cashout_at: number
+          bet_amount: number
+          cashed_out_at: number
+          created_at: string
+          id: string
+          status: string
+          wallet_address: string
+          winnings: number
+        }[]
+      }
       get_visible_crash_point: {
         Args: { actual_crash_point: number; round_status: string }
         Returns: number

@@ -22,6 +22,7 @@ interface EngineState {
   error: string | null;
   pauseReason: string | null;
   threshold: number;
+  activePlayers: number;
 }
 
 const PHASE_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
@@ -45,6 +46,7 @@ const AutoGameControl = () => {
     error: null,
     pauseReason: null,
     threshold: 100,
+    activePlayers: 0,
   });
   const [onChainBalance, setOnChainBalance] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,6 +68,7 @@ const AutoGameControl = () => {
           prizePool: response.data.prize_pool ?? 0,
           pauseReason: response.data.pause_reason ?? null,
           threshold: response.data.threshold ?? 100,
+          activePlayers: response.data.active_players ?? 0,
           error: null,
         }));
         setLastUpdate(new Date());
@@ -269,12 +272,12 @@ const AutoGameControl = () => {
           
           <div className="bg-background/50 rounded-lg p-3 border border-border/30">
             <p className="text-xs text-muted-foreground">
-              {currentStatus === 'crashed' ? 'Crash Point' : 'Players'}
+              {currentStatus === 'crashed' ? 'Crash Point' : 'Active Players'}
             </p>
             <p className="text-xl font-bold font-mono">
               {currentStatus === 'crashed' 
                 ? `${state.currentRound?.crash_point?.toFixed(2)}x`
-                : state.currentRound?.total_bets || 0}
+                : state.activePlayers}
             </p>
           </div>
         </div>
