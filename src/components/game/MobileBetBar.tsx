@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Loader2, Zap, ChevronUp, Ticket, ShoppingCart, Wallet } from 'lucide-react';
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Loader2, Zap, ChevronUp, Ticket, ShoppingCart, ArrowDownToLine } from 'lucide-react';
 import { useGameTickets } from '@/hooks/useGameTickets';
+import { usePendingWinnings } from '@/hooks/usePendingWinnings';
+import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import TicketPurchase from './TicketPurchase';
+import { useWalletClient } from 'wagmi';
+import { ethers } from 'ethers';
 
 interface MobileBetBarProps {
   walletAddress: string | null;
@@ -27,10 +31,16 @@ const MobileBetBar = ({
 }: MobileBetBarProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isTicketSheetOpen, setIsTicketSheetOpen] = useState(false);
+  const [isWithdrawSheetOpen, setIsWithdrawSheetOpen] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isCashingOut, setIsCashingOut] = useState(false);
+  const [claimingBetId, setClaimingBetId] = useState<string | null>(null);
+  
   const { availableTickets } = useGameTickets(walletAddress);
+  const { pendingWinnings, totalPending, refetch: refetchPending } = usePendingWinnings(walletAddress || undefined);
+  const { claimWinnings } = useClaimWinnings(walletAddress || undefined);
+  const { data: walletClient } = useWalletClient();
 
   if (!isConnected) return null;
 
@@ -94,11 +104,100 @@ const MobileBetBar = ({
       
       const actualWin = response.data?.cashout?.winnings;
       toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin?.toFixed(2) || ''} WOVER`);
+      refetchPending();
     } catch (error: any) {
       toast.error(error.message || 'Failed to cash out');
     } finally {
       setIsCashingOut(false);
     }
+  };
+
+  const handleClaimWinnings = async (bet: { id: string; round_id: string; winnings: number }) => {
+    if (!walletClient || !walletAddress) {
+      toast.error('Wallet not connected');
+      return;
+    }
+
+    setClaimingBetId(bet.id);
+    try {
+      // Convert viem wallet client to ethers signer
+      const provider = new ethers.providers.Web3Provider(walletClient as any);
+      const signer = provider.getSigner();
+      
+      await claimWinnings(signer, bet.round_id, bet.winnings);
+      toast.success(`Claimed ${bet.winnings.toFixed(2)} WOVER!`);
+      refetchPending();
+      
+      if (pendingWinnings.length <= 1) {
+        setIsWithdrawSheetOpen(false);
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to claim winnings');
+    } finally {
+      setClaimingBetId(null);
+    }
+  };
+
+  // Withdrawal button component - shown when there are pending winnings
+  const WithdrawButton = () => {
+    if (totalPending <= 0) return null;
+    
+    return (
+      <Sheet open={isWithdrawSheetOpen} onOpenChange={setIsWithdrawSheetOpen}>
+        <SheetTrigger asChild>
+          <Button
+            size="lg"
+            className={cn(
+              "h-12 font-bold gap-2",
+              "bg-gradient-to-r from-success via-success/90 to-success",
+              "text-success-foreground shadow-lg shadow-success/30",
+              "animate-pulse hover:animate-none"
+            )}
+          >
+            <ArrowDownToLine className="w-4 h-4" />
+            <span>Withdraw {totalPending.toFixed(2)}</span>
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[70vh]">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="text-center">Withdraw Winnings</SheetTitle>
+          </SheetHeader>
+          <div className="space-y-3 overflow-y-auto max-h-[50vh]">
+            {pendingWinnings.map((win) => (
+              <div
+                key={win.id}
+                className="flex items-center justify-between p-4 rounded-xl bg-card border border-success/30"
+              >
+                <div>
+                  <div className="font-bold text-success">{win.winnings.toFixed(2)} WOVER</div>
+                  <div className="text-xs text-muted-foreground">
+                    Bet: {win.bet_amount} • Multiplier: {win.cashed_out_at?.toFixed(2)}x
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => handleClaimWinnings(win)}
+                  disabled={claimingBetId === win.id}
+                  className="bg-success hover:bg-success/90 text-success-foreground"
+                >
+                  {claimingBetId === win.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    'Claim'
+                  )}
+                </Button>
+              </div>
+            ))}
+            
+            {pendingWinnings.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                No pending winnings to claim
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    );
   };
 
   // Show cashout button during flying
@@ -136,12 +235,17 @@ const MobileBetBar = ({
   if (myBet?.status === 'active' && currentRound?.status !== 'flying') {
     return (
       <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-gradient-to-t from-background via-background/95 to-transparent lg:hidden">
-        <div className="bg-card border border-primary/30 rounded-xl p-4 text-center">
-          <div className="text-sm text-muted-foreground">Bet Placed</div>
-          <div className="font-bold text-primary text-lg">{myBet.bet_amount} WOVER</div>
-          {myBet.auto_cashout_at && (
-            <div className="text-xs text-muted-foreground">Auto-cashout: {myBet.auto_cashout_at}x</div>
-          )}
+        <div className="flex gap-2">
+          {/* Withdraw button - always visible when there are pending winnings */}
+          <WithdrawButton />
+          
+          <div className="flex-1 bg-card border border-primary/30 rounded-xl p-3 text-center">
+            <div className="text-xs text-muted-foreground">Bet Placed</div>
+            <div className="font-bold text-primary">{myBet.bet_amount} WOVER</div>
+            {myBet.auto_cashout_at && (
+              <div className="text-xs text-muted-foreground">Auto: {myBet.auto_cashout_at}x</div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -151,6 +255,13 @@ const MobileBetBar = ({
   if (canBet) {
     return (
       <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-gradient-to-t from-background via-background/95 to-transparent lg:hidden">
+        {/* Withdraw button - always shown at top when there are pending winnings */}
+        {totalPending > 0 && (
+          <div className="mb-2">
+            <WithdrawButton />
+          </div>
+        )}
+        
         {/* No tickets - Show buy tickets button */}
         {availableTickets.length === 0 ? (
           <Sheet open={isTicketSheetOpen} onOpenChange={setIsTicketSheetOpen}>
@@ -254,6 +365,9 @@ const MobileBetBar = ({
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 p-3 bg-gradient-to-t from-background via-background/95 to-transparent lg:hidden">
       <div className="flex gap-2">
+        {/* Withdraw button - always visible when there are pending winnings */}
+        <WithdrawButton />
+        
         {/* Buy Tickets Button */}
         <Sheet open={isTicketSheetOpen} onOpenChange={setIsTicketSheetOpen}>
           <SheetTrigger asChild>
