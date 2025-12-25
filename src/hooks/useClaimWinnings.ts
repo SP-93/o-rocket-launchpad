@@ -2,8 +2,7 @@ import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
 import { toast } from '@/hooks/use-toast';
 import { CRASH_GAME_ABI } from '@/contracts/artifacts/crashGame';
-import { getDeployedContracts } from '@/contracts/storage';
-import { getProviderSync } from '@/lib/rpcProvider';
+import { getDeployedContractsAsync } from '@/contracts/storage';
 import { supabase } from '@/integrations/supabase/client';
 
 interface ClaimState {
@@ -20,21 +19,6 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     pendingAmount: '0',
     txHash: null,
   });
-
-  const getContract = useCallback((signer?: ethers.Signer) => {
-    const contracts = getDeployedContracts();
-    const contractAddress = contracts.crashGame;
-    if (!contractAddress) {
-      throw new Error('CrashGame contract not deployed');
-    }
-
-    if (signer) {
-      return new ethers.Contract(contractAddress, CRASH_GAME_ABI, signer);
-    }
-
-    const provider = getProviderSync();
-    return new ethers.Contract(contractAddress, CRASH_GAME_ABI, provider);
-  }, []);
 
   // Check if player can claim for a specific bet
   const checkCanClaim = useCallback(
@@ -103,6 +87,23 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       let txHash: string | null = null;
 
       try {
+        // Preflight: resolve contract + verify network BEFORE locking bet in backend
+        const deployed = await getDeployedContractsAsync();
+        const contractAddress = deployed.crashGame;
+        if (!contractAddress) {
+          throw new Error('Game contract not configured');
+        }
+
+        const provider = signer.provider;
+        if (!provider) {
+          throw new Error('No wallet provider');
+        }
+
+        const net = await provider.getNetwork();
+        if (net?.chainId !== 54176) {
+          throw new Error(`Wrong network (chainId ${net?.chainId}). Switch to OverProtocol Mainnet`);
+        }
+
         // 1) Get claim signature (also locks bet -> claiming)
         const { data: claimResponse, error: claimError } = await supabase.functions.invoke('game-sign-claim', {
           body: {
@@ -130,31 +131,40 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         // Bet is now locked in "claiming" state
         locked = true;
 
-        const contract = getContract(signer);
         const { claimData, signature } = claimResponse;
 
         if (!signature || !claimData?.amount || !claimData?.roundId) {
           throw new Error('Invalid claim response');
         }
 
+        // contractAddress already resolved in preflight above
+        const contract = new ethers.Contract(contractAddress, CRASH_GAME_ABI, signer);
+
         // Convert amount to BigNumber
         const amountWei = ethers.BigNumber.from(claimData.amount);
 
         console.log('[ClaimWinnings] Claiming on-chain:', {
           betId,
+          contractAddress,
           amount: ethers.utils.formatEther(amountWei),
           roundId: claimData.roundId,
           nonce,
         });
 
-        // Estimate gas
-        const gasEstimate = await contract.estimateGas.claimWinnings(
-          amountWei,
-          claimData.roundId,
-          nonce,
-          signature
-        );
-        const gasLimit = gasEstimate.mul(120).div(100);
+        // Gas: on mobile wallets estimateGas frequently fails; fallback to a safe fixed limit
+        let gasLimit: ethers.BigNumber | undefined;
+        try {
+          const gasEstimate = await contract.estimateGas.claimWinnings(
+            amountWei,
+            claimData.roundId,
+            nonce,
+            signature
+          );
+          gasLimit = gasEstimate.mul(130).div(100);
+        } catch (e) {
+          console.warn('[ClaimWinnings] estimateGas failed, using fixed gasLimit', e);
+          gasLimit = ethers.BigNumber.from(800_000);
+        }
 
         // 2) Send claim transaction
         const tx = await contract.claimWinnings(amountWei, claimData.roundId, nonce, signature, { gasLimit });
@@ -250,7 +260,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         throw new Error(errorMessage);
       }
     },
-    [walletAddress, getContract]
+    [walletAddress]
   );
 
 
