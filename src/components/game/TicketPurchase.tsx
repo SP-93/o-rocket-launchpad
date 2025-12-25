@@ -6,6 +6,7 @@ import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, Ext
 import { useGameTickets } from '@/hooks/useGameTickets';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
+import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
 import { toast } from '@/hooks/use-toast';
 
 interface TicketPurchaseProps {
@@ -22,36 +23,23 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [selectedCurrency, setSelectedCurrency] = useState<'WOVER' | 'USDT'>('WOVER');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [txStatus, setTxStatus] = useState<TxStatus>('idle');
-  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
   const [manualTxHash, setManualTxHash] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
   const { buyTicket, groupedTickets, refetch } = useGameTickets(walletAddress);
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
-  const { transferToken, getTokenBalance, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
+  const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
+  
+  // Use real-time balance hook - refreshes every 3 seconds + on DB changes
+  const { balance: tokenBalance, refreshBalance } = useWalletBalance(
+    isConnected ? walletAddress : undefined,
+    { currency: selectedCurrency, refreshInterval: 3000 }
+  );
 
   const usdtAmount = selectedCurrency === 'USDT' && woverPrice 
     ? (selectedValue * woverPrice).toFixed(4)
     : null;
-
-  // Fetch token balance with periodic refresh
-  useEffect(() => {
-    if (!walletAddress || !isConnected) {
-      setTokenBalance(null);
-      return;
-    }
-    
-    // Initial fetch
-    getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
-    
-    // Periodic refresh every 10 seconds for live balance
-    const interval = setInterval(() => {
-      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
-    }, 10000);
-    
-    return () => clearInterval(interval);
-  }, [walletAddress, isConnected, selectedCurrency, getTokenBalance]);
 
   const handlePurchase = async () => {
     if (!isConnected || !walletAddress) {
@@ -120,11 +108,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           description: `${selectedValue} WOVER ticket added to your collection`,
         });
         
-        // Refresh data
+        // Refresh data immediately
         await refetch();
-        if (walletAddress) {
-          getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
-        }
+        triggerBalanceRefresh(); // Trigger global balance refresh
       }
     } catch (error) {
       toast({
@@ -182,7 +168,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       setManualTxHash('');
       setShowManualInput(false);
       await refetch();
-      getTokenBalance(selectedCurrency, walletAddress).then(setTokenBalance);
+      triggerBalanceRefresh(); // Trigger global balance refresh
     } catch (error) {
       toast({
         title: "Verification Failed",
