@@ -37,12 +37,12 @@ serve(async (req) => {
   }
 
   try {
-    const { walletAddress, roundId, amount, nonce } = await req.json();
+    const { walletAddress, betId, amount, nonce } = await req.json();
 
-    console.log('[game-sign-claim] Request:', { walletAddress, roundId, amount, nonce });
+    console.log('[game-sign-claim] Request:', { walletAddress, betId, amount, nonce });
 
     // Validate inputs
-    if (!walletAddress || !roundId || !amount || nonce === undefined) {
+    if (!walletAddress || !betId || !amount || nonce === undefined) {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -64,19 +64,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify the bet exists and player won
+    // Verify the bet exists and belongs to wallet
     const { data: bet, error: betError } = await supabase
       .from('game_bets')
       .select('*, game_rounds(*)')
-      .eq('round_id', roundId)
-      .ilike('wallet_address', walletAddress)
+      .eq('id', betId)
       .single();
 
     if (betError || !bet) {
       console.error('[game-sign-claim] Bet not found:', betError);
       return new Response(
-        JSON.stringify({ error: 'Bet not found for this round' }),
+        JSON.stringify({ error: 'Bet not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (bet.wallet_address?.toLowerCase() !== walletAddress.toLowerCase()) {
+      console.warn('[game-sign-claim] Wallet mismatch:', { betWallet: bet.wallet_address, walletAddress });
+      return new Response(
+        JSON.stringify({ error: 'Bet does not belong to this wallet' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const roundId = bet.round_id as string;
+    if (!roundId) {
+      return new Response(
+        JSON.stringify({ error: 'Bet missing round_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
