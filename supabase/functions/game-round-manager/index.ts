@@ -500,6 +500,17 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
     }
 
     case 'flying': {
+      // SAFETY CHECK: If round already has crash_point, it was already crashed
+      // This can happen due to race conditions between concurrent ticks
+      if (currentRound.crash_point !== null) {
+        console.log(`[${requestId}] Round ${currentRound.id} already has crash_point ${currentRound.crash_point}, recovering to crashed status`);
+        await supabase
+          .from('game_rounds')
+          .update({ status: 'crashed' })
+          .eq('id', currentRound.id);
+        return { action: 'recovering_crashed_round', details: { roundId: currentRound.id, crashPoint: currentRound.crash_point } };
+      }
+
       // Calculate current multiplier and check if should crash
       const currentMultiplier = calculateMultiplier(currentRound.started_at);
       
@@ -507,7 +518,25 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
       const seedData = await getSeedFromDb(supabase, currentRound.id);
       if (!seedData) {
         console.error(`[${requestId}] No seed found for flying round ${currentRound.id}`);
-        return { action: 'error', details: { error: 'Round seed not found' } };
+        // RECOVERY: Force crash the round without seed to prevent stuck state
+        console.log(`[${requestId}] Forcing crash on round ${currentRound.id} due to missing seed`);
+        await supabase
+          .from('game_rounds')
+          .update({
+            status: 'crashed',
+            crash_point: 1.00,
+            crashed_at: new Date().toISOString(),
+          })
+          .eq('id', currentRound.id);
+        
+        // Mark all active bets as lost
+        await supabase
+          .from('game_bets')
+          .update({ status: 'lost' })
+          .eq('round_id', currentRound.id)
+          .eq('status', 'active');
+        
+        return { action: 'forced_crash', details: { roundId: currentRound.id, reason: 'Missing seed' } };
       }
 
       const crashPoint = await generateCrashPoint(seedData.serverSeed);
