@@ -98,6 +98,10 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       const claimAmount = typeof amount === 'number' ? amount.toString() : amount;
 
+      // Track state for cleanup
+      let locked = false;
+      let txHash: string | null = null;
+
       try {
         // 1) Get claim signature (also locks bet -> claiming)
         const { data: claimResponse, error: claimError } = await supabase.functions.invoke('game-sign-claim', {
@@ -122,6 +126,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         if (claimError || !claimResponse?.success) {
           throw new Error(claimResponse?.error || 'Failed to get claim signature');
         }
+
+        // Bet is now locked in "claiming" state
+        locked = true;
 
         const contract = getContract(signer);
         const { claimData, signature } = claimResponse;
@@ -151,6 +158,7 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
         // 2) Send claim transaction
         const tx = await contract.claimWinnings(amountWei, claimData.roundId, nonce, signature, { gasLimit });
+        txHash = tx.hash;
 
         toast({
           title: 'Claiming Winnings...',
@@ -198,11 +206,10 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       } catch (error: any) {
         console.error('[ClaimWinnings] Error:', error);
 
-        // If user rejected tx in wallet, immediately unlock bet back to 'won'
-        const message = String(error?.message || '');
-        const rejected = error?.code === 4001 || message.toLowerCase().includes('user rejected');
-        if (rejected) {
+        // If bet was locked but NO tx was sent, unlock it immediately
+        if (locked && !txHash) {
           try {
+            console.log('[ClaimWinnings] Unlocking claim (no tx sent)...');
             await supabase.functions.invoke('game-cancel-claim', {
               body: { walletAddress, betId, nonce },
             });
@@ -213,6 +220,10 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
         setClaimState((prev) => ({ ...prev, isClaiming: false }));
 
+        // Determine error message
+        const message = String(error?.message || '');
+        const rejected = error?.code === 4001 || message.toLowerCase().includes('user rejected');
+        
         let errorMessage = 'Failed to claim winnings';
         if (error?.reason) {
           errorMessage = error.reason;
@@ -224,6 +235,10 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           errorMessage = 'Invalid claim signature';
         } else if (message.includes('Insufficient prize pool')) {
           errorMessage = 'Prize pool insufficient - contact admin';
+        } else if (message.includes('No wallet provider')) {
+          errorMessage = 'Wallet not available - reconnect and try again';
+        } else if (message.includes('estimateGas')) {
+          errorMessage = 'Transaction failed - try again';
         }
 
         toast({

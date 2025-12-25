@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.game-pending-winnings]
 verify_jwt = false
+
+[functions.game-cancel-claim]
+verify_jwt = false
