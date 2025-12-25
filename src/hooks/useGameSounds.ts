@@ -14,19 +14,25 @@ const useGameSounds = (enabled: boolean = true) => {
   const masterGainRef = useRef<GainNode | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Initialize AudioContext with auto-resume
-  const initAudioContext = useCallback(() => {
+  // Initialize AudioContext with auto-resume and retry
+  const initAudioContext = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
-      masterGainRef.current.gain.value = 0.6;
+      masterGainRef.current.gain.value = 0.75;
       masterGainRef.current.connect(audioContextRef.current.destination);
       isInitializedRef.current = true;
     }
     
-    // Always try to resume if suspended
+    // Force resume with retry
     if (audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume().catch(console.error);
+      try {
+        await audioContextRef.current.resume();
+      } catch (e) {
+        setTimeout(() => {
+          audioContextRef.current?.resume().catch(() => {});
+        }, 100);
+      }
     }
     
     return audioContextRef.current;
@@ -52,7 +58,7 @@ const useGameSounds = (enabled: boolean = true) => {
   }, []);
 
   // Create smooth sound with envelope
-  const createSmoothSound = useCallback((
+  const createSmoothSound = useCallback(async (
     frequencies: number[],
     types: OscillatorType[],
     duration: number,
@@ -63,8 +69,11 @@ const useGameSounds = (enabled: boolean = true) => {
   ) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -100,15 +109,18 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext]);
 
   // Pad sound with reverb-like effect
-  const createPadSound = useCallback((
+  const createPadSound = useCallback(async (
     baseFreq: number,
     duration: number,
     gain: number = 0.12
   ) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -143,11 +155,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext]);
 
   // Modern click sound
-  const playClick = useCallback((pitch: number = 1, volume: number = 0.12) => {
+  const playClick = useCallback(async (pitch: number = 1, volume: number = 0.15) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -175,11 +190,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext]);
 
   // Chime/bell sound
-  const playChime = useCallback((frequency: number, duration: number = 0.4, volume: number = 0.18) => {
+  const playChime = useCallback(async (frequency: number, duration: number = 0.4, volume: number = 0.22) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -222,11 +240,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext]);
 
   // Countdown beep (3, 2, 1)
-  const playCountdownBeep = useCallback((count: number) => {
+  const playCountdownBeep = useCallback(async (count: number) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -259,11 +280,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext, playChime]);
 
   // Milestone sound (2x, 3x, 5x, 10x)
-  const playMilestoneSound = useCallback((multiplier: number) => {
+  const playMilestoneSound = useCallback(async (multiplier: number) => {
     if (!enabled) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
@@ -294,11 +318,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, initAudioContext]);
 
   // Main sound player
-  const playSound = useCallback((type: SoundType) => {
+  const playSound = useCallback(async (type: SoundType) => {
     if (!enabled) return;
     
-    // Ensure context is ready
-    initAudioContext();
+    // Ensure context is ready with force resume
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+    }
 
     switch (type) {
       case 'launch':
@@ -313,15 +340,15 @@ const useGameSounds = (enabled: boolean = true) => {
           0.25
         );
         
-        // Rising engine sound
-        const ctx = initAudioContext();
-        if (ctx.state === 'suspended') return;
-        const now = ctx.currentTime;
-        const master = masterGainRef.current || ctx.destination;
+        // Rising engine sound - use already awaited ctx
+        if (!audioContextRef.current || audioContextRef.current.state === 'suspended') return;
+        const launchCtx = audioContextRef.current;
+        const now = launchCtx.currentTime;
+        const master = masterGainRef.current || launchCtx.destination;
         
-        const riseOsc = ctx.createOscillator();
-        const riseGain = ctx.createGain();
-        const riseFilter = ctx.createBiquadFilter();
+        const riseOsc = launchCtx.createOscillator();
+        const riseGain = launchCtx.createGain();
+        const riseFilter = launchCtx.createBiquadFilter();
         
         riseOsc.type = 'sawtooth';
         riseOsc.frequency.setValueAtTime(120, now);
@@ -364,9 +391,9 @@ const useGameSounds = (enabled: boolean = true) => {
           0.35
         );
         
-        // Noise burst for explosion effect
-        const crashCtx = initAudioContext();
-        if (crashCtx.state === 'suspended') return;
+        // Noise burst for explosion effect - use already awaited ctx
+        if (!audioContextRef.current || audioContextRef.current.state === 'suspended') return;
+        const crashCtx = audioContextRef.current;
         const crashNow = crashCtx.currentTime;
         const crashMaster = masterGainRef.current || crashCtx.destination;
         
@@ -431,11 +458,14 @@ const useGameSounds = (enabled: boolean = true) => {
   }, [enabled, createSmoothSound, createPadSound, playClick, playChime, playCountdownBeep, playMilestoneSound, initAudioContext]);
 
   // Start continuous flying sound
-  const startFlyingSound = useCallback(() => {
+  const startFlyingSound = useCallback(async () => {
     if (!enabled || flyingSoundRef.current?.oscillator) return;
     
-    const ctx = initAudioContext();
-    if (ctx.state === 'suspended') return;
+    const ctx = await initAudioContext();
+    if (ctx.state === 'suspended') {
+      await ctx.resume().catch(() => {});
+      if (ctx.state === 'suspended') return;
+    }
     
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;

@@ -135,50 +135,37 @@ function validateAction(action: string): boolean {
   return validActions.includes(action);
 }
 
-// ============ CRYPTO FUNCTIONS ============
-
 async function generateCrashPoint(serverSeed: string): Promise<number> {
   const encoder = new TextEncoder();
   const data = encoder.encode(serverSeed);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const view = new DataView(hashBuffer);
-  const randomValue = view.getUint32(0, true) / 0xFFFFFFFF;
+  const rv = view.getUint32(0, true) / 0xFFFFFFFF;
   
-  // IMPROVED DISTRIBUTION - Minimum 1.15x for better player experience
-  // Only 5% instant crash at 1.15x (previously 15% at 1.00x)
-  if (randomValue < 0.05) {
-    return 1.15; // Minimum crash point - gives ~1.5 seconds reaction time
+  if (rv < 0.025) {
+    return 1.00 + rv / 0.025 * 0.14;
   }
   
-  // Remaining 95% distributed for longer, more enjoyable rounds
-  const normalized = (randomValue - 0.05) / 0.95; // 0-1 range
+  if (rv < 0.075) {
+    return 1.15;
+  }
   
-  let crashPoint: number;
+  const n = (rv - 0.075) / 0.925;
+  let cp: number;
   
-  if (normalized < 0.55) {
-    // 55% of remaining (52.25% total) → 1.15x to 2.00x
-    // Linear distribution for more variety in low range
-    const subNorm = normalized / 0.55;
-    crashPoint = 1.15 + subNorm * 0.85;
-  } else if (normalized < 0.78) {
-    // 23% of remaining (21.85% total) → 2.00x to 3.50x
-    const subNorm = (normalized - 0.55) / 0.23;
-    crashPoint = 2.00 + subNorm * 1.50;
-  } else if (normalized < 0.90) {
-    // 12% of remaining (11.4% total) → 3.50x to 5.00x
-    const subNorm = (normalized - 0.78) / 0.12;
-    crashPoint = 3.50 + subNorm * 1.50;
-  } else if (normalized < 0.97) {
-    // 7% of remaining (6.65% total) → 5.00x to 7.50x
-    const subNorm = (normalized - 0.90) / 0.07;
-    crashPoint = 5.00 + subNorm * 2.50;
+  if (n < 0.52) {
+    cp = 1.15 + n / 0.52 * 0.85;
+  } else if (n < 0.75) {
+    cp = 2.00 + (n - 0.52) / 0.23 * 1.50;
+  } else if (n < 0.88) {
+    cp = 3.50 + (n - 0.75) / 0.13 * 1.50;
+  } else if (n < 0.96) {
+    cp = 5.00 + (n - 0.88) / 0.08 * 2.50;
   } else {
-    // 3% of remaining (2.85% total) → 7.50x to 12.00x (jackpot!)
-    const subNorm = (normalized - 0.97) / 0.03;
-    crashPoint = 7.50 + subNorm * 4.50;
+    cp = 7.50 + (n - 0.96) / 0.04 * 4.50;
   }
   
-  return Math.round(crashPoint * 100) / 100;
+  return Math.round(cp * 100) / 100;
 }
 
 function generateServerSeed(): string {

@@ -33,11 +33,14 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
   const starsRef = useRef<Star[]>([]);
   const nebulaeRef = useRef<Nebula[]>([]);
   const timeRef = useRef(0);
+  const lastFrameTime = useRef(0);
+  const frameSkip = useRef(0);
 
-  // Generate stars once
-  const generateStars = (width: number, height: number): Star[] => {
+  // Generate stars with adaptive count based on performance
+  const generateStars = (width: number, height: number, reducedCount: boolean = false): Star[] => {
     const stars: Star[] = [];
-    const count = Math.floor((width * height) / 3000); // Density based on canvas size
+    const baseDensity = reducedCount ? 5000 : 3000;
+    const count = Math.floor((width * height) / baseDensity);
     
     for (let i = 0; i < count; i++) {
       stars.push({
@@ -563,7 +566,17 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       ctx.fillText(statusText, width / 2, centerY + 50);
     };
 
-    const animate = () => {
+    const animate = (timestamp: number) => {
+      // Throttle to ~30fps when multiplier > 5x for performance
+      const targetFps = multiplier > 5 ? 30 : 60;
+      const frameInterval = 1000 / targetFps;
+      
+      if (timestamp - lastFrameTime.current < frameInterval) {
+        animationRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameTime.current = timestamp;
+      
       ctx.clearRect(0, 0, width, height);
       
       // Draw space background first
@@ -599,14 +612,13 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
           break;
           
         case 'payout':
-          // Just show multiplier, no rocket
           break;
       }
       
       animationRef.current = requestAnimationFrame(animate);
     };
 
-    animate();
+    animationRef.current = requestAnimationFrame(animate);
 
     return () => {
       window.removeEventListener('resize', resizeCanvas);

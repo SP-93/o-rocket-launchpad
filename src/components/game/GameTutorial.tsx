@@ -96,19 +96,38 @@ const SpotlightOverlay = ({ targetSelector, isVisible }: { targetSelector: strin
     const findAndHighlight = () => {
       const target = document.querySelector(`[data-tutorial="${targetSelector}"]`);
       if (target) {
-        setTargetRect(target.getBoundingClientRect());
+        const rect = target.getBoundingClientRect();
+        
+        // Check if element is in viewport
+        const isInViewport = rect.top >= 0 && rect.top <= window.innerHeight;
+        
+        if (!isInViewport) {
+          // Scroll element into view smoothly
+          target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Re-get rect after scroll
+          setTimeout(() => {
+            setTargetRect(target.getBoundingClientRect());
+          }, 300);
+        } else {
+          setTargetRect(rect);
+        }
       }
     };
 
     findAndHighlight();
     
-    // Re-calculate on resize
-    window.addEventListener('resize', findAndHighlight);
-    window.addEventListener('scroll', findAndHighlight);
+    // Re-calculate on resize/scroll
+    const handleUpdate = () => {
+      const target = document.querySelector(`[data-tutorial="${targetSelector}"]`);
+      if (target) setTargetRect(target.getBoundingClientRect());
+    };
+    
+    window.addEventListener('resize', handleUpdate);
+    window.addEventListener('scroll', handleUpdate, { passive: true });
 
     return () => {
-      window.removeEventListener('resize', findAndHighlight);
-      window.removeEventListener('scroll', findAndHighlight);
+      window.removeEventListener('resize', handleUpdate);
+      window.removeEventListener('scroll', handleUpdate);
     };
   }, [targetSelector, isVisible]);
 
