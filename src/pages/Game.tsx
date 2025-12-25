@@ -12,6 +12,7 @@ import GameTimer from '@/components/game/GameTimer';
 import LiveBetsFeed from '@/components/game/LiveBetsFeed';
 import QuickCashoutOverlay from '@/components/game/QuickCashoutOverlay';
 import MobileBetBar from '@/components/game/MobileBetBar';
+import GameTutorial, { TutorialHelpButton } from '@/components/game/GameTutorial';
 import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
@@ -163,6 +164,9 @@ const Game = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pb-20 lg:pb-0">
+      {/* Tutorial Modal for first-time users */}
+      <GameTutorial />
+      
       <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
       
@@ -264,6 +268,8 @@ const Game = () => {
                           <VolumeX className="w-3.5 h-3.5 text-muted-foreground" />
                         )}
                       </button>
+                      
+                      <TutorialHelpButton />
                     </div>
                   </div>
                   

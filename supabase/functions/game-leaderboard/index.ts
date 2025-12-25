@@ -35,11 +35,11 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get top 20 players by total winnings
+    // Get top 20 players by total winnings (include both 'won' and 'claimed' status)
     const { data: topWinners, error: winnersError } = await supabase
       .from('game_bets')
       .select('wallet_address, winnings, status')
-      .eq('status', 'won')
+      .in('status', ['won', 'claimed'])
       .order('winnings', { ascending: false });
 
     if (winnersError) {
@@ -87,7 +87,7 @@ serve(async (req) => {
     const { data: recentBigWins } = await supabase
       .from('game_bets')
       .select('wallet_address, winnings, cashed_out_at, created_at, game_rounds(round_number)')
-      .eq('status', 'won')
+      .in('status', ['won', 'claimed'])
       .gt('winnings', 10)
       .gte('created_at', oneDayAgo)
       .order('winnings', { ascending: false })
@@ -118,7 +118,7 @@ serve(async (req) => {
     const { data: betStats } = await supabase
       .from('game_bets')
       .select('winnings')
-      .eq('status', 'won');
+      .in('status', ['won', 'claimed']);
 
     const totalPayouts = betStats?.reduce((sum, b) => sum + (b.winnings || 0), 0) || 0;
 
