@@ -10,9 +10,12 @@ const corsHeaders = {
 // Reset 'claiming' bets back to 'won' if stuck for more than 5 minutes
 const STUCK_TIMEOUT_MINUTES = 5;
 
-// Minimal ABI for checking if nonce was used
+// Chain ID for Over Protocol mainnet
+const CHAIN_ID = 54176;
+
+// CRITICAL FIX: Use usedClaims (not usedNonces) - matches the smart contract
 const CRASH_GAME_ABI = [
-  "function usedNonces(bytes32) view returns (bool)"
+  "function usedClaims(bytes32) view returns (bool)"
 ];
 
 // RPC endpoint for OverProtocol
@@ -61,14 +64,17 @@ serve(async (req) => {
 
     console.log(`[game-reset-stuck-claims] Found ${stuckBets.length} stuck claims`);
 
-    // Get contract address from protocol config
+    // Get contract address from game_config (same as game-sign-claim)
     const { data: configData } = await supabase
-      .from('protocol_config')
+      .from('game_config')
       .select('config_value')
-      .eq('config_key', 'crash_game_address')
-      .maybeSingle();
+      .eq('config_key', 'crash_game_v2_address')
+      .single();
 
-    const contractAddress = configData?.config_value;
+    let contractAddress = configData?.config_value;
+    if (typeof contractAddress === 'object' && contractAddress !== null) {
+      contractAddress = (contractAddress as Record<string, string>).address || '';
+    }
     
     let provider: ethers.providers.JsonRpcProvider | null = null;
     let contract: ethers.Contract | null = null;
@@ -77,9 +83,12 @@ serve(async (req) => {
       try {
         provider = new ethers.providers.JsonRpcProvider(RPC_URL);
         contract = new ethers.Contract(contractAddress as string, CRASH_GAME_ABI, provider);
+        console.log('[game-reset-stuck-claims] Contract initialized:', contractAddress);
       } catch (e) {
         console.warn('[game-reset-stuck-claims] Failed to init contract:', e);
       }
+    } else {
+      console.warn('[game-reset-stuck-claims] No contract address configured');
     }
 
     const resetIds: string[] = [];
@@ -89,24 +98,35 @@ serve(async (req) => {
     for (const bet of stuckBets) {
       let wasUsedOnChain = false;
 
-      // If we have contract and nonce, check on-chain status
-      if (contract && bet.claim_nonce && bet.wallet_address) {
+      // If we have contract and all required data, check on-chain status
+      if (contract && bet.claim_nonce && bet.wallet_address && bet.round_id && bet.winnings) {
         try {
-          // Compute the nonce hash as contract does
-          const nonceHash = ethers.utils.solidityKeccak256(
-            ['address', 'uint256'],
-            [bet.wallet_address, bet.claim_nonce]
+          // CRITICAL FIX: Calculate the messageHash EXACTLY as game-sign-claim does
+          // This is the hash that usedClaims() checks
+          const amountWei = ethers.utils.parseEther(bet.winnings.toString());
+          const roundIdHash = ethers.utils.id(bet.round_id);
+          
+          const messageHash = ethers.utils.solidityKeccak256(
+            ['address', 'uint256', 'bytes32', 'uint256', 'uint256', 'address'],
+            [
+              bet.wallet_address.toLowerCase(),
+              amountWei,
+              roundIdHash,
+              bet.claim_nonce,
+              CHAIN_ID,
+              (contractAddress as string).toLowerCase()
+            ]
           );
           
-          wasUsedOnChain = await contract.usedNonces(nonceHash);
-          console.log(`[game-reset-stuck-claims] Bet ${bet.id} nonce ${bet.claim_nonce} used on-chain: ${wasUsedOnChain}`);
+          wasUsedOnChain = await contract.usedClaims(messageHash);
+          console.log(`[game-reset-stuck-claims] Bet ${bet.id} claim hash ${messageHash.substring(0, 20)}... used on-chain: ${wasUsedOnChain}`);
         } catch (e) {
-          console.warn(`[game-reset-stuck-claims] Failed to check nonce for bet ${bet.id}:`, e);
+          console.warn(`[game-reset-stuck-claims] Failed to check claim for bet ${bet.id}:`, e);
         }
       }
 
       if (wasUsedOnChain) {
-        // Nonce was used - this claim succeeded on-chain, confirm it
+        // Claim was used on-chain - this claim succeeded, confirm it
         console.log(`[game-reset-stuck-claims] Bet ${bet.id} was claimed on-chain, confirming...`);
         
         const { error: confirmError } = await supabase
@@ -124,7 +144,7 @@ serve(async (req) => {
           confirmedIds.push(bet.id);
         }
       } else {
-        // Nonce not used - safe to reset to 'won'
+        // Claim not used on-chain - safe to reset to 'won'
         resetIds.push(bet.id);
       }
     }
