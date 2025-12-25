@@ -4,9 +4,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Shield, Check, X, Copy, ExternalLink, Info } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Shield, Check, X, Copy, ExternalLink, Info, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getDeployedContracts } from '@/contracts/storage';
+import FairplayStats from './FairplayStats';
 interface RoundData {
   roundNumber: number;
   seedHash: string;
@@ -97,20 +99,32 @@ const ProvablyFairModal = ({ currentRound, roundHistory = [] }: ProvablyFairModa
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* How It Works */}
-          <div className="bg-muted/30 border border-border/50 rounded-lg p-4">
-            <h4 className="font-medium flex items-center gap-2 mb-2">
-              <Info className="w-4 h-4 text-primary" />
-              How It Works
-            </h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Before each round, a <strong>Seed Hash</strong> is published (pre-commitment)</li>
-              <li>• After crash, the <strong>Server Seed</strong> is revealed</li>
-              <li>• Anyone can verify: <code className="bg-muted px-1 rounded">keccak256(serverSeed) = seedHash</code></li>
-              <li>• This proves the crash point was determined BEFORE bets were placed</li>
-            </ul>
-          </div>
+        <Tabs defaultValue="verify" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="verify" className="gap-2">
+              <Shield className="w-4 h-4" />
+              Verify
+            </TabsTrigger>
+            <TabsTrigger value="stats" className="gap-2">
+              <BarChart3 className="w-4 h-4" />
+              Statistics
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="verify" className="space-y-6">
+            {/* How It Works */}
+            <div className="bg-muted/30 border border-border/50 rounded-lg p-4">
+              <h4 className="font-medium flex items-center gap-2 mb-2">
+                <Info className="w-4 h-4 text-primary" />
+                How It Works
+              </h4>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                <li>• Before each round, a <strong>Seed Hash</strong> is published (pre-commitment)</li>
+                <li>• After crash, the <strong>Server Seed</strong> is revealed</li>
+                <li>• Anyone can verify: <code className="bg-muted px-1 rounded">keccak256(serverSeed) = seedHash</code></li>
+                <li>• This proves the crash point was determined BEFORE bets were placed</li>
+              </ul>
+            </div>
 
           {/* Current Round */}
           {currentRound && (
@@ -320,7 +334,33 @@ const ProvablyFairModal = ({ currentRound, roundHistory = [] }: ProvablyFairModa
               );
             })()}
           </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="stats" className="space-y-4">
+            <FairplayStats roundHistory={roundHistory} />
+            
+            {/* Smart Contract Link */}
+            <div className="text-center text-sm text-muted-foreground pt-2">
+              {(() => {
+                const crashGameAddress = getDeployedContracts().crashGame;
+                const explorerUrl = crashGameAddress 
+                  ? `https://scan.over.network/address/${crashGameAddress}` 
+                  : 'https://scan.over.network';
+                return (
+                  <a
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    View contract on OverScan
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                );
+              })()}
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );

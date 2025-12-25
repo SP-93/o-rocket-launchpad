@@ -7,7 +7,10 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Ticket, Target, Rocket, Coins, HelpCircle, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { 
+  Ticket, Target, Rocket, Coins, HelpCircle, ChevronRight, ChevronLeft, 
+  Clock, Hand, Wallet, ArrowDownToLine 
+} from 'lucide-react';
 
 const TUTORIAL_STORAGE_KEY = 'orocket_tutorial_seen';
 
@@ -17,36 +20,65 @@ interface TutorialStep {
   description: string;
   tip: string;
   color: string;
+  highlight?: string; // CSS selector or section name
 }
 
 const tutorialSteps: TutorialStep[] = [
   {
     icon: Ticket,
     title: 'Buy Tickets',
-    description: 'First, purchase game tickets using WOVER or USDT tokens. Each ticket has a WOVER value that determines your potential winnings.',
+    description: 'First, purchase game tickets using WOVER or USDT tokens. Look for the "Buy Tickets" section on the right side. Each ticket has a WOVER value that determines your potential winnings.',
     tip: 'Tickets expire after 24 hours, so use them before they expire!',
     color: 'text-primary',
+    highlight: 'ticket-purchase',
+  },
+  {
+    icon: Wallet,
+    title: 'Your Tickets',
+    description: 'After purchasing, your tickets appear in the Betting Panel on the left. You\'ll see available tickets with their value and expiry time.',
+    tip: 'Each ticket can only be used once per round.',
+    color: 'text-accent',
+    highlight: 'betting-panel',
   },
   {
     icon: Target,
     title: 'Place Your Bet',
-    description: 'Select a ticket and place your bet before the round starts. You can optionally set an auto-cashout multiplier to automatically collect winnings.',
-    tip: 'Auto-cashout helps if you can\'t watch the game constantly.',
+    description: 'Select a ticket from your list and click "Place Bet" before the round starts. Betting is only open during the "BETTING OPEN" phase.',
+    tip: 'Watch the countdown timer - once it hits 0, betting closes!',
     color: 'text-warning',
+    highlight: 'betting-panel',
+  },
+  {
+    icon: Clock,
+    title: 'Auto-Stop (Optional)',
+    description: 'Set an auto-cashout multiplier before betting. The game will automatically cash you out when the rocket reaches that multiplier - perfect if you can\'t watch constantly.',
+    tip: 'Example: Set 2.0x to automatically double your bet.',
+    color: 'text-success',
+    highlight: 'auto-cashout',
   },
   {
     icon: Rocket,
     title: 'Watch the Rocket',
-    description: 'Once the round starts, the rocket takes off and the multiplier increases. The longer it flies, the higher your potential winnings!',
-    tip: 'The rocket can crash at any moment - there\'s no pattern!',
-    color: 'text-success',
+    description: 'Once the round starts, the rocket takes off! Watch the center of the screen as the multiplier increases. The longer it flies, the higher your potential winnings!',
+    tip: 'The rocket can crash at ANY moment - there\'s no pattern!',
+    color: 'text-primary',
+    highlight: 'rocket-display',
   },
   {
-    icon: Coins,
-    title: 'Cash Out to Win',
-    description: 'Click "Cash Out" before the rocket crashes to lock in your winnings. If you cash out at 2x, you double your bet. But if the rocket crashes first, you lose!',
+    icon: Hand,
+    title: 'Manual Cash Out',
+    description: 'Click the big "CASH OUT" button before the rocket crashes to lock in your winnings. If you cash out at 2x, you double your bet. Wait too long and lose everything!',
     tip: 'Higher multipliers = bigger rewards, but more risk!',
     color: 'text-destructive',
+    highlight: 'cashout-button',
+  },
+  {
+    icon: ArrowDownToLine,
+    title: 'Claim Your Winnings',
+    description: 'Won bets appear as "Pending Winnings". You can play multiple rounds and claim all winnings together, or claim immediately - it\'s your choice! Look for the claim button in the Betting Panel.',
+    tip: 'Flexible payouts: play 5 rounds, claim once!',
+    color: 'text-success',
+    highlight: 'pending-winnings',
   },
 ];
 
@@ -108,7 +140,7 @@ const GameTutorial = ({ forceOpen, onClose }: GameTutorialProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-primary" />
@@ -118,16 +150,17 @@ const GameTutorial = ({ forceOpen, onClose }: GameTutorialProps) => {
 
         <div className="py-4">
           {/* Step indicator */}
-          <div className="flex items-center justify-center gap-2 mb-6">
+          <div className="flex items-center justify-center gap-1.5 mb-6">
             {tutorialSteps.map((_, index) => (
-              <div
+              <button
                 key={index}
+                onClick={() => setCurrentStep(index)}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
                   index === currentStep
                     ? 'w-8 bg-primary'
                     : index < currentStep
-                    ? 'w-4 bg-primary/50'
-                    : 'w-4 bg-muted'
+                    ? 'w-4 bg-primary/50 hover:bg-primary/70'
+                    : 'w-4 bg-muted hover:bg-muted-foreground/30'
                 }`}
               />
             ))}
@@ -135,13 +168,18 @@ const GameTutorial = ({ forceOpen, onClose }: GameTutorialProps) => {
 
           {/* Step content */}
           <div className="text-center space-y-4">
-            <div className={`w-16 h-16 mx-auto rounded-2xl bg-card flex items-center justify-center ${step.color}`}>
+            <div className={`w-16 h-16 mx-auto rounded-2xl bg-card flex items-center justify-center ${step.color} border border-border/30`}>
               <StepIcon className="w-8 h-8" />
             </div>
 
             <div>
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                  Step {currentStep + 1} of {tutorialSteps.length}
+                </span>
+              </div>
               <h3 className="text-lg font-bold mb-2">
-                {currentStep + 1}. {step.title}
+                {step.title}
               </h3>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {step.description}
@@ -153,6 +191,13 @@ const GameTutorial = ({ forceOpen, onClose }: GameTutorialProps) => {
                 💡 Tip: {step.tip}
               </p>
             </div>
+
+            {/* Section indicator */}
+            {step.highlight && (
+              <div className="text-xs text-muted-foreground/70 italic">
+                📍 Look at: {step.highlight.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </div>
+            )}
           </div>
         </div>
 
