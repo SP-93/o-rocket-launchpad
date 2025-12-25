@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, Gift } from 'lucide-react';
+import { useWalletClient } from 'wagmi';
 import { useGameTickets, type GameTicket, type GroupedTicket } from '@/hooks/useGameTickets';
 import { useGameBetting, setTicketRefreshCallback } from '@/hooks/useGameBetting';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
@@ -34,6 +35,8 @@ const BettingPanel = ({
   const [selectedTicket, setSelectedTicket] = useState<GameTicket | null>(null);
   const [autoCashout, setAutoCashout] = useState<AutoCashout>('off');
   const [claimingBetId, setClaimingBetId] = useState<string | null>(null);
+
+  const { data: walletClient } = useWalletClient();
   
   const { availableTickets, groupedTickets, refetch: refetchTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
@@ -43,15 +46,31 @@ const BettingPanel = ({
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
 
+  const getSigner = async () => {
+    const { ethers } = await import('ethers');
+
+    // Prefer wagmi wallet client (works for mobile WalletConnect)
+    if (walletClient) {
+      const provider = new ethers.providers.Web3Provider(walletClient as any);
+      return provider.getSigner();
+    }
+
+    // Fallback to injected provider (desktop MetaMask)
+    if ((window as any).ethereum) {
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      return provider.getSigner();
+    }
+
+    throw new Error('No wallet provider available');
+  };
+
   // Handler for claiming a single win
   const handleSingleClaim = async (win: typeof pendingWinnings[0]) => {
-    if (!window.ethereum || claimingBetId) return;
+    if (claimingBetId) return;
 
     setClaimingBetId(win.id);
     try {
-      const { ethers } = await import('ethers');
-      const provider = new ethers.providers.Web3Provider(window.ethereum as any);
-      const signer = provider.getSigner();
+      const signer = await getSigner();
       await claimWinnings(signer, win.id, win.winnings);
       playSound('win');
       refetchPending();
@@ -84,12 +103,10 @@ const BettingPanel = ({
   }, [myBet?.status, myBet?.id, checkCanClaim]);
 
   const handleClaimWinnings = async () => {
-    if (!myBet?.id || !window.ethereum) return;
+    if (!myBet?.id) return;
 
     try {
-      const { ethers } = await import('ethers');
-      const provider = new ethers.providers.Web3Provider(window.ethereum as any);
-      const signer = provider.getSigner();
+      const signer = await getSigner();
 
       const claimAmount = myBet.winnings ?? pendingAmount;
       await claimWinnings(signer, myBet.id, claimAmount);
