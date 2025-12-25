@@ -33,6 +33,7 @@ const BettingPanel = ({
 }: BettingPanelProps) => {
   const [selectedTicket, setSelectedTicket] = useState<GameTicket | null>(null);
   const [autoCashout, setAutoCashout] = useState<AutoCashout>('off');
+  const [claimingBetId, setClaimingBetId] = useState<string | null>(null);
   
   const { availableTickets, groupedTickets, refetch: refetchTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
@@ -41,6 +42,25 @@ const BettingPanel = ({
   
   const soundEnabled = typeof window !== 'undefined' && localStorage.getItem('rocketGameSound') !== 'false';
   const { playSound } = useGameSounds(soundEnabled);
+
+  // Handler for claiming a single win
+  const handleSingleClaim = async (win: typeof pendingWinnings[0]) => {
+    if (!window.ethereum || claimingBetId) return;
+    
+    setClaimingBetId(win.id);
+    try {
+      const { ethers } = await import('ethers');
+      const provider = new ethers.providers.Web3Provider(window.ethereum as any);
+      const signer = provider.getSigner();
+      await claimWinnings(signer, win.round_id, win.winnings);
+      playSound('win');
+      refetchPending();
+    } catch (error) {
+      console.error('[BettingPanel] Single claim error:', error);
+    } finally {
+      setClaimingBetId(null);
+    }
+  };
 
   // Register ticket refresh callback
   useEffect(() => {
@@ -266,9 +286,10 @@ const BettingPanel = ({
     );
   }
 
-  // Compact claim section - show at TOP if there are pending winnings, but don't block bet form
+  // Per-ticket claim section - show individual wins with claim buttons
   const renderClaimSection = () => {
-    if (pendingWinnings.length === 0 && claimingWinnings.length === 0) return null;
+    const allWins = [...pendingWinnings, ...claimingWinnings];
+    if (allWins.length === 0) return null;
     
     return (
       <div className="glass-card overflow-hidden mb-4 border border-success/30">
@@ -279,50 +300,71 @@ const BettingPanel = ({
               <div className="p-1 rounded-lg bg-success/20">
                 <Gift className="w-3 h-3 text-success" />
               </div>
-              <span className="font-semibold text-xs text-success">Winnings Ready!</span>
+              <span className="font-semibold text-xs text-success">
+                {allWins.length} Win{allWins.length > 1 ? 's' : ''} Ready!
+              </span>
             </div>
             <span className="text-success font-bold text-sm">{totalPending.toFixed(2)} WOVER</span>
           </div>
         </div>
         
-        <div className="p-3 space-y-2">
-          {/* Show claims in progress */}
-          {claimingWinnings.length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-warning">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span>{claimingWinnings.length} claim{claimingWinnings.length > 1 ? 's' : ''} in progress...</span>
-            </div>
-          )}
-
-          {/* Claim button */}
-          {pendingWinnings.length > 0 && (
-            <Button
-              onClick={async () => {
-                if (!pendingWinnings[0] || !window.ethereum) return;
-                try {
-                  const { ethers } = await import('ethers');
-                  const provider = new ethers.providers.Web3Provider(window.ethereum as any);
-                  const signer = provider.getSigner();
-                  await claimWinnings(signer, pendingWinnings[0].round_id, pendingWinnings[0].winnings);
-                  refetchPending();
-                } catch (error) {
-                  console.error('Claim error:', error);
-                }
-              }}
-              disabled={isClaiming}
-              size="sm"
-              className="w-full h-9 text-sm font-bold bg-success hover:bg-success/90 text-success-foreground shadow-lg shadow-success/30"
-            >
-              {isClaiming ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Wallet className="w-4 h-4" />
-                  <span>CLAIM {totalPending.toFixed(2)} WOVER</span>
+        <div className="p-2 space-y-1.5 max-h-48 overflow-y-auto">
+          {/* Individual wins list */}
+          {allWins.map((win) => {
+            const isClaiming = win.status === 'claiming' || claimingBetId === win.id;
+            const isReady = win.status === 'won' && !claimingBetId;
+            
+            return (
+              <div 
+                key={win.id} 
+                className={`flex items-center justify-between p-2 rounded-lg border transition-all ${
+                  isClaiming 
+                    ? 'bg-warning/10 border-warning/30' 
+                    : 'bg-success/10 border-success/20 hover:border-success/40'
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-success text-sm">
+                      +{win.winnings.toFixed(2)} WOVER
+                    </span>
+                    {isClaiming && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-warning/20 text-warning animate-pulse">
+                        Claiming...
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span>Bet: {win.bet_amount} WOVER</span>
+                    <span>•</span>
+                    <span className="text-primary font-medium">
+                      {win.cashed_out_at?.toFixed(2)}×
+                    </span>
+                  </div>
                 </div>
-              )}
-            </Button>
-          )}
+                
+                <Button
+                  onClick={() => handleSingleClaim(win)}
+                  disabled={isClaiming || !isReady}
+                  size="sm"
+                  className={`h-7 px-3 text-xs font-bold ${
+                    isClaiming 
+                      ? 'bg-warning/20 text-warning cursor-wait'
+                      : 'bg-success hover:bg-success/90 text-success-foreground shadow-sm shadow-success/20'
+                  }`}
+                >
+                  {isClaiming ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Wallet className="w-3 h-3" />
+                      <span>Claim</span>
+                    </div>
+                  )}
+                </Button>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
