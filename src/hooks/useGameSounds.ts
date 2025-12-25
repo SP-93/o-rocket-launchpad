@@ -14,24 +14,25 @@ const useGameSounds = (enabled: boolean = true) => {
   const masterGainRef = useRef<GainNode | null>(null);
   const isInitializedRef = useRef(false);
 
-  // Initialize AudioContext with auto-resume and retry
+  // Initialize AudioContext with aggressive resume
   const initAudioContext = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       masterGainRef.current = audioContextRef.current.createGain();
-      masterGainRef.current.gain.value = 0.75;
+      masterGainRef.current.gain.value = 0.9; // Increased volume
       masterGainRef.current.connect(audioContextRef.current.destination);
       isInitializedRef.current = true;
     }
     
-    // Force resume with retry
+    // Aggressive resume with multiple retries
     if (audioContextRef.current.state === 'suspended') {
-      try {
-        await audioContextRef.current.resume();
-      } catch (e) {
-        setTimeout(() => {
-          audioContextRef.current?.resume().catch(() => {});
-        }, 100);
+      for (let i = 0; i < 3; i++) {
+        try {
+          await audioContextRef.current.resume();
+          if (audioContextRef.current.state !== 'suspended') break;
+        } catch (e) {
+          await new Promise(r => setTimeout(r, 50));
+        }
       }
     }
     
@@ -239,7 +240,7 @@ const useGameSounds = (enabled: boolean = true) => {
     osc3.stop(now + duration * 0.25);
   }, [enabled, initAudioContext]);
 
-  // Countdown beep (3, 2, 1)
+  // Countdown beep (5, 4, 3, 2, 1)
   const playCountdownBeep = useCallback(async (count: number) => {
     if (!enabled) return;
     
@@ -252,9 +253,10 @@ const useGameSounds = (enabled: boolean = true) => {
     const now = ctx.currentTime;
     const master = masterGainRef.current || ctx.destination;
     
-    // Higher pitch for lower count (builds tension)
-    const baseFreq = count === 1 ? 880 : count === 2 ? 660 : 523;
-    const duration = count === 1 ? 0.4 : 0.25;
+    // Higher pitch and louder for lower counts (builds tension)
+    const baseFreq = count === 1 ? 1047 : count === 2 ? 880 : count === 3 ? 740 : count === 4 ? 659 : 523;
+    const duration = count === 1 ? 0.5 : count <= 3 ? 0.3 : 0.2;
+    const volume = count === 1 ? 0.35 : count <= 3 ? 0.28 : 0.22;
     
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -263,8 +265,8 @@ const useGameSounds = (enabled: boolean = true) => {
     osc.frequency.setValueAtTime(baseFreq, now);
     
     gain.gain.setValueAtTime(0, now);
-    gain.gain.linearRampToValueAtTime(0.2, now + 0.02);
-    gain.gain.setValueAtTime(0.2, now + duration - 0.1);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.02);
+    gain.gain.setValueAtTime(volume, now + duration - 0.1);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     
     osc.connect(gain);
@@ -273,9 +275,9 @@ const useGameSounds = (enabled: boolean = true) => {
     osc.start(now);
     osc.stop(now + duration);
     
-    // Double beep for final count
-    if (count === 1) {
-      setTimeout(() => playChime(baseFreq * 1.5, 0.3, 0.15), 150);
+    // Double beep for counts 1-3
+    if (count <= 3) {
+      setTimeout(() => playChime(baseFreq * 1.5, 0.25, volume * 0.6), 100);
     }
   }, [enabled, initAudioContext, playChime]);
 

@@ -9,7 +9,7 @@ interface EngineStatus {
 }
 
 // Tick interval - how often clients help drive the game
-const TICK_INTERVAL = 1500; // 1.5 seconds
+const TICK_INTERVAL = 2000; // 2 seconds - reduced load
 
 export function useGameEngine() {
   const [status, setStatus] = useState<EngineStatus>({
