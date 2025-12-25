@@ -144,36 +144,38 @@ async function generateCrashPoint(serverSeed: string): Promise<number> {
   const view = new DataView(hashBuffer);
   const randomValue = view.getUint32(0, true) / 0xFFFFFFFF;
   
-  // PRODUCTION DISTRIBUTION - Target avg ~1.6-1.8x
-  // 15% instant crash (1.00x) - higher instant crash rate
-  if (randomValue < 0.15) {
-    return 1.00;
+  // IMPROVED DISTRIBUTION - Minimum 1.15x for better player experience
+  // Only 5% instant crash at 1.15x (previously 15% at 1.00x)
+  if (randomValue < 0.05) {
+    return 1.15; // Minimum crash point - gives ~1.5 seconds reaction time
   }
   
-  // Remaining 85% distributed with SQUARE ROOT curve for ultra-low bias
-  // Target: ~80% under 2x, ~92% under 3x, ~98% under 5x
-  
-  const normalized = (randomValue - 0.15) / 0.85; // 0-1 range
+  // Remaining 95% distributed for longer, more enjoyable rounds
+  const normalized = (randomValue - 0.05) / 0.95; // 0-1 range
   
   let crashPoint: number;
   
-  if (normalized < 0.75) {
-    // 75% of remaining (63.75% total) → 1.01x to 1.80x
-    // SQUARE ROOT curve = strongly favors low values
-    const subNorm = normalized / 0.75;
-    crashPoint = 1.01 + Math.pow(subNorm, 2) * 0.79; // Square pushes to low end
+  if (normalized < 0.55) {
+    // 55% of remaining (52.25% total) → 1.15x to 2.00x
+    // Linear distribution for more variety in low range
+    const subNorm = normalized / 0.55;
+    crashPoint = 1.15 + subNorm * 0.85;
+  } else if (normalized < 0.78) {
+    // 23% of remaining (21.85% total) → 2.00x to 3.50x
+    const subNorm = (normalized - 0.55) / 0.23;
+    crashPoint = 2.00 + subNorm * 1.50;
   } else if (normalized < 0.90) {
-    // 15% of remaining (12.75% total) → 1.80x to 3.00x
-    const subNorm = (normalized - 0.75) / 0.15;
-    crashPoint = 1.80 + subNorm * 1.20;
+    // 12% of remaining (11.4% total) → 3.50x to 5.00x
+    const subNorm = (normalized - 0.78) / 0.12;
+    crashPoint = 3.50 + subNorm * 1.50;
   } else if (normalized < 0.97) {
-    // 7% of remaining (5.95% total) → 3.00x to 5.00x
+    // 7% of remaining (6.65% total) → 5.00x to 7.50x
     const subNorm = (normalized - 0.90) / 0.07;
-    crashPoint = 3.00 + subNorm * 2.00;
+    crashPoint = 5.00 + subNorm * 2.50;
   } else {
-    // 3% of remaining (2.55% total) → 5.00x to 8.00x (rare, capped lower)
+    // 3% of remaining (2.85% total) → 7.50x to 12.00x (jackpot!)
     const subNorm = (normalized - 0.97) / 0.03;
-    crashPoint = 5.00 + subNorm * 3.00; // Max 8x instead of 10x
+    crashPoint = 7.50 + subNorm * 4.50;
   }
   
   return Math.round(crashPoint * 100) / 100;

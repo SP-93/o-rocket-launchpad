@@ -41,10 +41,11 @@ const Game = () => {
   const { bets, myBet, refetch: refetchBets } = useGameBets(currentRound?.id, address);
   const { status: engineStatus } = useGameEngine(); // Drives tick-based game loop
   
-  const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext } = useGameSounds(soundEnabled);
+  const { playSound, startFlyingSound, updateFlyingSound, stopFlyingSound, initAudioContext, playCountdownBeep, playMilestoneSound } = useGameSounds(soundEnabled);
   const prevStatusRef = useRef<string | null>(null);
   const initialLoadRef = useRef(true);
   const crashedAtRef = useRef<number | null>(null);
+  const lastMilestoneRef = useRef<number>(1);
 
   const isFlying = currentRound?.status === 'flying';
   const isCountdown = currentRound?.status === 'countdown';
@@ -136,11 +137,25 @@ const Game = () => {
     }
   }, [currentRound?.status, myBet?.status, playSound, startFlyingSound, stopFlyingSound, initAudioContext]);
 
+  // Update flying sound and play milestone sounds
   useEffect(() => {
     if (isFlying) {
       updateFlyingSound(currentMultiplier);
+      
+      // Play milestone sounds at 2x, 3x, 5x, 10x
+      const milestones = [2, 3, 5, 10];
+      for (const milestone of milestones) {
+        if (currentMultiplier >= milestone && lastMilestoneRef.current < milestone) {
+          playMilestoneSound(milestone);
+          lastMilestoneRef.current = milestone;
+          break;
+        }
+      }
+    } else {
+      // Reset milestone tracker when not flying
+      lastMilestoneRef.current = 1;
     }
-  }, [isFlying, currentMultiplier, updateFlyingSound]);
+  }, [isFlying, currentMultiplier, updateFlyingSound, playMilestoneSound]);
 
   useEffect(() => {
     if (currentRound?.id) {
@@ -194,7 +209,7 @@ const Game = () => {
             
             {/* Left Sidebar - Tickets & Stats (hidden on mobile, shown below game) */}
             {isConnected ? (
-              <div className="hidden lg:block lg:col-span-3 lg:order-1 space-y-3">
+              <div className="hidden lg:block lg:col-span-3 lg:order-1 space-y-3" data-tutorial="ticket-purchase">
                 <TicketPurchase walletAddress={address} isConnected={isConnected} />
                 
                 {/* Quick Stats */}
@@ -274,7 +289,7 @@ const Game = () => {
                   </div>
                   
                   {/* Game Screen */}
-                  <div className="relative aspect-[16/10] md:aspect-video bg-gradient-to-b from-card/50 to-background/50">
+                  <div className="relative aspect-[16/10] md:aspect-video bg-gradient-to-b from-card/50 to-background/50" data-tutorial="rocket-display">
                     {/* Grid overlay */}
                     <div 
                       className="absolute inset-0 opacity-[0.02]" 
@@ -416,7 +431,7 @@ const Game = () => {
 
             {/* Right Sidebar - Betting & Leaderboard */}
             {isConnected ? (
-              <div className="lg:col-span-3 order-3 space-y-3">
+              <div className="lg:col-span-3 order-3 space-y-3" data-tutorial="betting-panel">
                 <BettingPanel
                   walletAddress={address}
                   isConnected={isConnected}
