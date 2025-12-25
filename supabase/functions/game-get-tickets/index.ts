@@ -51,40 +51,62 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Fetch ALL tickets for accurate stats (no limit)
-      const { data: allTickets, error: statsError } = await supabaseAdmin
-        .from('game_tickets')
-        .select('payment_currency, payment_amount');
+    // Fetch ALL tickets for accurate stats (no limit)
+    const { data: allTickets, error: statsError } = await supabaseAdmin
+      .from('game_tickets')
+      .select('payment_currency, payment_amount, ticket_value, is_used, expires_at');
 
-      if (statsError) {
-        console.error('[game-get-tickets] Error fetching stats:', statsError);
+    if (statsError) {
+      console.error('[game-get-tickets] Error fetching stats:', statsError);
+    }
+
+    // Calculate detailed stats from ALL tickets
+    const now = new Date();
+    let totalWover = 0;
+    let totalUsdt = 0;
+    let activeCount = 0;
+    let usedCount = 0;
+    let expiredCount = 0;
+    let activeValue = 0;
+
+    (allTickets || []).forEach((t: any) => {
+      // Payment totals
+      if (t.payment_currency === 'WOVER') {
+        totalWover += Number(t.payment_amount) || 0;
+      } else if (t.payment_currency === 'USDT') {
+        totalUsdt += Number(t.payment_amount) || 0;
       }
+      
+      // Ticket status counts
+      const expiresAt = new Date(t.expires_at);
+      if (t.is_used) {
+        usedCount++;
+      } else if (expiresAt < now) {
+        expiredCount++;
+      } else {
+        activeCount++;
+        activeValue += Number(t.ticket_value) || 0;
+      }
+    });
 
-      // Calculate total stats from ALL tickets
-      let totalWover = 0;
-      let totalUsdt = 0;
-      (allTickets || []).forEach((t: any) => {
-        if (t.payment_currency === 'WOVER') {
-          totalWover += Number(t.payment_amount) || 0;
-        } else if (t.payment_currency === 'USDT') {
-          totalUsdt += Number(t.payment_amount) || 0;
-        }
-      });
+    console.log(`[game-get-tickets] Admin fetched ${tickets?.length || 0} tickets, total: ${allTickets?.length || 0}`);
 
-      console.log(`[game-get-tickets] Admin fetched ${tickets?.length || 0} tickets, total: ${allTickets?.length || 0}`);
-
-      return new Response(
-        JSON.stringify({ 
-          tickets: tickets || [], 
-          stats: {
-            totalWover,
-            totalUsdt,
-            count: allTickets?.length || 0
-          },
-          success: true 
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    return new Response(
+      JSON.stringify({ 
+        tickets: tickets || [], 
+        stats: {
+          totalWover,
+          totalUsdt,
+          count: allTickets?.length || 0,
+          activeCount,
+          usedCount,
+          expiredCount,
+          activeValue
+        },
+        success: true 
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
     }
 
     // NORMAL MODE - fetch tickets for specific wallet

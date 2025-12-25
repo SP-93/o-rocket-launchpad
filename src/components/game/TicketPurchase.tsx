@@ -8,6 +8,7 @@ import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
 import { toast } from '@/hooks/use-toast';
+import PlayerTicketList from './PlayerTicketList';
 
 interface TicketPurchaseProps {
   walletAddress: string | undefined;
@@ -27,7 +28,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
-  const { buyTicket, groupedTickets, refetch } = useGameTickets(walletAddress);
+  const { buyTicket, availableTickets, refetch } = useGameTickets(walletAddress);
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
   
@@ -219,44 +220,14 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Available Tickets Display - Grouped by Value */}
+        {/* Available Tickets Display with Expiration */}
         {isConnected && (
           <div className="relative">
-            <div className="flex flex-wrap gap-2 p-3 bg-card/50 rounded-xl min-h-[70px] items-center justify-center border border-border/20">
-              {groupedTickets.length > 0 ? (
-                <>
-                  {groupedTickets.slice(0, 6).map((group, index) => (
-                    <div
-                      key={group.value}
-                      className="relative group cursor-pointer animate-fade-in"
-                      style={{ animationDelay: `${index * 80}ms` }}
-                    >
-                      <div className="relative w-14 h-14 bg-gradient-to-br from-primary/40 via-primary/25 to-primary/10 rounded-lg border border-primary/40 shadow-lg transition-all duration-300 group-hover:scale-110 group-hover:border-primary/60 group-hover:-translate-y-1">
-                        {/* Perforated edge */}
-                        <div className="absolute left-0.5 top-1.5 bottom-1.5 w-0.5 flex flex-col justify-around">
-                          {[...Array(3)].map((_, i) => (
-                            <div key={i} className="w-1 h-1 rounded-full bg-background/80" />
-                          ))}
-                        </div>
-                        {/* Value x Count */}
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <div className="flex items-center gap-0.5">
-                            <span className="text-base font-bold text-primary">{group.value}</span>
-                            <span className="text-xs text-muted-foreground">×</span>
-                            <span className="text-sm font-semibold text-primary/80">{group.count}</span>
-                          </div>
-                          <span className="text-[7px] text-muted-foreground uppercase tracking-wider">WOVER</span>
-                        </div>
-                        {/* Shine */}
-                        <div className="absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-transparent rounded-lg opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      {/* Glow on hover */}
-                      <div className="absolute inset-0 blur-lg bg-primary/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
-                    </div>
-                  ))}
-                </>
+            <div className="p-3 bg-card/50 rounded-xl min-h-[90px] border border-border/20">
+              {availableTickets.length > 0 ? (
+                <PlayerTicketList tickets={availableTickets} />
               ) : (
-                <div className="text-center py-2">
+                <div className="text-center py-3">
                   <Sparkles className="w-5 h-5 text-muted-foreground/50 mx-auto mb-1" />
                   <p className="text-xs text-muted-foreground">No tickets yet</p>
                 </div>
