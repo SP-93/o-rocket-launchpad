@@ -592,14 +592,18 @@ async function handleTick(supabase: any, requestId: string): Promise<{ action: s
 
       const crashPoint = await generateCrashPoint(seedData.serverSeed);
 
-      // Process auto-cashouts for bets that should cash out at current multiplier
+      // Process auto-cashouts with a buffer to account for frontend/backend timing differences
+      // Buffer of 0.15 (~1 second ahead) ensures auto-cashouts trigger before the displayed multiplier
+      const autoCashoutBuffer = 0.15;
+      const autoCashoutThreshold = Math.min(currentMultiplier + autoCashoutBuffer, crashPoint);
+      
       const { data: autoCashouts } = await supabase
         .from('game_bets')
         .select('*')
         .eq('round_id', currentRound.id)
         .eq('status', 'active')
         .not('auto_cashout_at', 'is', null)
-        .lte('auto_cashout_at', currentMultiplier);
+        .lte('auto_cashout_at', autoCashoutThreshold);
 
       for (const bet of autoCashouts || []) {
         const winnings = Math.floor(bet.bet_amount * bet.auto_cashout_at);

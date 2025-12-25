@@ -32,6 +32,10 @@ export interface GameBet {
 // Faster polling interval for better sync
 const POLL_INTERVAL = 2000;
 
+// Lag compensation: display multiplier slightly behind server to ensure
+// auto-cashouts trigger before the displayed multiplier reaches the target
+const LAG_COMPENSATION_MS = 350;
+
 export function useGameRound() {
   const [currentRound, setCurrentRound] = useState<GameRound | null>(null);
   const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
@@ -49,14 +53,16 @@ export function useGameRound() {
     }
   }, []);
 
-  // Start multiplier animation
+  // Start multiplier animation with lag compensation
+  // Lag compensation ensures frontend display is slightly behind server to prevent
+  // showing higher multipliers than what auto-cashouts actually get
   const startMultiplierAnimation = useCallback((startedAt: string | null) => {
     stopMultiplierAnimation();
     
     const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
     
     multiplierIntervalRef.current = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
+      const elapsed = Math.max(0, (Date.now() - startTime - LAG_COMPENSATION_MS) / 1000);
       const multiplier = Math.pow(1.0718, elapsed);
       const capped = Math.min(multiplier, 10.00);
       setCurrentMultiplier(Math.round(capped * 100) / 100);
@@ -105,14 +111,15 @@ export function useGameRound() {
         lastRoundIdRef.current = round.id;
         
         // INSTANT SYNC: When flying, immediately calculate multiplier from started_at
+        // Apply same lag compensation as animation for consistency
         if (round.status === 'flying') {
           if (lastStatusRef.current !== 'flying') {
             // First time entering flying - instant sync then start animation
             if (round.started_at) {
-              const elapsed = (Date.now() - new Date(round.started_at).getTime()) / 1000;
+              const elapsed = Math.max(0, (Date.now() - new Date(round.started_at).getTime() - LAG_COMPENSATION_MS) / 1000);
               const instantMultiplier = Math.min(Math.pow(1.0718, elapsed), 10.00);
               setCurrentMultiplier(Math.round(instantMultiplier * 100) / 100);
-              console.log('[useGameRound] Instant sync multiplier:', instantMultiplier.toFixed(2));
+              console.log('[useGameRound] Instant sync multiplier (lag comp):', instantMultiplier.toFixed(2));
             }
             startMultiplierAnimation(round.started_at);
           }
