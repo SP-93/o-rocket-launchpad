@@ -116,11 +116,23 @@ const AutoGameControl = () => {
     }
   };
 
-  // Disable engine
+  // Disable engine with graceful shutdown
   const handleDisableEngine = async () => {
     if (!address || !isAdmin(address)) {
       toast.error('Admin wallet required');
       return;
+    }
+
+    // Warn if there's an active flying round
+    const currentStatus = state.currentRound?.status;
+    if (currentStatus === 'flying') {
+      const confirmed = window.confirm(
+        `⚠️ Round ${state.currentRound?.round_number} is currently FLYING!\n\n` +
+        `Stopping the engine will force crash this round immediately.\n\n` +
+        `All active bets will be marked as LOST.\n\n` +
+        `Are you sure you want to stop the engine?`
+      );
+      if (!confirmed) return;
     }
 
     setIsLoading(true);
@@ -133,10 +145,48 @@ const AutoGameControl = () => {
         throw new Error(response.error.message);
       }
 
+      // Check if a round was force crashed
+      if (response.data?.force_crashed) {
+        toast.warning(`Round ${response.data.force_crashed.roundNumber} was force crashed at ${response.data.force_crashed.crashPoint}x`);
+      }
+      
       toast.info('Game engine stopped');
       setState(prev => ({ ...prev, isEnabled: false }));
     } catch (err: any) {
       toast.error(`Failed to stop engine: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Force crash any stuck round (emergency action)
+  const handleForceCrash = async () => {
+    if (!address || !isAdmin(address)) {
+      toast.error('Admin wallet required');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `⚠️ This will FORCE CRASH the current round immediately!\n\n` +
+      `All active bets will be marked as LOST.\n\n` +
+      `Only use this for stuck rounds. Are you sure?`
+    );
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      const response = await supabase.functions.invoke('game-round-manager', {
+        body: { action: 'force_crash_round', admin_wallet: address },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      toast.success(`Round ${response.data.round_number} force crashed at ${response.data.crash_point}x`);
+      fetchStatus();
+    } catch (err: any) {
+      toast.error(`Failed to force crash: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -288,6 +338,25 @@ const AutoGameControl = () => {
             </NeonButton>
           )}
         </div>
+
+        {/* Emergency Force Crash Button - only show when there's an active round */}
+        {state.currentRound && ['flying', 'countdown', 'betting'].includes(state.currentRound.status) && (
+          <div className="mt-3">
+            <NeonButton 
+              onClick={handleForceCrash}
+              variant="ghost"
+              className="w-full border border-destructive/50 text-destructive hover:bg-destructive/10"
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 mr-2" />
+              )}
+              Force Crash Round (Emergency)
+            </NeonButton>
+          </div>
+        )}
 
         {/* Info Text */}
         <div className="mt-4 p-3 bg-muted/20 rounded-lg">
