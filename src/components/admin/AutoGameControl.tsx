@@ -64,27 +64,36 @@ const AutoGameControl = () => {
   const [tickets, setTickets] = useState<TicketPurchase[]>([]);
   const [ticketStats, setTicketStats] = useState({ totalWover: 0, totalUsdt: 0, count: 0 });
 
-  // Fetch ticket purchases
+  // Fetch ticket purchases via edge function (bypasses RLS)
   const fetchTickets = useCallback(async () => {
+    if (!address) return;
+    
     try {
-      const { data, error } = await supabase
-        .from('game_tickets')
-        .select('id, wallet_address, payment_currency, payment_amount, ticket_value, created_at')
-        .order('created_at', { ascending: false })
-        .limit(20);
+      const response = await supabase.functions.invoke('game-get-tickets', {
+        body: { 
+          admin_mode: true, 
+          admin_wallet: address,
+          limit: 50 
+        },
+      });
 
-      if (error) throw error;
+      if (response.error) throw response.error;
       
-      setTickets(data || []);
+      if (response.data?.tickets) {
+        setTickets(response.data.tickets);
+      }
       
-      // Calculate stats
-      const wover = (data || []).filter(t => t.payment_currency === 'WOVER').reduce((sum, t) => sum + t.payment_amount, 0);
-      const usdt = (data || []).filter(t => t.payment_currency === 'USDT').reduce((sum, t) => sum + t.payment_amount, 0);
-      setTicketStats({ totalWover: wover, totalUsdt: usdt, count: data?.length || 0 });
+      if (response.data?.stats) {
+        setTicketStats({
+          totalWover: response.data.stats.totalWover || 0,
+          totalUsdt: response.data.stats.totalUsdt || 0,
+          count: response.data.stats.count || 0
+        });
+      }
     } catch (err) {
       console.error('[AdminEngine] Failed to fetch tickets:', err);
     }
-  }, []);
+  }, [address]);
 
   // Fetch current status and on-chain balance
   const fetchStatus = useCallback(async () => {
