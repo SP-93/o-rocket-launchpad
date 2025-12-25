@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ethers } from 'ethers';
 import { toast } from '@/hooks/use-toast';
 import { CRASH_GAME_ABI } from '@/contracts/artifacts/crashGame';
@@ -12,11 +12,16 @@ const CLAIM_MIN_AGE_MS = 5 * 1000; // Wait at least 5 seconds before recovery
 
 interface PendingClaimData {
   betId: string;
-  txHash: string;
+  txHash: string; // May be empty if signature obtained but tx not yet sent
   nonce: number;
   amount: string;
   walletAddress: string;
   timestamp: number;
+  // NEW: Store signature for recovery if tx wasn't sent
+  signature?: string;
+  roundIdHash?: string;
+  contractAddress?: string;
+  amountWei?: string;
 }
 
 interface ClaimState {
@@ -27,13 +32,27 @@ interface ClaimState {
   isRecovering: boolean;
 }
 
-// Save pending claim to localStorage before tx.wait()
+// Save pending claim to localStorage BEFORE sending transaction
 const savePendingClaim = (data: PendingClaimData) => {
   try {
     localStorage.setItem(PENDING_CLAIM_KEY, JSON.stringify(data));
-    console.log('[ClaimWinnings] Saved pending claim to localStorage:', data.betId);
+    console.log('[ClaimWinnings] Saved pending claim to localStorage:', data.betId, 'txHash:', data.txHash || 'NOT_SENT_YET');
   } catch (e) {
     console.warn('[ClaimWinnings] Failed to save pending claim:', e);
+  }
+};
+
+// Update pending claim with tx hash after sending
+const updatePendingClaimTxHash = (txHash: string) => {
+  try {
+    const data = localStorage.getItem(PENDING_CLAIM_KEY);
+    if (!data) return;
+    const pending = JSON.parse(data) as PendingClaimData;
+    pending.txHash = txHash;
+    localStorage.setItem(PENDING_CLAIM_KEY, JSON.stringify(pending));
+    console.log('[ClaimWinnings] Updated pending claim with txHash:', txHash);
+  } catch (e) {
+    console.warn('[ClaimWinnings] Failed to update pending claim txHash:', e);
   }
 };
 
@@ -68,6 +87,34 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     isRecovering: false,
   });
 
+  // Ref to track if beforeunload is set
+  const beforeUnloadRef = useRef<((e: BeforeUnloadEvent) => void) | null>(null);
+
+  // CRITICAL: Add beforeunload warning when claiming
+  useEffect(() => {
+    if (claimState.isClaiming && !beforeUnloadRef.current) {
+      const handler = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        e.returnValue = 'Claim in progress! If you leave, you may lose your transaction. Are you sure?';
+        return e.returnValue;
+      };
+      window.addEventListener('beforeunload', handler);
+      beforeUnloadRef.current = handler;
+      console.log('[ClaimWinnings] Added beforeunload warning');
+    } else if (!claimState.isClaiming && beforeUnloadRef.current) {
+      window.removeEventListener('beforeunload', beforeUnloadRef.current);
+      beforeUnloadRef.current = null;
+      console.log('[ClaimWinnings] Removed beforeunload warning');
+    }
+
+    return () => {
+      if (beforeUnloadRef.current) {
+        window.removeEventListener('beforeunload', beforeUnloadRef.current);
+        beforeUnloadRef.current = null;
+      }
+    };
+  }, [claimState.isClaiming]);
+
   // Recovery effect: check for pending claims on mount
   useEffect(() => {
     const recoverPendingClaim = async () => {
@@ -84,9 +131,14 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
 
       const age = Date.now() - pending.timestamp;
 
-      // Too old - just clear it
+      // Too old - call reset-stuck-claims to handle it server-side
       if (age > CLAIM_TIMEOUT_MS) {
-        console.log('[ClaimWinnings] Pending claim too old, clearing');
+        console.log('[ClaimWinnings] Pending claim too old, triggering server-side cleanup');
+        try {
+          await supabase.functions.invoke('game-reset-stuck-claims', {});
+        } catch (e) {
+          console.warn('[ClaimWinnings] Failed to trigger cleanup:', e);
+        }
         clearPendingClaim();
         return;
       }
@@ -98,94 +150,93 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
       }
 
       // Try to recover this claim
-      console.log('[ClaimWinnings] Recovering pending claim:', pending.betId, pending.txHash);
+      console.log('[ClaimWinnings] Recovering pending claim:', pending.betId, 'txHash:', pending.txHash || 'NONE');
       setClaimState(prev => ({ ...prev, isRecovering: true }));
 
       try {
-        // Get provider to check tx status
-        const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
-        
-        // Check transaction status
-        const receipt = await provider.getTransactionReceipt(pending.txHash);
-        
-        if (receipt) {
-          if (receipt.status === 1) {
-            // Transaction succeeded! Confirm with backend
-            console.log('[ClaimWinnings] Pending tx confirmed on-chain, confirming with backend...');
-            
-            toast({
-              title: 'Recovering Claim...',
-              description: 'Found pending transaction, confirming...',
-            });
-
-            const { data: confirmResponse, error: confirmError } = await supabase.functions.invoke('game-confirm-claim', {
-              body: {
-                walletAddress: pending.walletAddress,
-                betId: pending.betId,
-                txHash: pending.txHash,
-                nonce: pending.nonce,
-                amount: pending.amount,
-              },
-            });
-
-            if (confirmError || !confirmResponse?.success) {
-              console.warn('[ClaimWinnings] Recovery confirm failed:', confirmError || confirmResponse?.error);
-            } else {
+        // Case 1: We have a txHash - check if it was confirmed
+        if (pending.txHash) {
+          const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
+          const receipt = await provider.getTransactionReceipt(pending.txHash);
+          
+          if (receipt) {
+            if (receipt.status === 1) {
+              // Transaction succeeded! Confirm with backend
+              console.log('[ClaimWinnings] Pending tx confirmed on-chain, confirming with backend...');
+              
               toast({
-                title: 'Claim Recovered!',
-                description: `Successfully recovered ${pending.amount} WOVER claim`,
+                title: 'Recovering Claim...',
+                description: 'Found confirmed transaction, syncing...',
+              });
+
+              const { data: confirmResponse, error: confirmError } = await supabase.functions.invoke('game-confirm-claim', {
+                body: {
+                  walletAddress: pending.walletAddress,
+                  betId: pending.betId,
+                  txHash: pending.txHash,
+                  nonce: pending.nonce,
+                  amount: pending.amount,
+                },
+              });
+
+              if (confirmError || !confirmResponse?.success) {
+                console.warn('[ClaimWinnings] Recovery confirm failed:', confirmError || confirmResponse?.error);
+              } else {
+                toast({
+                  title: 'Claim Recovered!',
+                  description: `Successfully recovered ${pending.amount} WOVER claim`,
+                });
+              }
+              
+              clearPendingClaim();
+            } else {
+              // Transaction failed - reset via server
+              console.log('[ClaimWinnings] Pending tx failed on-chain, triggering reset...');
+              
+              await supabase.functions.invoke('game-reset-stuck-claims', {});
+              clearPendingClaim();
+              
+              toast({
+                title: 'Claim Recovery Failed',
+                description: 'Transaction failed. You can try claiming again.',
+                variant: 'destructive',
               });
             }
-            
-            clearPendingClaim();
           } else {
-            // Transaction failed - cancel the claim
-            console.log('[ClaimWinnings] Pending tx failed on-chain, canceling...');
-            
-            await supabase.functions.invoke('game-cancel-claim', {
-              body: { 
-                walletAddress: pending.walletAddress, 
-                betId: pending.betId, 
-                nonce: pending.nonce 
-              },
-            });
-            
-            clearPendingClaim();
-            
-            toast({
-              title: 'Claim Recovery Failed',
-              description: 'Transaction failed. You can try claiming again.',
-              variant: 'destructive',
-            });
+            // Transaction still pending - check if it's been too long
+            if (age > 5 * 60 * 1000) {
+              // 5 minutes with no receipt - likely dropped
+              console.log('[ClaimWinnings] Pending tx not found after 5 min, triggering reset...');
+              
+              await supabase.functions.invoke('game-reset-stuck-claims', {});
+              clearPendingClaim();
+              
+              toast({
+                title: 'Claim Expired',
+                description: 'Transaction not confirmed. You can try claiming again.',
+                variant: 'destructive',
+              });
+            } else {
+              // Still waiting - show message but don't clear
+              toast({
+                title: 'Claim Pending',
+                description: 'Previous claim transaction still processing...',
+              });
+            }
           }
         } else {
-          // Transaction still pending - check if it's been too long
-          if (age > 5 * 60 * 1000) {
-            // 5 minutes with no receipt - likely dropped, cancel
-            console.log('[ClaimWinnings] Pending tx not found after 5 min, canceling...');
-            
-            await supabase.functions.invoke('game-cancel-claim', {
-              body: { 
-                walletAddress: pending.walletAddress, 
-                betId: pending.betId, 
-                nonce: pending.nonce 
-              },
-            });
-            
-            clearPendingClaim();
-            
-            toast({
-              title: 'Claim Expired',
-              description: 'Transaction not confirmed. You can try claiming again.',
-              variant: 'destructive',
-            });
-          } else {
-            // Still waiting - show message but don't clear
-            toast({
-              title: 'Claim Pending',
-              description: 'Previous claim transaction still processing...',
-            });
-          }
+          // Case 2: We have signature but no txHash - tx was never sent
+          // The bet is locked as 'claiming' - need to either resend or reset
+          console.log('[ClaimWinnings] Pending claim has signature but no txHash - resetting...');
+          
+          // Trigger server-side reset (will check on-chain status properly)
+          await supabase.functions.invoke('game-reset-stuck-claims', {});
+          clearPendingClaim();
+          
+          toast({
+            title: 'Claim Reset',
+            description: 'Previous claim was interrupted. You can try again.',
+          });
         }
       } catch (error) {
         console.error('[ClaimWinnings] Recovery error:', error);
@@ -315,7 +366,21 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           throw new Error('Invalid claim response');
         }
 
-        // contractAddress already resolved in preflight above
+        // CRITICAL: Save pending claim IMMEDIATELY after getting signature, BEFORE sending tx
+        // This ensures we can recover even if the user refreshes before tx is sent
+        savePendingClaim({
+          betId,
+          txHash: '', // Will be updated after tx is sent
+          nonce,
+          amount: claimAmount,
+          walletAddress,
+          timestamp: Date.now(),
+          signature,
+          roundIdHash: claimData.roundId,
+          contractAddress: claimData.contractAddress,
+          amountWei: claimData.amount,
+        });
+
         const contract = new ethers.Contract(contractAddress, CRASH_GAME_ABI, signer);
 
         // Convert amount to BigNumber
@@ -348,19 +413,12 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         const tx = await contract.claimWinnings(amountWei, claimData.roundId, nonce, signature, { gasLimit });
         txHash = tx.hash;
 
-        // CRITICAL: Save pending claim to localStorage BEFORE waiting
-        savePendingClaim({
-          betId,
-          txHash: tx.hash,
-          nonce,
-          amount: claimAmount,
-          walletAddress,
-          timestamp: Date.now(),
-        });
+        // CRITICAL: Update localStorage with actual txHash
+        updatePendingClaimTxHash(tx.hash);
 
         toast({
-          title: 'Confirming Transaction...',
-          description: `Do not refresh! TX: ${tx.hash.slice(0, 10)}...`,
+          title: '⏳ Confirming Transaction...',
+          description: `DO NOT REFRESH! TX: ${tx.hash.slice(0, 10)}...`,
         });
 
         const receipt = await tx.wait();
@@ -415,6 +473,8 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
             await supabase.functions.invoke('game-cancel-claim', {
               body: { walletAddress, betId, nonce },
             });
+            // Also clear localStorage since no tx was sent
+            clearPendingClaim();
           } catch (cancelErr) {
             console.warn('[ClaimWinnings] Failed to cancel claim lock:', cancelErr);
           }
