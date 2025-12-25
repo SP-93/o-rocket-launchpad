@@ -104,13 +104,20 @@ export function useGameRound() {
         }
         lastRoundIdRef.current = round.id;
         
-        // Start multiplier animation when flying
-        if (round.status === 'flying' && lastStatusRef.current !== 'flying') {
-          startMultiplierAnimation(round.started_at);
-        }
-        
-        // Reset multiplier when not flying
-        if (round.status !== 'flying') {
+        // INSTANT SYNC: When flying, immediately calculate multiplier from started_at
+        if (round.status === 'flying') {
+          if (lastStatusRef.current !== 'flying') {
+            // First time entering flying - instant sync then start animation
+            if (round.started_at) {
+              const elapsed = (Date.now() - new Date(round.started_at).getTime()) / 1000;
+              const instantMultiplier = Math.min(Math.pow(1.0718, elapsed), 10.00);
+              setCurrentMultiplier(Math.round(instantMultiplier * 100) / 100);
+              console.log('[useGameRound] Instant sync multiplier:', instantMultiplier.toFixed(2));
+            }
+            startMultiplierAnimation(round.started_at);
+          }
+        } else {
+          // Reset multiplier when not flying
           stopMultiplierAnimation();
           if (round.status === 'betting' || round.status === 'countdown') {
             setCurrentMultiplier(1.00);

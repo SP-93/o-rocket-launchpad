@@ -12,8 +12,82 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { wallet_address } = await req.json();
+    const { wallet_address, admin_mode, admin_wallet, limit } = await req.json();
     
+    // Create admin client to bypass RLS
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // ADMIN MODE - fetch all tickets with stats
+    if (admin_mode && admin_wallet) {
+      console.log(`[game-get-tickets] Admin mode requested by: ${admin_wallet}`);
+      
+      // Verify admin status
+      const { data: isAdmin, error: adminError } = await supabaseAdmin
+        .rpc('is_wallet_admin', { _wallet_address: admin_wallet.toLowerCase() });
+      
+      if (adminError || !isAdmin) {
+        console.error('[game-get-tickets] Not authorized as admin:', adminError);
+        return new Response(
+          JSON.stringify({ error: 'Not authorized' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Fetch recent tickets (limited)
+      const { data: tickets, error: ticketsError } = await supabaseAdmin
+        .from('game_tickets')
+        .select('id, wallet_address, payment_currency, payment_amount, ticket_value, created_at, is_used, expires_at')
+        .order('created_at', { ascending: false })
+        .limit(limit || 50);
+
+      if (ticketsError) {
+        console.error('[game-get-tickets] Error fetching tickets:', ticketsError);
+        return new Response(
+          JSON.stringify({ error: ticketsError.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Fetch ALL tickets for accurate stats (no limit)
+      const { data: allTickets, error: statsError } = await supabaseAdmin
+        .from('game_tickets')
+        .select('payment_currency, payment_amount');
+
+      if (statsError) {
+        console.error('[game-get-tickets] Error fetching stats:', statsError);
+      }
+
+      // Calculate total stats from ALL tickets
+      let totalWover = 0;
+      let totalUsdt = 0;
+      (allTickets || []).forEach((t: any) => {
+        if (t.payment_currency === 'WOVER') {
+          totalWover += Number(t.payment_amount) || 0;
+        } else if (t.payment_currency === 'USDT') {
+          totalUsdt += Number(t.payment_amount) || 0;
+        }
+      });
+
+      console.log(`[game-get-tickets] Admin fetched ${tickets?.length || 0} tickets, total: ${allTickets?.length || 0}`);
+
+      return new Response(
+        JSON.stringify({ 
+          tickets: tickets || [], 
+          stats: {
+            totalWover,
+            totalUsdt,
+            count: allTickets?.length || 0
+          },
+          success: true 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // NORMAL MODE - fetch tickets for specific wallet
     if (!wallet_address) {
       console.error('[game-get-tickets] Missing wallet_address');
       return new Response(
@@ -24,12 +98,6 @@ Deno.serve(async (req) => {
 
     const normalizedAddress = wallet_address.toLowerCase();
     console.log(`[game-get-tickets] Fetching tickets for wallet: ${normalizedAddress}`);
-
-    // Create admin client to bypass RLS
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     // Fetch all tickets for this wallet
     const { data: tickets, error: ticketsError } = await supabaseAdmin
