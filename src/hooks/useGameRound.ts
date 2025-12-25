@@ -41,6 +41,28 @@ export function useGameRound() {
   const lastStatusRef = useRef<string | null>(null);
   const lastRoundIdRef = useRef<string | null>(null);
 
+  // Stop multiplier animation - define first since others depend on it
+  const stopMultiplierAnimation = useCallback(() => {
+    if (multiplierIntervalRef.current) {
+      clearInterval(multiplierIntervalRef.current);
+      multiplierIntervalRef.current = null;
+    }
+  }, []);
+
+  // Start multiplier animation
+  const startMultiplierAnimation = useCallback((startedAt: string | null) => {
+    stopMultiplierAnimation();
+    
+    const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
+    
+    multiplierIntervalRef.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const multiplier = Math.pow(1.0718, elapsed);
+      const capped = Math.min(multiplier, 10.00);
+      setCurrentMultiplier(Math.round(capped * 100) / 100);
+    }, 100);
+  }, [stopMultiplierAnimation]);
+
   // Fetch round history using RPC function
   const fetchRoundHistory = useCallback(async () => {
     try {
@@ -49,7 +71,6 @@ export function useGameRound() {
 
       if (error) throw error;
       
-      // Filter only crashed/payout rounds for history
       const historyRounds = (data || [])
         .filter((r: any) => ['crashed', 'payout'].includes(r.status))
         .slice(0, 10) as GameRound[];
@@ -69,7 +90,6 @@ export function useGameRound() {
       if (error) throw error;
       
       if (rounds && rounds.length > 0) {
-        // Find active round first
         const activeRound = rounds.find((r: any) => 
           ['betting', 'countdown', 'flying'].includes(r.status)
         );
@@ -77,14 +97,14 @@ export function useGameRound() {
         const round = (activeRound || rounds[0]) as GameRound;
         setCurrentRound(round);
         
-        // CRITICAL: When a new round starts (round ID changed and status is betting), refresh history
+        // Refresh history when new round starts
         if (round.id !== lastRoundIdRef.current && round.status === 'betting') {
           console.log('[useGameRound] New round detected, refreshing history');
           fetchRoundHistory();
         }
         lastRoundIdRef.current = round.id;
         
-        // Start multiplier animation immediately when flying
+        // Start multiplier animation when flying
         if (round.status === 'flying' && lastStatusRef.current !== 'flying') {
           startMultiplierAnimation(round.started_at);
         }
@@ -106,33 +126,7 @@ export function useGameRound() {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchRoundHistory]);
-
-  // Start multiplier animation
-  const startMultiplierAnimation = useCallback((startedAt: string | null) => {
-    stopMultiplierAnimation();
-    
-    const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
-    
-    // Use 100ms interval for better performance (was 50ms)
-    multiplierIntervalRef.current = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      // Exponential growth formula
-      const multiplier = Math.pow(1.0718, elapsed);
-      const capped = Math.min(multiplier, 10.00);
-      setCurrentMultiplier(Math.round(capped * 100) / 100);
-    }, 100);
-  }, []);
-
-  // Stop multiplier animation
-  const stopMultiplierAnimation = useCallback(() => {
-    if (multiplierIntervalRef.current) {
-      clearInterval(multiplierIntervalRef.current);
-      multiplierIntervalRef.current = null;
-    }
-  }, []);
-
-  // fetchRoundHistory is now defined above fetchCurrentRound
+  }, [fetchRoundHistory, startMultiplierAnimation, stopMultiplierAnimation]);
 
   // Initial fetch and polling
   useEffect(() => {
