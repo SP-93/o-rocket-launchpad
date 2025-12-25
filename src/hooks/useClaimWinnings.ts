@@ -1,16 +1,63 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { toast } from '@/hooks/use-toast';
 import { CRASH_GAME_ABI } from '@/contracts/artifacts/crashGame';
 import { getDeployedContractsAsync } from '@/contracts/storage';
 import { supabase } from '@/integrations/supabase/client';
 
+// LocalStorage key for pending claim recovery
+const PENDING_CLAIM_KEY = 'pending_claim';
+const CLAIM_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes max age for recovery
+const CLAIM_MIN_AGE_MS = 5 * 1000; // Wait at least 5 seconds before recovery
+
+interface PendingClaimData {
+  betId: string;
+  txHash: string;
+  nonce: number;
+  amount: string;
+  walletAddress: string;
+  timestamp: number;
+}
+
 interface ClaimState {
   isClaiming: boolean;
   canClaim: boolean;
   pendingAmount: string;
   txHash: string | null;
+  isRecovering: boolean;
 }
+
+// Save pending claim to localStorage before tx.wait()
+const savePendingClaim = (data: PendingClaimData) => {
+  try {
+    localStorage.setItem(PENDING_CLAIM_KEY, JSON.stringify(data));
+    console.log('[ClaimWinnings] Saved pending claim to localStorage:', data.betId);
+  } catch (e) {
+    console.warn('[ClaimWinnings] Failed to save pending claim:', e);
+  }
+};
+
+// Clear pending claim from localStorage
+const clearPendingClaim = () => {
+  try {
+    localStorage.removeItem(PENDING_CLAIM_KEY);
+    console.log('[ClaimWinnings] Cleared pending claim from localStorage');
+  } catch (e) {
+    console.warn('[ClaimWinnings] Failed to clear pending claim:', e);
+  }
+};
+
+// Get pending claim from localStorage
+const getPendingClaim = (): PendingClaimData | null => {
+  try {
+    const data = localStorage.getItem(PENDING_CLAIM_KEY);
+    if (!data) return null;
+    return JSON.parse(data) as PendingClaimData;
+  } catch (e) {
+    console.warn('[ClaimWinnings] Failed to read pending claim:', e);
+    return null;
+  }
+};
 
 export const useClaimWinnings = (walletAddress: string | undefined) => {
   const [claimState, setClaimState] = useState<ClaimState>({
@@ -18,7 +65,138 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     canClaim: false,
     pendingAmount: '0',
     txHash: null,
+    isRecovering: false,
   });
+
+  // Recovery effect: check for pending claims on mount
+  useEffect(() => {
+    const recoverPendingClaim = async () => {
+      if (!walletAddress) return;
+
+      const pending = getPendingClaim();
+      if (!pending) return;
+
+      // Check if this pending claim belongs to current wallet
+      if (pending.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        console.log('[ClaimWinnings] Pending claim for different wallet, ignoring');
+        return;
+      }
+
+      const age = Date.now() - pending.timestamp;
+
+      // Too old - just clear it
+      if (age > CLAIM_TIMEOUT_MS) {
+        console.log('[ClaimWinnings] Pending claim too old, clearing');
+        clearPendingClaim();
+        return;
+      }
+
+      // Too fresh - let the original flow complete
+      if (age < CLAIM_MIN_AGE_MS) {
+        console.log('[ClaimWinnings] Pending claim too fresh, waiting');
+        return;
+      }
+
+      // Try to recover this claim
+      console.log('[ClaimWinnings] Recovering pending claim:', pending.betId, pending.txHash);
+      setClaimState(prev => ({ ...prev, isRecovering: true }));
+
+      try {
+        // Get provider to check tx status
+        const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
+        
+        // Check transaction status
+        const receipt = await provider.getTransactionReceipt(pending.txHash);
+        
+        if (receipt) {
+          if (receipt.status === 1) {
+            // Transaction succeeded! Confirm with backend
+            console.log('[ClaimWinnings] Pending tx confirmed on-chain, confirming with backend...');
+            
+            toast({
+              title: 'Recovering Claim...',
+              description: 'Found pending transaction, confirming...',
+            });
+
+            const { data: confirmResponse, error: confirmError } = await supabase.functions.invoke('game-confirm-claim', {
+              body: {
+                walletAddress: pending.walletAddress,
+                betId: pending.betId,
+                txHash: pending.txHash,
+                nonce: pending.nonce,
+                amount: pending.amount,
+              },
+            });
+
+            if (confirmError || !confirmResponse?.success) {
+              console.warn('[ClaimWinnings] Recovery confirm failed:', confirmError || confirmResponse?.error);
+            } else {
+              toast({
+                title: 'Claim Recovered!',
+                description: `Successfully recovered ${pending.amount} WOVER claim`,
+              });
+            }
+            
+            clearPendingClaim();
+          } else {
+            // Transaction failed - cancel the claim
+            console.log('[ClaimWinnings] Pending tx failed on-chain, canceling...');
+            
+            await supabase.functions.invoke('game-cancel-claim', {
+              body: { 
+                walletAddress: pending.walletAddress, 
+                betId: pending.betId, 
+                nonce: pending.nonce 
+              },
+            });
+            
+            clearPendingClaim();
+            
+            toast({
+              title: 'Claim Recovery Failed',
+              description: 'Transaction failed. You can try claiming again.',
+              variant: 'destructive',
+            });
+          }
+        } else {
+          // Transaction still pending - check if it's been too long
+          if (age > 5 * 60 * 1000) {
+            // 5 minutes with no receipt - likely dropped, cancel
+            console.log('[ClaimWinnings] Pending tx not found after 5 min, canceling...');
+            
+            await supabase.functions.invoke('game-cancel-claim', {
+              body: { 
+                walletAddress: pending.walletAddress, 
+                betId: pending.betId, 
+                nonce: pending.nonce 
+              },
+            });
+            
+            clearPendingClaim();
+            
+            toast({
+              title: 'Claim Expired',
+              description: 'Transaction not confirmed. You can try claiming again.',
+              variant: 'destructive',
+            });
+          } else {
+            // Still waiting - show message but don't clear
+            toast({
+              title: 'Claim Pending',
+              description: 'Previous claim transaction still processing...',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('[ClaimWinnings] Recovery error:', error);
+        // On error, don't clear - let next refresh try again
+      } finally {
+        setClaimState(prev => ({ ...prev, isRecovering: false }));
+      }
+    };
+
+    recoverPendingClaim();
+  }, [walletAddress]);
 
   // Check if player can claim for a specific bet
   const checkCanClaim = useCallback(
@@ -170,9 +348,19 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         const tx = await contract.claimWinnings(amountWei, claimData.roundId, nonce, signature, { gasLimit });
         txHash = tx.hash;
 
+        // CRITICAL: Save pending claim to localStorage BEFORE waiting
+        savePendingClaim({
+          betId,
+          txHash: tx.hash,
+          nonce,
+          amount: claimAmount,
+          walletAddress,
+          timestamp: Date.now(),
+        });
+
         toast({
-          title: 'Claiming Winnings...',
-          description: `Transaction submitted: ${tx.hash.slice(0, 10)}...`,
+          title: 'Confirming Transaction...',
+          description: `Do not refresh! TX: ${tx.hash.slice(0, 10)}...`,
         });
 
         const receipt = await tx.wait();
@@ -200,15 +388,19 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           });
         }
 
+        // SUCCESS - clear pending claim from localStorage
+        clearPendingClaim();
+
         setClaimState({
           isClaiming: false,
           canClaim: false,
           pendingAmount: '0',
           txHash: tx.hash,
+          isRecovering: false,
         });
 
         toast({
-          title: 'Winnings Claimed',
+          title: 'Winnings Claimed!',
           description: `Successfully claimed ${claimAmount} WOVER`,
         });
 
@@ -228,6 +420,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           }
         }
 
+        // If tx was sent but failed BEFORE waiting completed, keep in localStorage for recovery
+        // (recovery will handle it on next mount)
+
         setClaimState((prev) => ({ ...prev, isClaiming: false }));
 
         // Determine error message
@@ -239,8 +434,11 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           errorMessage = error.reason;
         } else if (rejected) {
           errorMessage = 'Transaction rejected by user';
+          // User rejected - clear pending claim
+          clearPendingClaim();
         } else if (message.includes('Claim already used')) {
           errorMessage = 'Winnings already claimed';
+          clearPendingClaim();
         } else if (message.includes('Invalid signature')) {
           errorMessage = 'Invalid claim signature';
         } else if (message.includes('Insufficient prize pool')) {
