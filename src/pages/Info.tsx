@@ -44,7 +44,7 @@ const EXCHANGES = [
 const SOCIAL_LINKS = [
   { 
     name: "O'Rocket Telegram", 
-    url: 'https://t.me/+6aGbv0-Ct6JjMDEy', 
+    url: 'https://t.me/OverHippoLab', 
     type: 'telegram' as const,
     description: 'Join our community'
   },
