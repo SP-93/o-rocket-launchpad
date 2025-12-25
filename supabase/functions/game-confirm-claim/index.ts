@@ -42,12 +42,12 @@ serve(async (req) => {
   }
 
   try {
-    const { walletAddress, roundId, txHash, nonce, amount } = await req.json();
+    const { walletAddress, betId, txHash, nonce, amount } = await req.json();
 
-    console.log('[game-confirm-claim] Request:', { walletAddress, roundId, txHash, nonce, amount });
+    console.log('[game-confirm-claim] Request:', { walletAddress, betId, txHash, nonce, amount });
 
     // Validate inputs
-    if (!walletAddress || !roundId || !txHash || nonce === undefined || !amount) {
+    if (!walletAddress || !betId || !txHash || nonce === undefined || !amount) {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -73,15 +73,30 @@ serve(async (req) => {
     const { data: bet, error: betError } = await supabase
       .from('game_bets')
       .select('*')
-      .eq('round_id', roundId)
-      .ilike('wallet_address', walletAddress)
+      .eq('id', betId)
       .single();
 
     if (betError || !bet) {
       console.error('[game-confirm-claim] Bet not found:', betError);
       return new Response(
-        JSON.stringify({ error: 'Bet not found for this round' }),
+        JSON.stringify({ error: 'Bet not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (bet.wallet_address?.toLowerCase() !== walletAddress.toLowerCase()) {
+      console.warn('[game-confirm-claim] Wallet mismatch:', { betWallet: bet.wallet_address, walletAddress });
+      return new Response(
+        JSON.stringify({ error: 'Bet does not belong to this wallet' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const roundId = bet.round_id as string;
+    if (!roundId) {
+      return new Response(
+        JSON.stringify({ error: 'Bet missing round_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -223,10 +238,7 @@ serve(async (req) => {
           });
 
           // Verify all event data matches
-          if (
-            eventPlayer === walletAddress.toLowerCase() &&
-            eventRoundId === roundIdHash
-          ) {
+          if (eventPlayer === walletAddress.toLowerCase() && eventRoundId === roundIdHash) {
             foundValidEvent = true;
             break;
           }
@@ -238,6 +250,13 @@ serve(async (req) => {
 
     if (!foundValidEvent || !eventAmountWei || eventNonceValue === null) {
       console.error('[game-confirm-claim] No matching WinningsClaimed event found');
+
+      // Unlock: allow user to try again (tx succeeded, but not our event)
+      await supabase
+        .from('game_bets')
+        .update({ status: 'won', claiming_started_at: null, claim_nonce: null })
+        .eq('id', bet.id);
+
       return new Response(
         JSON.stringify({ error: 'No valid claim event found in transaction' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

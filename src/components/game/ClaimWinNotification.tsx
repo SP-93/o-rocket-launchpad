@@ -50,20 +50,20 @@ const ClaimWinNotification = ({
 
   // Check claim eligibility when notification shows
   useEffect(() => {
-    if (showNotification && roundId) {
-      checkCanClaim(roundId);
+    if (showNotification && myBet?.id) {
+      checkCanClaim(myBet.id);
     }
-  }, [showNotification, roundId, checkCanClaim]);
+  }, [showNotification, myBet?.id, checkCanClaim]);
 
   const handleClaim = async () => {
-    if (!roundId || !myBet || !walletClient || !myBet.winnings) return;
-    
+    if (!myBet?.id || !myBet.winnings || !walletClient) return;
+
     try {
       // Create ethers signer from wagmi wallet client
       const provider = new ethers.providers.Web3Provider(walletClient as any);
       const signer = provider.getSigner();
-      
-      await claimWinnings(signer, roundId, myBet.winnings);
+
+      await claimWinnings(signer, myBet.id, myBet.winnings);
       toast.success('Winnings claimed successfully!');
       onClaimSuccess?.();
       setDismissed(true);

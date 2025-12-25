@@ -46,13 +46,13 @@ const BettingPanel = ({
   // Handler for claiming a single win
   const handleSingleClaim = async (win: typeof pendingWinnings[0]) => {
     if (!window.ethereum || claimingBetId) return;
-    
+
     setClaimingBetId(win.id);
     try {
       const { ethers } = await import('ethers');
       const provider = new ethers.providers.Web3Provider(window.ethereum as any);
       const signer = provider.getSigner();
-      await claimWinnings(signer, win.round_id, win.winnings);
+      await claimWinnings(signer, win.id, win.winnings);
       playSound('win');
       refetchPending();
     } catch (error) {
@@ -72,34 +72,29 @@ const BettingPanel = ({
   const isMyBetForCurrentRound = myBet && currentRound && myBet.round_id === currentRound.id;
   const canBet = currentRound?.status === 'betting' && !isMyBetForCurrentRound && isConnected;
   const canCashOutState = currentRound?.status === 'flying' && myBet?.status === 'active';
-  
+
   // Check if player can claim winnings when they won
   useEffect(() => {
     const checkClaimStatus = async () => {
-      if (myBet?.status === 'won' && currentRound?.id) {
-        console.log(`[BettingPanel] Checking claim status for round ${currentRound.id}`);
-        const result = await checkCanClaim(currentRound.id);
-        console.log(`[BettingPanel] Claim check result:`, result);
+      if (myBet?.status === 'won' && myBet?.id) {
+        await checkCanClaim(myBet.id);
       }
     };
     checkClaimStatus();
-  }, [myBet?.status, currentRound?.id, checkCanClaim]);
+  }, [myBet?.status, myBet?.id, checkCanClaim]);
 
   const handleClaimWinnings = async () => {
-    if (!currentRound?.id || !window.ethereum) {
-      console.log('[BettingPanel] Cannot claim: missing round or ethereum');
-      return;
-    }
-    
+    if (!myBet?.id || !window.ethereum) return;
+
     try {
-      console.log(`[BettingPanel] Starting claim for round ${currentRound.id}`);
       const { ethers } = await import('ethers');
       const provider = new ethers.providers.Web3Provider(window.ethereum as any);
       const signer = provider.getSigner();
-      
-      const txHash = await claimWinnings(signer, currentRound.id, pendingAmount);
-      console.log(`[BettingPanel] Claim successful: ${txHash}`);
+
+      const claimAmount = myBet.winnings ?? pendingAmount;
+      await claimWinnings(signer, myBet.id, claimAmount);
       playSound('cashout');
+      refetchPending();
     } catch (error) {
       console.error('[BettingPanel] Claim error:', error);
       // Error already handled in hook
