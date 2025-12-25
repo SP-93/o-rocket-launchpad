@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface PendingWin {
@@ -16,6 +16,7 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
   const [claimingWinnings, setClaimingWinnings] = useState<PendingWin[]>([]);
   const [totalPending, setTotalPending] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchPendingWinnings = useCallback(async () => {
     if (!walletAddress) {
@@ -27,27 +28,30 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
 
     setIsLoading(true);
     try {
-      // Fetch bets with 'won' or 'claiming' status
-      const { data, error } = await supabase
-        .from('game_bets')
-        .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at, status')
-        .ilike('wallet_address', walletAddress)
-        .in('status', ['won', 'claiming'])
-        .gt('winnings', 0)
-        .order('created_at', { ascending: false });
+      // Use edge function to bypass RLS
+      const { data, error } = await supabase.functions.invoke('game-pending-winnings', {
+        body: { wallet_address: walletAddress }
+      });
 
       if (error) {
-        console.error('[usePendingWinnings] Error:', error);
+        console.error('[usePendingWinnings] Edge function error:', error);
         return;
       }
 
-      const allWins = (data || []) as PendingWin[];
-      const claimable = allWins.filter(w => w.status === 'won');
-      const inProgress = allWins.filter(w => w.status === 'claiming');
-      
-      setPendingWinnings(claimable);
-      setClaimingWinnings(inProgress);
-      setTotalPending(claimable.reduce((sum, w) => sum + (w.winnings || 0), 0));
+      if (!data?.success) {
+        console.error('[usePendingWinnings] API error:', data?.error);
+        return;
+      }
+
+      console.log('[usePendingWinnings] Fetched:', {
+        pending: data.pendingWinnings?.length || 0,
+        claiming: data.claimingWinnings?.length || 0,
+        total: data.totalPending
+      });
+
+      setPendingWinnings(data.pendingWinnings || []);
+      setClaimingWinnings(data.claimingWinnings || []);
+      setTotalPending(data.totalPending || 0);
     } catch (err) {
       console.error('[usePendingWinnings] Error:', err);
     } finally {
@@ -55,16 +59,26 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
     }
   }, [walletAddress]);
 
+  // Initial fetch and polling
   useEffect(() => {
     fetchPendingWinnings();
+
+    // Poll every 10 seconds for updates (more reliable than realtime for anon users)
+    pollIntervalRef.current = setInterval(fetchPendingWinnings, 10000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
   }, [fetchPendingWinnings]);
 
-  // Realtime subscription for bet updates
+  // Also subscribe to realtime as backup
   useEffect(() => {
     if (!walletAddress) return;
 
     const channel = supabase
-      .channel('pending-winnings')
+      .channel('pending-winnings-' + walletAddress.slice(-8))
       .on(
         'postgres_changes',
         {
@@ -73,7 +87,8 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
           table: 'game_bets',
         },
         () => {
-          fetchPendingWinnings();
+          // Debounce refetch slightly
+          setTimeout(fetchPendingWinnings, 500);
         }
       )
       .subscribe();
