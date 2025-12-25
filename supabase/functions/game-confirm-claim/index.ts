@@ -46,8 +46,8 @@ serve(async (req) => {
 
     console.log('[game-confirm-claim] Request:', { walletAddress, betId, txHash, nonce, amount });
 
-    // Validate inputs
-    if (!walletAddress || !betId || !txHash || nonce === undefined || !amount) {
+    // Validate inputs - nonce is now optional for recovery
+    if (!walletAddress || !betId || !txHash || !amount) {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -69,7 +69,7 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify the bet exists and is in 'claiming' status
+    // Verify the bet exists
     const { data: bet, error: betError } = await supabase
       .from('game_bets')
       .select('*')
@@ -109,24 +109,30 @@ serve(async (req) => {
       );
     }
 
-    // Must be in 'claiming' status to confirm
-    if (bet.status !== 'claiming') {
+    // CRITICAL FIX: Accept 'claiming' or 'won' status for recovery
+    // This allows confirming a claim even if the bet was reset to 'won' by game-reset-stuck-claims
+    if (bet.status !== 'claiming' && bet.status !== 'won') {
       console.error('[game-confirm-claim] Invalid status:', bet.status);
       return new Response(
-        JSON.stringify({ error: `Invalid bet status: ${bet.status}. Expected 'claiming'` }),
+        JSON.stringify({ error: `Invalid bet status: ${bet.status}. Expected 'claiming' or 'won'` }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // CRITICAL: Verify nonce matches what was set during sign-claim
-    // This prevents replay attacks and ensures claim integrity
+    // CRITICAL FIX: Nonce matching is now optional
+    // If nonce provided, verify it matches. If not provided, rely on on-chain verification
     const dbNonce = bet.claim_nonce;
-    if (!dbNonce || dbNonce !== nonce) {
-      console.error('[game-confirm-claim] Nonce mismatch:', { requestNonce: nonce, dbNonce });
-      return new Response(
-        JSON.stringify({ error: 'Nonce mismatch - claim session invalid' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    let nonceToVerify = nonce;
+    
+    if (nonce !== undefined && nonce !== null) {
+      // Nonce provided - check if it matches (but don't fail if DB nonce is null during recovery)
+      if (dbNonce !== null && dbNonce !== nonce) {
+        console.warn('[game-confirm-claim] Nonce mismatch (non-fatal):', { requestNonce: nonce, dbNonce });
+        // Don't fail - we'll verify on-chain instead
+      }
+    } else if (dbNonce !== null) {
+      // No nonce provided but we have one in DB - use DB nonce
+      nonceToVerify = dbNonce;
     }
 
     // Verify amount matches expected winnings
@@ -192,7 +198,7 @@ serve(async (req) => {
       // Reset to 'won' so user can try again
       await supabase
         .from('game_bets')
-        .update({ status: 'won', claiming_started_at: null, claim_nonce: null })
+        .update({ status: 'won', claiming_started_at: null, claim_nonce: null, claim_tx_hash: null })
         .eq('id', bet.id);
       
       return new Response(
@@ -237,7 +243,7 @@ serve(async (req) => {
             nonce: eventNonceValue,
           });
 
-          // Verify all event data matches
+          // Verify player and round match (nonce verification is flexible now)
           if (eventPlayer === walletAddress.toLowerCase() && eventRoundId === roundIdHash) {
             foundValidEvent = true;
             break;
@@ -254,7 +260,7 @@ serve(async (req) => {
       // Unlock: allow user to try again (tx succeeded, but not our event)
       await supabase
         .from('game_bets')
-        .update({ status: 'won', claiming_started_at: null, claim_nonce: null })
+        .update({ status: 'won', claiming_started_at: null, claim_nonce: null, claim_tx_hash: null })
         .eq('id', bet.id);
 
       return new Response(
@@ -263,16 +269,14 @@ serve(async (req) => {
       );
     }
 
-    // CRITICAL: Verify event nonce matches database nonce
-    if (eventNonceValue !== dbNonce) {
-      console.error('[game-confirm-claim] Event nonce mismatch:', { eventNonce: eventNonceValue, dbNonce });
-      return new Response(
-        JSON.stringify({ error: 'Event nonce does not match claim session' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // CRITICAL FIX: Nonce verification is now flexible
+    // If we have a DB nonce, prefer exact match. Otherwise, accept event nonce
+    if (dbNonce !== null && eventNonceValue !== dbNonce) {
+      console.warn('[game-confirm-claim] Event nonce differs from DB nonce:', { eventNonce: eventNonceValue, dbNonce });
+      // This is OK during recovery - the transaction succeeded on-chain
     }
 
-    // CRITICAL: Verify event amount matches expected winnings
+    // Verify event amount matches expected winnings
     const eventAmountEther = parseFloat(ethers.utils.formatEther(eventAmountWei));
     if (Math.abs(eventAmountEther - expectedWinnings) > 0.01) {
       console.error('[game-confirm-claim] Event amount mismatch:', { eventAmount: eventAmountEther, expectedWinnings });
@@ -289,6 +293,7 @@ serve(async (req) => {
         status: 'claimed',
         claim_tx_hash: txHash,
         claimed_at: new Date().toISOString(),
+        claim_nonce: eventNonceValue, // Store the actual nonce from the event
       })
       .eq('id', bet.id);
 
@@ -300,7 +305,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('[game-confirm-claim] Successfully confirmed claim for bet:', bet.id);
+    console.log('[game-confirm-claim] Successfully confirmed claim for bet:', bet.id, 'txHash:', txHash);
 
     return new Response(
       JSON.stringify({

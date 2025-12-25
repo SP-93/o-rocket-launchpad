@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.game-cancel-claim]
 verify_jwt = false
+
+[functions.game-save-tx-hash]
+verify_jwt = false
