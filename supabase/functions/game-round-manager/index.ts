@@ -128,9 +128,10 @@ function validateAction(action: string): boolean {
     'crash',
     'process_payouts',
     'get_status',
-    'tick',           // New: automatic state machine tick
-    'enable_engine',  // New: enable/disable engine
-    'disable_engine', // New: disable engine
+    'tick',              // automatic state machine tick
+    'enable_engine',     // enable engine
+    'disable_engine',    // disable engine
+    'force_crash_round', // NEW: force crash stuck rounds
   ];
   return validActions.includes(action);
 }
@@ -818,6 +819,53 @@ serve(async (req) => {
       }
 
       case 'disable_engine': {
+        // GRACEFUL SHUTDOWN: Check for active flying round and crash it first
+        const { data: flyingRound } = await supabase
+          .from('game_rounds')
+          .select('id, round_number, status, started_at')
+          .eq('status', 'flying')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        let forceCrashedRound = null;
+        if (flyingRound) {
+          console.log(`[${requestId}] Graceful shutdown: Force crashing flying round ${flyingRound.round_number}`);
+          
+          // Try to get the seed and calculate proper crash point
+          const seedData = await getSeedFromDb(supabase, flyingRound.id);
+          let crashPoint = 1.00; // Default instant crash
+          
+          if (seedData) {
+            // Use actual multiplier at time of stop as crash point
+            crashPoint = calculateMultiplier(flyingRound.started_at);
+            // Delete the seed
+            await deleteSeedFromDb(supabase, flyingRound.id);
+          }
+          
+          // Crash the round
+          await supabase
+            .from('game_rounds')
+            .update({
+              status: 'crashed',
+              crash_point: crashPoint,
+              server_seed: seedData?.serverSeed || null,
+              crashed_at: new Date().toISOString(),
+            })
+            .eq('id', flyingRound.id);
+
+          // Mark active bets as lost
+          await supabase
+            .from('game_bets')
+            .update({ status: 'lost' })
+            .eq('round_id', flyingRound.id)
+            .eq('status', 'active');
+
+          forceCrashedRound = { id: flyingRound.id, roundNumber: flyingRound.round_number, crashPoint };
+          console.log(`[${requestId}] ✓ Round ${flyingRound.round_number} force crashed at ${crashPoint}x`);
+        }
+
+        // Now disable the engine
         await supabase
           .from('game_config')
           .upsert({ 
@@ -827,7 +875,73 @@ serve(async (req) => {
 
         console.log(`[${requestId}] ✓ Engine disabled by ${authResult.walletAddress}`);
         return new Response(
-          JSON.stringify({ success: true, message: 'Engine disabled' }),
+          JSON.stringify({ 
+            success: true, 
+            message: forceCrashedRound 
+              ? `Engine disabled. Round ${forceCrashedRound.roundNumber} was force crashed at ${forceCrashedRound.crashPoint}x` 
+              : 'Engine disabled',
+            force_crashed: forceCrashedRound,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'force_crash_round': {
+        // Force crash any stuck round (admin emergency action)
+        const roundId = body.round_id;
+        
+        const { data: stuckRound } = await supabase
+          .from('game_rounds')
+          .select('id, round_number, status, started_at')
+          .in('status', ['flying', 'countdown', 'betting'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!stuckRound) {
+          return new Response(
+            JSON.stringify({ success: false, message: 'No active round to crash' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Force crash it
+        let crashPoint = 1.00;
+        if (stuckRound.status === 'flying' && stuckRound.started_at) {
+          crashPoint = calculateMultiplier(stuckRound.started_at);
+        }
+
+        // Try to get seed for proper reveal
+        const seedData = await getSeedFromDb(supabase, stuckRound.id);
+        if (seedData) {
+          await deleteSeedFromDb(supabase, stuckRound.id);
+        }
+
+        await supabase
+          .from('game_rounds')
+          .update({
+            status: 'crashed',
+            crash_point: crashPoint,
+            server_seed: seedData?.serverSeed || null,
+            crashed_at: new Date().toISOString(),
+          })
+          .eq('id', stuckRound.id);
+
+        // Mark active bets as lost
+        await supabase
+          .from('game_bets')
+          .update({ status: 'lost' })
+          .eq('round_id', stuckRound.id)
+          .eq('status', 'active');
+
+        console.log(`[${requestId}] ✓ Admin force crashed round ${stuckRound.round_number} at ${crashPoint}x`);
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: `Round ${stuckRound.round_number} force crashed at ${crashPoint}x`,
+            round_number: stuckRound.round_number,
+            crash_point: crashPoint,
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
