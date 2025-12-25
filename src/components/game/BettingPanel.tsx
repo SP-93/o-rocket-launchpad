@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, Gift } from 'lucide-react';
-import { useWalletClient } from 'wagmi';
+import { useAccount } from 'wagmi';
 import { useGameTickets, type GameTicket, type GroupedTicket } from '@/hooks/useGameTickets';
 import { useGameBetting, setTicketRefreshCallback } from '@/hooks/useGameBetting';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
@@ -36,7 +36,7 @@ const BettingPanel = ({
   const [autoCashout, setAutoCashout] = useState<AutoCashout>('off');
   const [claimingBetId, setClaimingBetId] = useState<string | null>(null);
 
-  const { data: walletClient } = useWalletClient();
+  const { connector } = useAccount();
   
   const { availableTickets, groupedTickets, refetch: refetchTickets } = useGameTickets(walletAddress);
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
@@ -49,10 +49,17 @@ const BettingPanel = ({
   const getSigner = async () => {
     const { ethers } = await import('ethers');
 
-    // Prefer wagmi wallet client (works for mobile WalletConnect)
-    if (walletClient) {
-      const provider = new ethers.providers.Web3Provider(walletClient as any);
-      return provider.getSigner();
+    // Use wagmi connector.getProvider() - works for ALL wallet types
+    if (connector) {
+      try {
+        const eip1193Provider = await connector.getProvider();
+        if (eip1193Provider) {
+          const provider = new ethers.providers.Web3Provider(eip1193Provider as any);
+          return provider.getSigner();
+        }
+      } catch (e) {
+        console.warn('[getSigner] connector.getProvider() failed:', e);
+      }
     }
 
     // Fallback to injected provider (desktop MetaMask)

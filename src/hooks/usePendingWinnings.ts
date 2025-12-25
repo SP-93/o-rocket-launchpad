@@ -9,6 +9,7 @@ interface PendingWin {
   winnings: number;
   created_at: string;
   status: 'won' | 'claiming' | 'claimed';
+  claiming_started_at?: string | null;
 }
 
 export const usePendingWinnings = (walletAddress: string | undefined) => {
@@ -17,6 +18,7 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
   const [totalPending, setTotalPending] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const resetTriedRef = useRef(false);
 
   const fetchPendingWinnings = useCallback(async () => {
     if (!walletAddress) {
@@ -52,6 +54,25 @@ export const usePendingWinnings = (walletAddress: string | undefined) => {
       setPendingWinnings(data.pendingWinnings || []);
       setClaimingWinnings(data.claimingWinnings || []);
       setTotalPending(data.totalPending || 0);
+
+      // Auto-reset stuck claims (older than 5 min) - try once per session
+      const claimingList = data.claimingWinnings || [];
+      if (claimingList.length > 0 && !resetTriedRef.current) {
+        const now = Date.now();
+        const stuckClaims = claimingList.filter((c: PendingWin) => {
+          if (!c.claiming_started_at) return false;
+          const startedAt = new Date(c.claiming_started_at).getTime();
+          return now - startedAt > 5 * 60 * 1000; // 5 minutes
+        });
+
+        if (stuckClaims.length > 0) {
+          resetTriedRef.current = true;
+          console.log('[usePendingWinnings] Found stuck claims, resetting...');
+          supabase.functions.invoke('game-reset-stuck-claims', {}).then(() => {
+            setTimeout(fetchPendingWinnings, 2000);
+          }).catch(err => console.warn('[usePendingWinnings] Reset failed:', err));
+        }
+      }
     } catch (err) {
       console.error('[usePendingWinnings] Error:', err);
     } finally {

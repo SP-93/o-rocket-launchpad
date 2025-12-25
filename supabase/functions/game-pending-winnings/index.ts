@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     // Query pending winnings - status 'won' or 'claiming' with winnings > 0
     const { data, error } = await supabase
       .from('game_bets')
-      .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at, status')
+      .select('id, round_id, bet_amount, cashed_out_at, winnings, created_at, status, claiming_started_at')
       .ilike('wallet_address', normalizedAddress)
       .in('status', ['won', 'claiming'])
       .gt('winnings', 0)
