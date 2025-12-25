@@ -18,8 +18,68 @@ const CRASH_GAME_ABI = [
   "function usedClaims(bytes32) view returns (bool)"
 ];
 
-// RPC endpoint for OverProtocol
-const RPC_URL = 'https://rpc.overprotocol.com';
+// RPC endpoints with fallback
+const RPC_ENDPOINTS = [
+  'https://rpc.overprotocol.com',
+  'https://rpc.overprotocol.com' // Same for now, but could add backup
+];
+
+// Helper: Check claim on-chain with retry logic
+async function checkClaimOnChainWithRetry(
+  contractAddress: string,
+  claimHash: string,
+  maxRetries: number = 3
+): Promise<{ used: boolean | null; error: string | null }> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    for (const rpcUrl of RPC_ENDPOINTS) {
+      try {
+        const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
+        // Set timeout for the provider call
+        const contract = new ethers.Contract(contractAddress, CRASH_GAME_ABI, provider);
+        
+        // Use Promise.race to add timeout
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('RPC timeout')), 10000)
+        );
+        
+        const checkPromise = contract.usedClaims(claimHash);
+        const used = await Promise.race([checkPromise, timeoutPromise]) as boolean;
+        
+        return { used, error: null };
+      } catch (e) {
+        console.warn(`[game-reset-stuck-claims] RPC attempt ${attempt}/${maxRetries} failed for ${rpcUrl}:`, e);
+      }
+    }
+    
+    // Wait before retry (exponential backoff)
+    if (attempt < maxRetries) {
+      await new Promise(r => setTimeout(r, Math.pow(2, attempt) * 500));
+    }
+  }
+  
+  return { used: null, error: 'All RPC attempts failed' };
+}
+
+// Helper: Calculate claim hash exactly as game-sign-claim does
+function calculateClaimHash(
+  walletAddress: string,
+  amountWei: ethers.BigNumber,
+  roundIdHash: string,
+  nonce: number,
+  contractAddress: string
+): string {
+  return ethers.utils.solidityKeccak256(
+    ['address', 'uint256', 'bytes32', 'uint256', 'uint256', 'address'],
+    [
+      walletAddress.toLowerCase(),
+      amountWei,
+      roundIdHash,
+      nonce,
+      CHAIN_ID,
+      contractAddress.toLowerCase()
+    ]
+  );
+}
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -38,12 +98,11 @@ serve(async (req) => {
     // Calculate cutoff time
     const cutoffTime = new Date(Date.now() - STUCK_TIMEOUT_MINUTES * 60 * 1000).toISOString();
 
-    // Find stuck claims: status='claiming', claim_tx_hash is null, claiming_started_at < cutoff
+    // Find stuck claims: status='claiming', claiming_started_at < cutoff
     const { data: stuckBets, error: fetchError } = await supabase
       .from('game_bets')
-      .select('id, wallet_address, round_id, claiming_started_at, claim_nonce, winnings')
+      .select('id, wallet_address, round_id, claiming_started_at, claim_nonce, winnings, claim_tx_hash')
       .eq('status', 'claiming')
-      .is('claim_tx_hash', null)
       .lt('claiming_started_at', cutoffTime);
 
     if (fetchError) {
@@ -57,14 +116,14 @@ serve(async (req) => {
     if (!stuckBets || stuckBets.length === 0) {
       console.log('[game-reset-stuck-claims] No stuck claims found');
       return new Response(
-        JSON.stringify({ success: true, message: 'No stuck claims found', reset: 0, confirmed: 0 }),
+        JSON.stringify({ success: true, message: 'No stuck claims found', reset: 0, confirmed: 0, skipped: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log(`[game-reset-stuck-claims] Found ${stuckBets.length} stuck claims`);
 
-    // Get contract address from game_config (same as game-sign-claim)
+    // Get contract address from game_config
     const { data: configData } = await supabase
       .from('game_config')
       .select('config_value')
@@ -75,59 +134,59 @@ serve(async (req) => {
     if (typeof contractAddress === 'object' && contractAddress !== null) {
       contractAddress = (contractAddress as Record<string, string>).address || '';
     }
-    
-    let provider: ethers.providers.JsonRpcProvider | null = null;
-    let contract: ethers.Contract | null = null;
-    
-    if (contractAddress) {
-      try {
-        provider = new ethers.providers.JsonRpcProvider(RPC_URL);
-        contract = new ethers.Contract(contractAddress as string, CRASH_GAME_ABI, provider);
-        console.log('[game-reset-stuck-claims] Contract initialized:', contractAddress);
-      } catch (e) {
-        console.warn('[game-reset-stuck-claims] Failed to init contract:', e);
-      }
-    } else {
-      console.warn('[game-reset-stuck-claims] No contract address configured');
+
+    if (!contractAddress) {
+      console.warn('[game-reset-stuck-claims] No contract address configured - cannot verify on-chain');
+      return new Response(
+        JSON.stringify({ error: 'Contract not configured', reset: 0, confirmed: 0, skipped: stuckBets.length }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
+
+    console.log('[game-reset-stuck-claims] Contract:', contractAddress);
 
     const resetIds: string[] = [];
     const confirmedIds: string[] = [];
+    const skippedIds: string[] = [];
 
     // Process each stuck bet
     for (const bet of stuckBets) {
-      let wasUsedOnChain = false;
+      console.log(`[game-reset-stuck-claims] Processing bet ${bet.id}...`);
 
-      // If we have contract and all required data, check on-chain status
-      if (contract && bet.claim_nonce && bet.wallet_address && bet.round_id && bet.winnings) {
-        try {
-          // CRITICAL FIX: Calculate the messageHash EXACTLY as game-sign-claim does
-          // This is the hash that usedClaims() checks
-          const amountWei = ethers.utils.parseEther(bet.winnings.toString());
-          const roundIdHash = ethers.utils.id(bet.round_id);
-          
-          const messageHash = ethers.utils.solidityKeccak256(
-            ['address', 'uint256', 'bytes32', 'uint256', 'uint256', 'address'],
-            [
-              bet.wallet_address.toLowerCase(),
-              amountWei,
-              roundIdHash,
-              bet.claim_nonce,
-              CHAIN_ID,
-              (contractAddress as string).toLowerCase()
-            ]
-          );
-          
-          wasUsedOnChain = await contract.usedClaims(messageHash);
-          console.log(`[game-reset-stuck-claims] Bet ${bet.id} claim hash ${messageHash.substring(0, 20)}... used on-chain: ${wasUsedOnChain}`);
-        } catch (e) {
-          console.warn(`[game-reset-stuck-claims] Failed to check claim for bet ${bet.id}:`, e);
-        }
+      // CRITICAL: We must have all required data to verify on-chain
+      if (!bet.claim_nonce || !bet.wallet_address || !bet.round_id || !bet.winnings) {
+        console.warn(`[game-reset-stuck-claims] Bet ${bet.id} missing required data, skipping`);
+        skippedIds.push(bet.id);
+        continue;
       }
 
-      if (wasUsedOnChain) {
+      // Calculate the claim hash
+      const amountWei = ethers.utils.parseEther(bet.winnings.toString());
+      const roundIdHash = ethers.utils.id(bet.round_id);
+      const claimHash = calculateClaimHash(
+        bet.wallet_address,
+        amountWei,
+        roundIdHash,
+        bet.claim_nonce,
+        contractAddress as string
+      );
+
+      console.log(`[game-reset-stuck-claims] Bet ${bet.id} claim hash: ${claimHash.substring(0, 20)}...`);
+
+      // Check on-chain status with retry
+      const { used, error: rpcError } = await checkClaimOnChainWithRetry(contractAddress as string, claimHash);
+
+      if (rpcError) {
+        // CRITICAL: RPC verification failed - DO NOT RESET
+        // This is the key fix: never reset without confirmed on-chain status
+        console.error(`[game-reset-stuck-claims] RPC check failed for bet ${bet.id} - NOT resetting (safety)`);
+        skippedIds.push(bet.id);
+        continue;
+      }
+
+      if (used) {
         // Claim was used on-chain - this claim succeeded, confirm it
-        console.log(`[game-reset-stuck-claims] Bet ${bet.id} was claimed on-chain, confirming...`);
+        console.log(`[game-reset-stuck-claims] Bet ${bet.id} was claimed ON-CHAIN, confirming...`);
         
         const { error: confirmError } = await supabase
           .from('game_bets')
@@ -140,50 +199,51 @@ serve(async (req) => {
 
         if (confirmError) {
           console.error(`[game-reset-stuck-claims] Failed to confirm bet ${bet.id}:`, confirmError);
+          skippedIds.push(bet.id);
         } else {
           confirmedIds.push(bet.id);
+          console.log(`[game-reset-stuck-claims] ✓ Confirmed bet ${bet.id} as claimed`);
         }
       } else {
-        // Claim not used on-chain - safe to reset to 'won'
-        resetIds.push(bet.id);
+        // Claim NOT used on-chain - safe to reset to 'won'
+        console.log(`[game-reset-stuck-claims] Bet ${bet.id} NOT claimed on-chain, resetting to 'won'...`);
+        
+        const { error: resetError } = await supabase
+          .from('game_bets')
+          .update({
+            status: 'won',
+            claiming_started_at: null,
+            claim_nonce: null,
+            claim_tx_hash: null,
+          })
+          .eq('id', bet.id);
+
+        if (resetError) {
+          console.error(`[game-reset-stuck-claims] Failed to reset bet ${bet.id}:`, resetError);
+          skippedIds.push(bet.id);
+        } else {
+          resetIds.push(bet.id);
+          console.log(`[game-reset-stuck-claims] ✓ Reset bet ${bet.id} to 'won'`);
+        }
       }
     }
 
-    // Reset bets that were not claimed on-chain
-    if (resetIds.length > 0) {
-      const { error: updateError } = await supabase
-        .from('game_bets')
-        .update({
-          status: 'won',
-          claiming_started_at: null,
-          claim_nonce: null,
-        })
-        .in('id', resetIds);
-
-      if (updateError) {
-        console.error('[game-reset-stuck-claims] Update error:', updateError);
-      } else {
-        console.log(`[game-reset-stuck-claims] Reset ${resetIds.length} claims`);
-      }
-    }
-
-    // Log details
-    for (const bet of stuckBets) {
-      if (resetIds.includes(bet.id)) {
-        console.log(`[game-reset-stuck-claims] Reset bet ${bet.id} for wallet ${bet.wallet_address}`);
-      } else if (confirmedIds.includes(bet.id)) {
-        console.log(`[game-reset-stuck-claims] Confirmed bet ${bet.id} for wallet ${bet.wallet_address}`);
-      }
-    }
+    // Summary logging
+    console.log(`[game-reset-stuck-claims] SUMMARY:`);
+    console.log(`  - Reset to 'won': ${resetIds.length}`);
+    console.log(`  - Confirmed as 'claimed': ${confirmedIds.length}`);
+    console.log(`  - Skipped (verification failed): ${skippedIds.length}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Reset ${resetIds.length} claims, confirmed ${confirmedIds.length} on-chain claims`,
+        message: `Processed ${stuckBets.length} stuck claims`,
         reset: resetIds.length,
         confirmed: confirmedIds.length,
+        skipped: skippedIds.length,
         resetBets: resetIds,
         confirmedBets: confirmedIds,
+        skippedBets: skippedIds,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

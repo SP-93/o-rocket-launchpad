@@ -416,6 +416,26 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         // CRITICAL: Update localStorage with actual txHash
         updatePendingClaimTxHash(tx.hash);
 
+        // CRITICAL FIX: Save txHash to database IMMEDIATELY (before waiting for confirmation)
+        // This ensures we can recover even if user refreshes during tx.wait()
+        try {
+          const { error: saveTxError } = await supabase.functions.invoke('game-save-tx-hash', {
+            body: {
+              walletAddress,
+              betId,
+              txHash: tx.hash,
+              nonce,
+            },
+          });
+          if (saveTxError) {
+            console.warn('[ClaimWinnings] Failed to save txHash to DB (non-fatal):', saveTxError);
+          } else {
+            console.log('[ClaimWinnings] TxHash saved to database:', tx.hash);
+          }
+        } catch (saveErr) {
+          console.warn('[ClaimWinnings] Error saving txHash (non-fatal):', saveErr);
+        }
+
         toast({
           title: '⏳ Confirming Transaction...',
           description: `DO NOT REFRESH! TX: ${tx.hash.slice(0, 10)}...`,
