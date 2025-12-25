@@ -1,9 +1,26 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 
 interface RocketAnimationProps {
   status: 'betting' | 'countdown' | 'flying' | 'crashed' | 'payout' | 'idle';
   multiplier: number;
   crashPoint?: number | null;
+}
+
+interface Star {
+  x: number;
+  y: number;
+  size: number;
+  alpha: number;
+  twinkleSpeed: number;
+  twinkleOffset: number;
+}
+
+interface Nebula {
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  alpha: number;
 }
 
 const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProps) => {
@@ -13,6 +30,43 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
   const trailParticles = useRef<Array<{ x: number; y: number; alpha: number; size: number }>>([]);
   const explosionParticles = useRef<Array<{ x: number; y: number; vx: number; vy: number; life: number; color: string; size: number }>>([]);
   const orbitAngle = useRef(0);
+  const starsRef = useRef<Star[]>([]);
+  const nebulaeRef = useRef<Nebula[]>([]);
+  const timeRef = useRef(0);
+
+  // Generate stars once
+  const generateStars = (width: number, height: number): Star[] => {
+    const stars: Star[] = [];
+    const count = Math.floor((width * height) / 3000); // Density based on canvas size
+    
+    for (let i = 0; i < count; i++) {
+      stars.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        size: Math.random() * 2 + 0.5,
+        alpha: Math.random() * 0.8 + 0.2,
+        twinkleSpeed: Math.random() * 2 + 1,
+        twinkleOffset: Math.random() * Math.PI * 2,
+      });
+    }
+    return stars;
+  };
+
+  // Generate nebulae
+  const generateNebulae = (width: number, height: number): Nebula[] => {
+    const colors = [
+      'rgba(147, 51, 234, 0.15)',   // Purple
+      'rgba(59, 130, 246, 0.12)',   // Blue
+      'rgba(236, 72, 153, 0.1)',    // Pink
+      'rgba(249, 115, 22, 0.08)',   // Orange
+    ];
+    
+    return [
+      { x: width * 0.2, y: height * 0.3, radius: width * 0.4, color: colors[0], alpha: 0.15 },
+      { x: width * 0.8, y: height * 0.6, radius: width * 0.35, color: colors[1], alpha: 0.12 },
+      { x: width * 0.5, y: height * 0.8, radius: width * 0.3, color: colors[2], alpha: 0.1 },
+    ];
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,6 +79,12 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       canvas.width = canvas.offsetWidth * window.devicePixelRatio;
       canvas.height = canvas.offsetHeight * window.devicePixelRatio;
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      
+      // Regenerate background elements on resize
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      starsRef.current = generateStars(w, h);
+      nebulaeRef.current = generateNebulae(w, h);
     };
 
     resizeCanvas();
@@ -32,6 +92,12 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
 
     const width = canvas.offsetWidth;
     const height = canvas.offsetHeight;
+    
+    // Initialize background elements
+    if (starsRef.current.length === 0) {
+      starsRef.current = generateStars(width, height);
+      nebulaeRef.current = generateNebulae(width, height);
+    }
 
     // Reset rocket position based on status
     if (status === 'betting' || status === 'countdown' || status === 'idle') {
@@ -39,21 +105,74 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       trailParticles.current = [];
     }
 
-    // Get CSS variable colors
-    const getColor = (variable: string, fallback: string) => {
-      try {
-        const computed = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
-        if (computed) {
-          return `hsl(${computed})`;
+    // Draw space background with gradient, stars, and nebulae
+    const drawBackground = () => {
+      timeRef.current += 0.016; // ~60fps time increment
+      
+      // Deep space gradient
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+      bgGradient.addColorStop(0, '#0a0a1a');
+      bgGradient.addColorStop(0.3, '#0f0f2a');
+      bgGradient.addColorStop(0.6, '#1a1a35');
+      bgGradient.addColorStop(1, '#151530');
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw nebulae (subtle cloud effects)
+      nebulaeRef.current.forEach(nebula => {
+        const gradient = ctx.createRadialGradient(
+          nebula.x, nebula.y, 0,
+          nebula.x, nebula.y, nebula.radius
+        );
+        gradient.addColorStop(0, nebula.color);
+        gradient.addColorStop(0.5, nebula.color.replace(/[\d.]+\)$/, '0.05)'));
+        gradient.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+      });
+      
+      // Draw stars with twinkling effect
+      starsRef.current.forEach(star => {
+        const twinkle = Math.sin(timeRef.current * star.twinkleSpeed + star.twinkleOffset);
+        const alpha = star.alpha * (0.6 + 0.4 * twinkle);
+        
+        // Parallax effect when flying
+        let yOffset = 0;
+        if (status === 'flying') {
+          yOffset = (multiplier - 1) * star.size * 3;
         }
-      } catch (e) {}
-      return fallback;
+        const starY = (star.y + yOffset) % height;
+        
+        ctx.beginPath();
+        ctx.arc(star.x, starY, star.size, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fill();
+        
+        // Add glow to brighter stars
+        if (star.size > 1.5) {
+          ctx.beginPath();
+          ctx.arc(star.x, starY, star.size * 2, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(200, 220, 255, ${alpha * 0.2})`;
+          ctx.fill();
+        }
+      });
+      
+      // Add subtle vignette
+      const vignetteGradient = ctx.createRadialGradient(
+        width / 2, height / 2, height * 0.3,
+        width / 2, height / 2, height * 0.8
+      );
+      vignetteGradient.addColorStop(0, 'transparent');
+      vignetteGradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+      ctx.fillStyle = vignetteGradient;
+      ctx.fillRect(0, 0, width, height);
     };
-
-    const primaryColor = getColor('--primary', '#F59E0B');
-    const successColor = getColor('--success', '#22C55E');
-    const destructiveColor = getColor('--destructive', '#EF4444');
-    const warningColor = getColor('--warning', '#F59E0B');
+    
+    // Color constants for game states
+    const successColor = '#22C55E';
+    const destructiveColor = '#EF4444';
+    const warningColor = '#F59E0B';
 
     const drawRocket = (x: number, y: number, shake: boolean = false) => {
       ctx.save();
@@ -447,7 +566,10 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
     const animate = () => {
       ctx.clearRect(0, 0, width, height);
       
-      // Draw multiplier first (background)
+      // Draw space background first
+      drawBackground();
+      
+      // Draw multiplier
       drawMultiplier();
       
       const rocketX = width / 2;
