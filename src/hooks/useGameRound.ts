@@ -104,13 +104,14 @@ export function useGameRound() {
     
     const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
     
+    // Use 100ms interval for better performance (was 50ms)
     multiplierIntervalRef.current = setInterval(() => {
       const elapsed = (Date.now() - startTime) / 1000;
       // Exponential growth formula
       const multiplier = Math.pow(1.0718, elapsed);
       const capped = Math.min(multiplier, 10.00);
       setCurrentMultiplier(Math.round(capped * 100) / 100);
-    }, 50);
+    }, 100);
   }, []);
 
   // Stop multiplier animation

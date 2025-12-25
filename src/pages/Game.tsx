@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
@@ -14,6 +14,7 @@ import QuickCashoutOverlay from '@/components/game/QuickCashoutOverlay';
 import MobileBetBar from '@/components/game/MobileBetBar';
 import GameTutorial, { TutorialHelpButton } from '@/components/game/GameTutorial';
 import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
+import GameDebugOverlay from '@/components/game/GameDebugOverlay';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
@@ -22,6 +23,11 @@ import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Cl
 import { Button } from '@/components/ui/button';
 import useGameSounds from '@/hooks/useGameSounds';
 import { supabase } from '@/integrations/supabase/client';
+
+// Memoized heavy components to prevent unnecessary rerenders
+const MemoizedLeaderboard = memo(Leaderboard);
+const MemoizedCrashHistory = memo(CrashHistory);
+const MemoizedLiveBetsFeed = memo(LiveBetsFeed);
 
 const Game = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -252,6 +258,14 @@ const Game = () => {
         gamePaused={gamePaused}
         pauseReason={pauseReason}
       />
+      
+      {/* Debug Overlay - visible with ?debug=1 */}
+      <GameDebugOverlay
+        currentRound={currentRound}
+        currentMultiplier={currentMultiplier}
+        engineStatus={engineStatus}
+        isLoading={isLoading}
+      />
 
       {/* Background effects */}
       <div className="fixed inset-0 pointer-events-none z-[1]">
@@ -457,14 +471,14 @@ const Game = () => {
                   </div>
                 </div>
 
-                {/* Crash History - Desktop */}
+                {/* Crash History - Desktop (memoized) */}
                 <div className="mt-3 hidden lg:block">
-                  <CrashHistory history={roundHistory} />
+                  <MemoizedCrashHistory history={roundHistory} />
                 </div>
 
-                {/* Live Bets Feed - Desktop */}
+                {/* Live Bets Feed - Desktop (memoized) */}
                 <div className="mt-3 hidden lg:block">
-                  <LiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
+                  <MemoizedLiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
                 </div>
               </div>
 
@@ -499,11 +513,11 @@ const Game = () => {
                   currentMultiplier={currentMultiplier}
                   onBetPlaced={refetchBets}
                 />
-                <Leaderboard />
+                <MemoizedLeaderboard />
               </div>
             ) : (
               <div className="lg:col-span-8 lg:col-start-3 order-3">
-                <Leaderboard />
+                <MemoizedLeaderboard />
               </div>
             )}
           </div>

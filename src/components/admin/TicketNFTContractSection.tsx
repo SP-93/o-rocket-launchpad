@@ -102,20 +102,34 @@ const TicketNFTContractSection = () => {
     setBackendAddress(backend);
   }, []);
 
+  // Effective address: prefer local, fallback to backend
+  const effectiveAddress = localAddress || backendAddress;
+  const usingBackendOnly = !localAddress && !!backendAddress;
+
   useEffect(() => {
     refreshAddresses();
   }, [refreshAddresses]);
 
-  // Fetch contract state when address is available
+  // Auto-pull from backend if local is missing but backend exists
   useEffect(() => {
-    if (localAddress) {
+    if (!localAddress && backendAddress) {
+      // Auto-set local from backend for seamless experience
+      saveDeployedContract('ticketNFT', backendAddress);
+      setLocalAddress(backendAddress);
+      toast.info('Contract address loaded from backend');
+    }
+  }, [localAddress, backendAddress]);
+
+  // Fetch contract state when effective address is available
+  useEffect(() => {
+    if (effectiveAddress) {
       fetchContractState();
       // Fetch owner
       const fetchOwner = async () => {
         try {
           const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
           const contract = new ethers.Contract(
-            localAddress,
+            effectiveAddress,
             ['function owner() view returns (address)'],
             provider
           );
@@ -127,7 +141,7 @@ const TicketNFTContractSection = () => {
       };
       fetchOwner();
     }
-  }, [localAddress, fetchContractState]);
+  }, [effectiveAddress, fetchContractState]);
 
   const handleDeploy = async () => {
     const signer = await getSigner();
