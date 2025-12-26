@@ -103,14 +103,41 @@ export function useGameTickets(walletAddress: string | undefined) {
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'game_tickets',
           filter: `wallet_address=eq.${walletAddress.toLowerCase()}`,
         },
         (payload) => {
-          console.log('[useGameTickets] Realtime update:', payload);
-          fetchTickets();
+          console.log('[useGameTickets] Realtime UPDATE:', payload);
+          const updated = payload.new as GameTicket;
+          
+          // If ticket was marked as used, immediately remove from available
+          if (updated.is_used) {
+            setAvailableTickets(prev => prev.filter(t => t.id !== updated.id));
+            setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'game_tickets',
+          filter: `wallet_address=eq.${walletAddress.toLowerCase()}`,
+        },
+        (payload) => {
+          console.log('[useGameTickets] Realtime INSERT:', payload);
+          const newTicket = payload.new as GameTicket;
+          
+          // Add new ticket to lists
+          setTickets(prev => [newTicket, ...prev]);
+          
+          const now = new Date();
+          if (!newTicket.is_used && new Date(newTicket.expires_at) > now) {
+            setAvailableTickets(prev => [newTicket, ...prev]);
+          }
         }
       )
       .subscribe();
@@ -123,7 +150,7 @@ export function useGameTickets(walletAddress: string | undefined) {
         channelRef.current = null;
       }
     };
-  }, [walletAddress, fetchTickets]);
+  }, [walletAddress]);
 
   const buyTicket = useCallback(async (
     ticketValue: number,
@@ -179,6 +206,15 @@ export function useGameTickets(walletAddress: string | undefined) {
       .sort((a, b) => a.value - b.value);
   }, [availableTickets]);
 
+  // Optimistic update: mark ticket as used locally
+  const markTicketUsed = useCallback((ticketId: string) => {
+    console.log('[useGameTickets] Optimistic update - marking ticket used:', ticketId);
+    setAvailableTickets(prev => prev.filter(t => t.id !== ticketId));
+    setTickets(prev => prev.map(t => 
+      t.id === ticketId ? { ...t, is_used: true } : t
+    ));
+  }, []);
+
   return {
     tickets,
     availableTickets,
@@ -186,6 +222,7 @@ export function useGameTickets(walletAddress: string | undefined) {
     isLoading,
     error,
     buyTicket,
+    markTicketUsed,
     refetch: fetchTickets,
   };
 }
