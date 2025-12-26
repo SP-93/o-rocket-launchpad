@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink } from 'lucide-react';
-import { useGameTickets } from '@/hooks/useGameTickets';
+import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
@@ -28,7 +28,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   
-  const { buyTicket, availableTickets, refetch } = useGameTickets(walletAddress);
+  const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
   
