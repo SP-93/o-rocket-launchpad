@@ -4,7 +4,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Loader2, Zap, Hand, Target, Ticket, TrendingUp, Wallet, Gift } from 'lucide-react';
 import { useAccount } from 'wagmi';
-import { useGameTickets, type GameTicket, type GroupedTicket } from '@/hooks/useGameTickets';
+import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
+import type { GameTicket, GroupedTicket } from '@/hooks/useGameTickets';
 import { useGameBetting, setMarkTicketUsedCallback } from '@/hooks/useGameBetting';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import { usePendingWinnings } from '@/hooks/usePendingWinnings';
@@ -38,7 +39,7 @@ const BettingPanel = ({
 
   const { connector } = useAccount();
   
-  const { availableTickets, groupedTickets, markTicketUsed, refetch: refetchTickets } = useGameTickets(walletAddress);
+  const { availableTickets, groupedTickets, markTicketUsed, refetch: refetchTickets } = useGameTicketsContext();
   const { placeBet, cashOut, isPlacingBet, isCashingOut } = useGameBetting(walletAddress);
   const { isClaiming, claimWinnings, checkCanClaim, canClaim, pendingAmount, isRecovering } = useClaimWinnings(walletAddress);
   const { pendingWinnings, claimingWinnings, totalPending, isLoading: isPendingLoading, refetch: refetchPending } = usePendingWinnings(walletAddress);

@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import useGameSounds from '@/hooks/useGameSounds';
 import { supabase } from '@/integrations/supabase/client';
+import { GameTicketsProvider } from '@/contexts/GameTicketsContext';
 
 // Memoized heavy components to prevent unnecessary rerenders
 const MemoizedLeaderboard = memo(Leaderboard);
@@ -260,6 +261,7 @@ const Game = () => {
   };
 
   return (
+    <GameTicketsProvider>
     <div className="min-h-screen bg-background relative overflow-hidden pb-20 lg:pb-0">
       {/* Tutorial Modal for first-time users */}
       <GameTutorial />
@@ -678,6 +680,7 @@ const Game = () => {
         />
       )}
     </div>
+    </GameTicketsProvider>
   );
 };
 

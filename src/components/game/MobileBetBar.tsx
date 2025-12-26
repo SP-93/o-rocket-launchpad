@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Loader2, Zap, ChevronUp, Ticket, ShoppingCart } from 'lucide-react';
-import { useGameTickets } from '@/hooks/useGameTickets';
+import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -31,7 +31,7 @@ const MobileBetBar = ({
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isCashingOut, setIsCashingOut] = useState(false);
   
-  const { availableTickets } = useGameTickets(walletAddress);
+  const { availableTickets, markTicketUsed } = useGameTicketsContext();
 
   if (!isConnected) return null;
 
@@ -66,6 +66,9 @@ const MobileBetBar = ({
       
       if (response.error) throw response.error;
       if (response.data?.error) throw new Error(response.data.error);
+      
+      // Optimistic update - immediately remove ticket from UI
+      markTicketUsed(ticket.id);
       
       toast.success('Bet placed!');
       setIsOpen(false);
