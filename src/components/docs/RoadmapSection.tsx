@@ -1,15 +1,28 @@
-import { Map, CheckCircle2, Clock, Calendar, Sparkles } from "lucide-react";
+import { Map, CheckCircle2, Clock, Calendar, Sparkles, Rocket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface RoadmapItem {
   quarter: string;
   title: string;
   items: string[];
-  status: "completed" | "in-progress" | "planned" | "future";
+  status: "completed" | "in-progress" | "planned" | "future" | "live";
 }
 
 const RoadmapSection = () => {
   const roadmapData: RoadmapItem[] = [
+    {
+      quarter: "🎮 LIVE",
+      title: "Rocket Crash Game",
+      items: [
+        "Multiplayer crash betting game",
+        "Provably fair crash algorithm",
+        "Ticket-based entry system (WOVER/USDT)",
+        "Real-time multiplier display",
+        "Auto cash-out functionality",
+        "Prize pool & revenue distribution",
+      ],
+      status: "live",
+    },
     {
       quarter: "Q4 2025",
       title: "Foundation",
@@ -96,6 +109,13 @@ const RoadmapSection = () => {
 
   const getStatusBadge = (status: RoadmapItem["status"]) => {
     switch (status) {
+      case "live":
+        return (
+          <Badge className="bg-success/30 text-success border-success/50 animate-pulse">
+            <Rocket className="w-3 h-3 mr-1" />
+            LIVE
+          </Badge>
+        );
       case "completed":
         return (
           <Badge className="bg-success/20 text-success border-success/30">

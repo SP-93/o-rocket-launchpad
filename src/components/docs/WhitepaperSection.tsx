@@ -119,16 +119,29 @@ const WhitepaperSection = () => {
       addBullet("DEX Trading: 1% fee after migration");
       y += 5;
 
-      // 6. Future Development
-      addSection("6. Future Development");
+      // 6. Rocket Crash Game
+      addSection("6. Rocket Crash Game (LIVE)");
+      addText("Multiplayer crash betting game with provably fair algorithm. Players purchase tickets using WOVER or USDT and bet on the rocket's multiplier before crash.");
+      addBullet("Ticket-based entry system (WOVER/USDT)");
+      addBullet("Provably fair crash algorithm with server seed verification");
+      addBullet("Auto cash-out options (x2, x10, manual)");
+      addBullet("All winnings paid in WOVER");
+      y += 3;
+      addText("Revenue Distribution (Flexible):");
+      addBullet("WOVER Revenue: Split between Prize Pool and Platform Treasury (configurable)");
+      addBullet("USDT Revenue: Server costs, development, tools, liquidity");
+      y += 5;
+
+      // 7. Future Development
+      addSection("7. Future Development");
       addBullet("Base Bridge Integration (expected end of 2026)");
       addBullet("Arbitrage Bots for advanced traders");
       addBullet("Governance voting for ROCKET holders");
       addBullet("Official ROCKET/USDC pool");
       y += 5;
 
-      // 7. Disclaimer
-      addSection("7. Disclaimer");
+      // 8. Disclaimer
+      addSection("8. Disclaimer");
       addText("This document is for informational purposes only and does not constitute financial advice. Cryptocurrency investments carry significant risk. DYOR before making any investment decisions.");
 
       // Footer
@@ -383,9 +396,76 @@ const WhitepaperSection = () => {
           </AccordionContent>
         </AccordionItem>
 
+        <AccordionItem value="crash-game" id="crash-game" className="glass-card border border-success/30 rounded-xl px-6 bg-success/5">
+          <AccordionTrigger className="text-lg font-semibold hover:text-primary">
+            <span className="flex items-center gap-2">
+              6. Rocket Crash Game
+              <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded-full animate-pulse">LIVE</span>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="text-muted-foreground leading-relaxed space-y-4 pb-6">
+            <p>
+              Rocket Crash Game is a multiplayer betting game integrated into the O'ROCKET ecosystem. 
+              Players purchase tickets and bet on how high the rocket will fly before it crashes. 
+              The game uses a provably fair algorithm ensuring transparent and verifiable results.
+            </p>
+            
+            <div>
+              <h4 className="text-foreground font-medium mb-2">🎮 Game Features</h4>
+              <ul className="list-disc list-inside space-y-2">
+                <li><strong className="text-foreground">Ticket-Based Entry:</strong> Players purchase tickets using WOVER or USDT</li>
+                <li><strong className="text-foreground">Provably Fair:</strong> Server seed hash published before each round, revealed after crash</li>
+                <li><strong className="text-foreground">Auto Cash-out:</strong> Set automatic cash-out multipliers (x2, x10, or manual)</li>
+                <li><strong className="text-foreground">Real-time Multiplayer:</strong> See all bets and cash-outs live</li>
+                <li><strong className="text-foreground">WOVER Payouts:</strong> All winnings are paid out in WOVER</li>
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-foreground font-medium mb-2">💰 Revenue Distribution</h4>
+              <p className="mb-3 text-sm">
+                Revenue distribution is flexible and configured by the team to adapt to ecosystem needs.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                  <h5 className="text-foreground font-medium mb-2">WOVER Ticket Revenue</h5>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    <li><strong>Prize Pool:</strong> Funds player winnings and rewards</li>
+                    <li><strong>Platform Treasury:</strong> Supports ROCKET token buyback, liquidity provision, and platform maintenance</li>
+                  </ul>
+                  <p className="text-xs text-muted-foreground mt-2 italic">
+                    Split ratio is configurable and adjusted based on ecosystem requirements.
+                  </p>
+                </div>
+                
+                <div className="p-4 bg-warning/10 rounded-lg border border-warning/20">
+                  <h5 className="text-foreground font-medium mb-2">USDT Ticket Revenue</h5>
+                  <ul className="list-disc list-inside space-y-1 text-sm">
+                    <li><strong>Server Costs:</strong> Infrastructure and hosting</li>
+                    <li><strong>Development:</strong> Ongoing improvements and new features</li>
+                    <li><strong>Tools & Support:</strong> Community support and tooling</li>
+                    <li><strong>Liquidity:</strong> DEX liquidity provision</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 p-4 border border-success/30 rounded-lg bg-success/5">
+              <h4 className="text-foreground font-medium mb-2">🚀 Ecosystem Benefits</h4>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li><strong>WOVER Circulation:</strong> All winnings paid in WOVER drives token utility</li>
+                <li><strong>ROCKET Demand:</strong> Treasury buybacks create consistent demand pressure</li>
+                <li><strong>Sustainable Development:</strong> USDT revenue ensures long-term infrastructure support</li>
+                <li><strong>Self-Sustaining:</strong> Game generates revenue that feeds back into the ecosystem</li>
+              </ul>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
         <AccordionItem value="future" id="future" className="glass-card border border-primary/20 rounded-xl px-6">
           <AccordionTrigger className="text-lg font-semibold hover:text-primary">
-            6. Future Development
+            7. Future Development
           </AccordionTrigger>
           <AccordionContent className="text-muted-foreground leading-relaxed space-y-4 pb-6">
             <ul className="space-y-3">
@@ -423,7 +503,7 @@ const WhitepaperSection = () => {
 
         <AccordionItem value="team" id="team" className="glass-card border border-primary/20 rounded-xl px-6">
           <AccordionTrigger className="text-lg font-semibold hover:text-primary">
-            7. Team
+            8. Team
           </AccordionTrigger>
           <AccordionContent className="text-muted-foreground leading-relaxed space-y-4 pb-6">
             <div className="grid md:grid-cols-2 gap-6">
@@ -445,7 +525,7 @@ const WhitepaperSection = () => {
 
         <AccordionItem value="disclaimer" id="disclaimer" className="glass-card border border-primary/20 rounded-xl px-6">
           <AccordionTrigger className="text-lg font-semibold hover:text-primary">
-            8. Disclaimer
+            9. Disclaimer
           </AccordionTrigger>
           <AccordionContent className="text-muted-foreground leading-relaxed space-y-4 pb-6">
             <p className="text-warning">
@@ -458,6 +538,7 @@ const WhitepaperSection = () => {
               <li>The roadmap is subject to change based on market conditions, partnerships, and technical requirements.</li>
               <li>Some features are dependent on Over Protocol ecosystem developments (bridge to Base, official USDC pool).</li>
               <li>O'ROCKET team makes no guarantees regarding token price, returns, or platform performance.</li>
+              <li>Rocket Crash Game revenue distribution ratios are subject to adjustment based on ecosystem needs.</li>
             </ul>
           </AccordionContent>
         </AccordionItem>
