@@ -24,34 +24,71 @@ function isRateLimited(key: string): boolean {
   return record.count > MAX_REQUESTS;
 }
 
+// Generate request ID for logging
+function generateRequestId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
+// Treasury wallet address (must match frontend)
+const TREASURY_WALLET = '0x8334966329b7f4b459633696a8ca59118253bc89';
+
+// Token contracts on Over Protocol
+const TOKEN_CONTRACTS = {
+  WOVER: '0x9eBc3A67cf6Da4C13642fE995E3e3Ff37772eadC',
+  USDT: '0xabc123...', // Update with actual USDT contract
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = generateRequestId();
+  const serverTime = new Date().toISOString();
+
   try {
-    const { wallet_address, ticket_value, payment_currency, payment_amount, tx_hash } = await req.json();
+    const { 
+      wallet_address, 
+      ticket_value, 
+      payment_currency, 
+      payment_amount, 
+      tx_hash,
+      correlation_id 
+    } = await req.json();
+
+    console.log(`[${requestId}] BUY_TICKET_START`, {
+      wallet: wallet_address?.slice(0, 10),
+      ticket_value,
+      payment_currency,
+      payment_amount,
+      tx_hash: tx_hash?.slice(0, 20),
+      correlation_id,
+      serverTime,
+    });
 
     // Validate input
     if (!wallet_address || !ticket_value || !payment_currency || !payment_amount) {
+      console.log(`[${requestId}] VALIDATION_FAILED: Missing required fields`);
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({ error: 'Missing required fields', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Validate wallet address format
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
+      console.log(`[${requestId}] VALIDATION_FAILED: Invalid wallet format`);
       return new Response(
-        JSON.stringify({ error: 'Invalid wallet address format' }),
+        JSON.stringify({ error: 'Invalid wallet address format', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Rate limit by wallet
     if (isRateLimited(wallet_address.toLowerCase())) {
+      console.log(`[${requestId}] RATE_LIMITED: ${wallet_address}`);
       return new Response(
-        JSON.stringify({ error: 'Too many requests. Please wait before buying more tickets.' }),
+        JSON.stringify({ error: 'Too many requests. Please wait before buying more tickets.', request_id: requestId }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -59,7 +96,7 @@ serve(async (req) => {
     // Validate ticket value (1-5)
     if (ticket_value < 1 || ticket_value > 5 || !Number.isInteger(ticket_value)) {
       return new Response(
-        JSON.stringify({ error: 'Ticket value must be 1, 2, 3, 4, or 5' }),
+        JSON.stringify({ error: 'Ticket value must be 1, 2, 3, 4, or 5', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -67,7 +104,7 @@ serve(async (req) => {
     // Validate payment currency
     if (!['WOVER', 'USDT'].includes(payment_currency)) {
       return new Response(
-        JSON.stringify({ error: 'Payment currency must be WOVER or USDT' }),
+        JSON.stringify({ error: 'Payment currency must be WOVER or USDT', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -75,7 +112,7 @@ serve(async (req) => {
     // Validate payment amount
     if (payment_amount <= 0) {
       return new Response(
-        JSON.stringify({ error: 'Payment amount must be positive' }),
+        JSON.stringify({ error: 'Payment amount must be positive', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -85,6 +122,39 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    // ========== TX HASH VERIFICATION ==========
+    if (tx_hash) {
+      // Check for duplicate tx_hash (idempotency)
+      const { data: existingTicket, error: dupError } = await supabase
+        .from('game_tickets')
+        .select('id')
+        .eq('tx_hash', tx_hash)
+        .maybeSingle();
+
+      if (existingTicket) {
+        console.log(`[${requestId}] DUPLICATE_TX_HASH: ${tx_hash} already used for ticket ${existingTicket.id}`);
+        return new Response(
+          JSON.stringify({ 
+            error: 'This transaction has already been used to purchase a ticket',
+            existing_ticket_id: existingTicket.id,
+            request_id: requestId 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verify transaction on-chain (basic validation)
+      // In production, you'd call the Over Protocol RPC to verify:
+      // 1. Transaction exists and is confirmed
+      // 2. Transaction is a transfer to TREASURY_WALLET
+      // 3. Amount matches payment_amount
+      // 4. Sender matches wallet_address
+      // For now, we log and trust the frontend (with tx_hash as proof)
+      console.log(`[${requestId}] TX_HASH_RECORDED: ${tx_hash}`);
+    } else {
+      console.log(`[${requestId}] WARNING: No tx_hash provided - ticket created without on-chain proof`);
+    }
+
     // Check if game is active
     const { data: gameStatus } = await supabase
       .from('game_config')
@@ -93,8 +163,9 @@ serve(async (req) => {
       .single();
 
     if (!gameStatus?.config_value?.active) {
+      console.log(`[${requestId}] GAME_PAUSED: Cannot purchase tickets`);
       return new Response(
-        JSON.stringify({ error: 'Game is currently paused. Cannot purchase tickets.' }),
+        JSON.stringify({ error: 'Game is currently paused. Cannot purchase tickets.', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -119,9 +190,9 @@ serve(async (req) => {
       .single();
 
     if (ticketError) {
-      console.error('Error creating ticket:', ticketError);
+      console.error(`[${requestId}] TICKET_CREATE_ERROR:`, ticketError);
       return new Response(
-        JSON.stringify({ error: 'Failed to create ticket' }),
+        JSON.stringify({ error: 'Failed to create ticket', details: ticketError.message, request_id: requestId }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -138,8 +209,6 @@ serve(async (req) => {
 
     // If RPC doesn't exist, use direct update
     if (revenueError) {
-      console.log('RPC not available, using direct update');
-      
       const { data: currentRevenue } = await supabase
         .from('game_revenue')
         .select('*')
@@ -159,11 +228,19 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Ticket purchased: ${ticket.id} for ${wallet_address}, value: ${ticket_value}, currency: ${payment_currency}`);
+    console.log(`[${requestId}] TICKET_CREATED_SUCCESS`, {
+      ticketId: ticket.id,
+      wallet: wallet_address.slice(0, 10),
+      value: ticket_value,
+      currency: payment_currency,
+      txHash: tx_hash?.slice(0, 20),
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
+        request_id: requestId,
+        server_time: serverTime,
         ticket: {
           id: ticket.id,
           ticket_value: ticket.ticket_value,
@@ -171,15 +248,16 @@ serve(async (req) => {
           payment_amount: ticket.payment_amount,
           expires_at: ticket.expires_at,
           created_at: ticket.created_at,
+          tx_hash: ticket.tx_hash,
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in game-buy-ticket:', error);
+    console.error(`[${requestId}] INTERNAL_ERROR:`, error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error', request_id: requestId }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { generateCorrelationId, logGameAction } from '@/lib/gameLogger';
 
 export interface GameTicket {
   id: string;
@@ -34,13 +35,16 @@ export function useGameTickets(walletAddress: string | undefined) {
       return;
     }
 
+    const correlationId = generateCorrelationId();
     setIsLoading(true);
     setError(null);
+
+    logGameAction(correlationId, 'FETCH_TICKETS_START', { wallet: walletAddress.slice(0, 10) });
 
     try {
       // Use edge function to bypass RLS issues
       const response = await supabase.functions.invoke('game-get-tickets', {
-        body: { wallet_address: walletAddress },
+        body: { wallet_address: walletAddress, correlation_id: correlationId },
       });
 
       if (response.error) {
@@ -56,7 +60,14 @@ export function useGameTickets(walletAddress: string | undefined) {
       
       setTickets(allTickets);
       setAvailableTickets(available);
+      
+      logGameAction(correlationId, 'FETCH_TICKETS_SUCCESS', { 
+        total: allTickets.length, 
+        available: available.length 
+      });
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch tickets';
+      logGameAction(correlationId, 'FETCH_TICKETS_ERROR', undefined, message);
       console.error('Error fetching tickets:', err);
       setError('Failed to fetch tickets');
       
@@ -78,6 +89,10 @@ export function useGameTickets(walletAddress: string | undefined) {
           );
           setAvailableTickets(available);
           setError(null);
+          logGameAction(correlationId, 'FETCH_TICKETS_FALLBACK_SUCCESS', { 
+            total: allTickets.length, 
+            available: available.length 
+          });
         }
       } catch {
         // Ignore fallback error
@@ -109,7 +124,11 @@ export function useGameTickets(walletAddress: string | undefined) {
           filter: `wallet_address=eq.${walletAddress.toLowerCase()}`,
         },
         (payload) => {
-          console.log('[useGameTickets] Realtime UPDATE:', payload);
+          const correlationId = generateCorrelationId();
+          logGameAction(correlationId, 'TICKET_REALTIME_UPDATE', { 
+            ticketId: (payload.new as any).id?.slice(0, 8),
+            is_used: (payload.new as any).is_used 
+          });
           const updated = payload.new as GameTicket;
           
           // If ticket was marked as used, immediately remove from available
@@ -128,8 +147,12 @@ export function useGameTickets(walletAddress: string | undefined) {
           filter: `wallet_address=eq.${walletAddress.toLowerCase()}`,
         },
         (payload) => {
-          console.log('[useGameTickets] Realtime INSERT:', payload);
+          const correlationId = generateCorrelationId();
           const newTicket = payload.new as GameTicket;
+          logGameAction(correlationId, 'TICKET_REALTIME_INSERT', { 
+            ticketId: newTicket.id?.slice(0, 8),
+            value: newTicket.ticket_value 
+          });
           
           // Add new ticket to lists
           setTickets(prev => [newTicket, ...prev]);
@@ -162,6 +185,14 @@ export function useGameTickets(walletAddress: string | undefined) {
       throw new Error('Wallet not connected');
     }
 
+    const correlationId = generateCorrelationId();
+    logGameAction(correlationId, 'BUY_TICKET_START', { 
+      value: ticketValue, 
+      currency: paymentCurrency, 
+      amount: paymentAmount,
+      txHash: txHash?.slice(0, 16) 
+    });
+
     const response = await supabase.functions.invoke('game-buy-ticket', {
       body: {
         wallet_address: walletAddress,
@@ -169,16 +200,24 @@ export function useGameTickets(walletAddress: string | undefined) {
         payment_currency: paymentCurrency,
         payment_amount: paymentAmount,
         tx_hash: txHash,
+        correlation_id: correlationId,
       },
     });
 
     if (response.error) {
+      logGameAction(correlationId, 'BUY_TICKET_ERROR', undefined, response.error.message);
       throw new Error(response.error.message || 'Failed to buy ticket');
     }
 
     if (response.data?.error) {
+      logGameAction(correlationId, 'BUY_TICKET_ERROR', undefined, response.data.error);
       throw new Error(response.data.error);
     }
+
+    logGameAction(correlationId, 'BUY_TICKET_SUCCESS', { 
+      ticketId: response.data?.ticket?.id?.slice(0, 8),
+      requestId: response.data?.request_id 
+    });
 
     // Refresh tickets
     await fetchTickets();
@@ -208,7 +247,8 @@ export function useGameTickets(walletAddress: string | undefined) {
 
   // Optimistic update: mark ticket as used locally
   const markTicketUsed = useCallback((ticketId: string) => {
-    console.log('[useGameTickets] Optimistic update - marking ticket used:', ticketId);
+    const correlationId = generateCorrelationId();
+    logGameAction(correlationId, 'TICKET_OPTIMISTIC_USED', { ticketId: ticketId.slice(0, 8) });
     setAvailableTickets(prev => prev.filter(t => t.id !== ticketId));
     setTickets(prev => prev.map(t => 
       t.id === ticketId ? { ...t, is_used: true } : t
