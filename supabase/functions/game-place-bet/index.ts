@@ -24,18 +24,35 @@ function isRateLimited(key: string): boolean {
   return record.count > MAX_REQUESTS;
 }
 
+// Generate request ID for logging
+function generateRequestId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestId = generateRequestId();
+  const serverTime = new Date().toISOString();
+
   try {
-    const { wallet_address, ticket_id, auto_cashout_at } = await req.json();
+    const { wallet_address, ticket_id, auto_cashout_at, correlation_id } = await req.json();
+
+    console.log(`[${requestId}] PLACE_BET_START`, {
+      wallet: wallet_address?.slice(0, 10),
+      ticket_id: ticket_id?.slice(0, 8),
+      auto_cashout_at,
+      correlation_id,
+      serverTime,
+    });
 
     // Validate input
     if (!wallet_address || !ticket_id) {
+      console.log(`[${requestId}] VALIDATION_FAILED: Missing required fields`);
       return new Response(
-        JSON.stringify({ error: 'Missing required fields' }),
+        JSON.stringify({ error: 'Missing required fields', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -43,15 +60,16 @@ serve(async (req) => {
     // Validate wallet address format
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid wallet address format' }),
+        JSON.stringify({ error: 'Invalid wallet address format', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Rate limit by wallet
     if (isRateLimited(wallet_address.toLowerCase())) {
+      console.log(`[${requestId}] RATE_LIMITED: ${wallet_address}`);
       return new Response(
-        JSON.stringify({ error: 'Too many bet attempts. Please wait.' }),
+        JSON.stringify({ error: 'Too many bet attempts. Please wait.', request_id: requestId }),
         { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -60,7 +78,7 @@ serve(async (req) => {
     if (auto_cashout_at !== null && auto_cashout_at !== undefined) {
       if (![2, 5, 10].includes(auto_cashout_at)) {
         return new Response(
-          JSON.stringify({ error: 'Auto cash-out must be x2, x5, x10, or OFF (null)' }),
+          JSON.stringify({ error: 'Auto cash-out must be x2, x5, x10, or OFF (null)', request_id: requestId }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
@@ -81,11 +99,18 @@ serve(async (req) => {
       .single();
 
     if (roundError || !currentRound) {
+      console.log(`[${requestId}] NO_BETTING_ROUND: ${roundError?.message}`);
       return new Response(
-        JSON.stringify({ error: 'No active betting round. Please wait for the next round.' }),
+        JSON.stringify({ error: 'No active betting round. Please wait for the next round.', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`[${requestId}] ROUND_FOUND`, {
+      round_id: currentRound.id.slice(0, 8),
+      round_number: currentRound.round_number,
+      status: currentRound.status,
+    });
 
     // Validate ticket
     const { data: ticket, error: ticketError } = await supabase
@@ -95,32 +120,36 @@ serve(async (req) => {
       .single();
 
     if (ticketError || !ticket) {
+      console.log(`[${requestId}] TICKET_NOT_FOUND: ${ticket_id}`);
       return new Response(
-        JSON.stringify({ error: 'Ticket not found' }),
+        JSON.stringify({ error: 'Ticket not found', request_id: requestId }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Check ticket ownership
     if (ticket.wallet_address.toLowerCase() !== wallet_address.toLowerCase()) {
+      console.log(`[${requestId}] UNAUTHORIZED: Ticket belongs to different wallet`);
       return new Response(
-        JSON.stringify({ error: 'This ticket does not belong to you' }),
+        JSON.stringify({ error: 'This ticket does not belong to you', request_id: requestId }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Check if ticket is already used
     if (ticket.is_used) {
+      console.log(`[${requestId}] TICKET_ALREADY_USED: ${ticket_id}`);
       return new Response(
-        JSON.stringify({ error: 'This ticket has already been used' }),
+        JSON.stringify({ error: 'This ticket has already been used', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Check if ticket is expired
     if (new Date(ticket.expires_at) < new Date()) {
+      console.log(`[${requestId}] TICKET_EXPIRED: ${ticket_id}`);
       return new Response(
-        JSON.stringify({ error: 'This ticket has expired' }),
+        JSON.stringify({ error: 'This ticket has expired', request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -134,25 +163,29 @@ serve(async (req) => {
       .single();
 
     if (existingBet) {
+      console.log(`[${requestId}] ALREADY_BET: Player already has bet ${existingBet.id} in round`);
       return new Response(
-        JSON.stringify({ error: 'You already have a bet in this round' }),
+        JSON.stringify({ error: 'You already have a bet in this round', existing_bet_id: existingBet.id, request_id: requestId }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Mark ticket as used
-    const { error: updateTicketError } = await supabase
+    // Mark ticket as used (with optimistic locking)
+    const { error: updateTicketError, data: updatedTicket } = await supabase
       .from('game_tickets')
       .update({ 
         is_used: true, 
         used_in_round: currentRound.id 
       })
-      .eq('id', ticket_id);
+      .eq('id', ticket_id)
+      .eq('is_used', false) // Optimistic locking - only update if not already used
+      .select()
+      .single();
 
-    if (updateTicketError) {
-      console.error('Error updating ticket:', updateTicketError);
+    if (updateTicketError || !updatedTicket) {
+      console.error(`[${requestId}] TICKET_UPDATE_FAILED:`, updateTicketError);
       return new Response(
-        JSON.stringify({ error: 'Failed to process ticket' }),
+        JSON.stringify({ error: 'Failed to process ticket. It may have been used by another request.', request_id: requestId }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -172,15 +205,18 @@ serve(async (req) => {
       .single();
 
     if (betError) {
-      console.error('Error creating bet:', betError);
+      console.error(`[${requestId}] BET_CREATE_FAILED:`, betError);
+      
       // Rollback ticket usage
       await supabase
         .from('game_tickets')
         .update({ is_used: false, used_in_round: null })
         .eq('id', ticket_id);
       
+      console.log(`[${requestId}] ROLLBACK: Ticket ${ticket_id} restored`);
+      
       return new Response(
-        JSON.stringify({ error: 'Failed to place bet' }),
+        JSON.stringify({ error: 'Failed to place bet', request_id: requestId }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -194,14 +230,24 @@ serve(async (req) => {
       })
       .eq('id', currentRound.id);
 
-    console.log(`Bet placed: ${bet.id} by ${wallet_address}, amount: ${ticket.ticket_value}, auto_cashout: ${auto_cashout_at}`);
+    console.log(`[${requestId}] BET_PLACED_SUCCESS`, {
+      bet_id: bet.id,
+      round_id: currentRound.id.slice(0, 8),
+      round_number: currentRound.round_number,
+      ticket_id: ticket_id.slice(0, 8),
+      bet_amount: ticket.ticket_value,
+      auto_cashout_at,
+    });
 
     return new Response(
       JSON.stringify({
         success: true,
+        request_id: requestId,
+        server_time: serverTime,
         bet: {
           id: bet.id,
           round_id: bet.round_id,
+          round_number: currentRound.round_number,
           bet_amount: bet.bet_amount,
           auto_cashout_at: bet.auto_cashout_at,
           status: bet.status,
@@ -211,9 +257,9 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in game-place-bet:', error);
+    console.error(`[${requestId}] INTERNAL_ERROR:`, error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error', request_id: requestId }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
