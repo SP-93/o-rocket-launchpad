@@ -53,3 +53,9 @@ verify_jwt = false
 
 [functions.game-save-tx-hash]
 verify_jwt = false
+
+[functions.game-get-dashboard-state]
+verify_jwt = false
+
+[functions.game-get-history]
+verify_jwt = false
