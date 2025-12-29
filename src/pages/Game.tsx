@@ -16,11 +16,12 @@ import GameTutorial, { TutorialHelpButton } from '@/components/game/GameTutorial
 import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
 import GameDebugOverlay from '@/components/game/GameDebugOverlay';
 import ClaimWinNotification from '@/components/game/ClaimWinNotification';
+import GameHistoryPanel from '@/components/game/GameHistoryPanel';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Ticket, History, Trophy } from 'lucide-react';
+import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Ticket, History, Trophy, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import useGameSounds from '@/hooks/useGameSounds';
@@ -44,6 +45,7 @@ const Game = () => {
   const [gamePaused, setGamePaused] = useState(false);
   const [pauseReason, setPauseReason] = useState<string | null>(null);
   const [nextRoundIn, setNextRoundIn] = useState<number | null>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const { address, isConnected } = useWallet();
   const { open: openWeb3Modal } = useWeb3Modal();
   const { currentRound, roundHistory, currentMultiplier, isLoading } = useGameRound();
@@ -266,6 +268,13 @@ const Game = () => {
       {/* Tutorial Modal for first-time users */}
       <GameTutorial />
       
+      {/* Game History Panel */}
+      <GameHistoryPanel 
+        walletAddress={address}
+        isOpen={showHistoryPanel}
+        onClose={() => setShowHistoryPanel(false)}
+      />
+      
       <WinConfetti isActive={showWinConfetti} multiplier={winMultiplier} />
       <FlightBackground3D isFlying={isFlying} multiplier={currentMultiplier} />
       
@@ -313,11 +322,22 @@ const Game = () => {
               <div className="hidden lg:block lg:col-span-3 lg:order-1 space-y-3" data-tutorial="ticket-purchase">
                 <TicketPurchase walletAddress={address} isConnected={isConnected} />
                 
-                {/* Quick Stats */}
+                {/* Quick Stats & History Button */}
                 <div className="glass-card p-3 space-y-2">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    <span>Your Stats</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Your Stats</span>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setShowHistoryPanel(true)}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 mr-1" />
+                      My History
+                    </Button>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div className="p-2 rounded-lg bg-card/50 text-center">
@@ -605,26 +625,33 @@ const Game = () => {
           {isConnected && (
             <div className="mt-4 lg:hidden">
               <Tabs defaultValue="tickets" className="w-full">
-                <TabsList className="w-full grid grid-cols-3 bg-card/50 backdrop-blur border border-border/30 rounded-xl h-11">
+                <TabsList className="w-full grid grid-cols-4 bg-card/50 backdrop-blur border border-border/30 rounded-xl h-11">
                   <TabsTrigger 
                     value="tickets" 
                     className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
                   >
-                    <Ticket className="w-3.5 h-3.5 mr-1.5" />
+                    <Ticket className="w-3.5 h-3.5 mr-1" />
                     Tickets
                   </TabsTrigger>
                   <TabsTrigger 
-                    value="history" 
+                    value="rounds" 
                     className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
                   >
-                    <History className="w-3.5 h-3.5 mr-1.5" />
-                    History
+                    <History className="w-3.5 h-3.5 mr-1" />
+                    Rounds
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="my-history" 
+                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                  >
+                    <ClipboardList className="w-3.5 h-3.5 mr-1" />
+                    My Bets
                   </TabsTrigger>
                   <TabsTrigger 
                     value="leaderboard" 
                     className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
                   >
-                    <Trophy className="w-3.5 h-3.5 mr-1.5" />
+                    <Trophy className="w-3.5 h-3.5 mr-1" />
                     Top
                   </TabsTrigger>
                 </TabsList>
@@ -633,9 +660,19 @@ const Game = () => {
                   <TicketPurchase walletAddress={address} isConnected={isConnected} />
                 </TabsContent>
                 
-                <TabsContent value="history" className="mt-3 space-y-3">
+                <TabsContent value="rounds" className="mt-3 space-y-3">
                   <MemoizedCrashHistory history={roundHistory} />
                   <MemoizedLiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
+                </TabsContent>
+                
+                <TabsContent value="my-history" className="mt-3">
+                  <div className="glass-card p-4 text-center">
+                    <ClipboardList className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground mb-3">View your complete game history</p>
+                    <Button onClick={() => setShowHistoryPanel(true)} size="sm">
+                      Open My History
+                    </Button>
+                  </div>
                 </TabsContent>
                 
                 <TabsContent value="leaderboard" className="mt-3">

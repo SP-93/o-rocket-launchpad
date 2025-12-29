@@ -53,6 +53,42 @@ export type Database = {
         }
         Relationships: []
       }
+      game_audit_log: {
+        Row: {
+          bet_id: string | null
+          correlation_id: string | null
+          created_at: string
+          event_data: Json | null
+          event_type: string
+          id: string
+          round_id: string | null
+          ticket_id: string | null
+          wallet_address: string | null
+        }
+        Insert: {
+          bet_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          round_id?: string | null
+          ticket_id?: string | null
+          wallet_address?: string | null
+        }
+        Update: {
+          bet_id?: string | null
+          correlation_id?: string | null
+          created_at?: string
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          round_id?: string | null
+          ticket_id?: string | null
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
       game_bets: {
         Row: {
           auto_cashout_at: number | null
@@ -287,6 +323,7 @@ export type Database = {
           is_used: boolean | null
           payment_amount: number
           payment_currency: string
+          serial_number: number | null
           ticket_value: number
           tx_hash: string | null
           used_in_round: string | null
@@ -299,6 +336,7 @@ export type Database = {
           is_used?: boolean | null
           payment_amount: number
           payment_currency: string
+          serial_number?: number | null
           ticket_value: number
           tx_hash?: string | null
           used_in_round?: string | null
@@ -311,6 +349,7 @@ export type Database = {
           is_used?: boolean | null
           payment_amount?: number
           payment_currency?: string
+          serial_number?: number | null
           ticket_value?: number
           tx_hash?: string | null
           used_in_round?: string | null
