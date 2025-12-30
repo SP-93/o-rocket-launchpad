@@ -307,6 +307,20 @@ serve(async (req) => {
 
     console.log('[game-confirm-claim] Successfully confirmed claim for bet:', bet.id, 'txHash:', txHash);
 
+    // Insert audit log for claim confirmation
+    await supabase.from('game_audit_log').insert({
+      event_type: 'CLAIM_CONFIRMED',
+      wallet_address: walletAddress.toLowerCase(),
+      bet_id: betId,
+      round_id: roundId,
+      event_data: {
+        tx_hash: txHash,
+        amount: eventAmountEther,
+        nonce: eventNonceValue,
+        winnings: expectedWinnings,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,

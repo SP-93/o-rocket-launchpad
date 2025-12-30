@@ -268,6 +268,23 @@ serve(async (req) => {
       winnings: winnings.toFixed(2),
     });
 
+    // Insert audit log
+    await supabase.from('game_audit_log').insert({
+      event_type: 'CASHOUT',
+      wallet_address: wallet_address.toLowerCase(),
+      bet_id: bet_id,
+      round_id: round.id,
+      correlation_id: correlation_id || requestId,
+      event_data: {
+        round_number: round.round_number,
+        client_multiplier: current_multiplier,
+        server_multiplier: serverCalculatedMultiplier,
+        final_multiplier: finalMultiplier,
+        bet_amount: bet.bet_amount,
+        winnings,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
