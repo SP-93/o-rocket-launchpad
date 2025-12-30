@@ -239,6 +239,21 @@ serve(async (req) => {
       auto_cashout_at,
     });
 
+    // Insert audit log
+    await supabase.from('game_audit_log').insert({
+      event_type: 'BET_PLACED',
+      wallet_address: wallet_address.toLowerCase(),
+      ticket_id: ticket_id,
+      bet_id: bet.id,
+      round_id: currentRound.id,
+      correlation_id: correlation_id || requestId,
+      event_data: {
+        round_number: currentRound.round_number,
+        bet_amount: ticket.ticket_value,
+        auto_cashout_at,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,

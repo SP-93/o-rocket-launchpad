@@ -236,6 +236,22 @@ serve(async (req) => {
       txHash: tx_hash?.slice(0, 20),
     });
 
+    // Insert audit log
+    await supabase.from('game_audit_log').insert({
+      event_type: 'TICKET_PURCHASED',
+      wallet_address: wallet_address.toLowerCase(),
+      ticket_id: ticket.id,
+      correlation_id: correlation_id || requestId,
+      event_data: {
+        ticket_value,
+        payment_currency,
+        payment_amount,
+        tx_hash,
+        serial_number: ticket.serial_number,
+        expires_at: ticket.expires_at,
+      },
+    });
+
     return new Response(
       JSON.stringify({
         success: true,
