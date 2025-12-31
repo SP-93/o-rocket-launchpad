@@ -104,6 +104,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         server_time: serverTime,
+        server_time_ms: Date.now(), // Unix timestamp for clock offset calculation
         current_round: currentRound ? {
           id: currentRound.id,
           round_number: currentRound.round_number,

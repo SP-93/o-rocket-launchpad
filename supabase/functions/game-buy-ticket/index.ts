@@ -122,24 +122,49 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ========== TX HASH VERIFICATION ==========
+    // ========== TX HASH VERIFICATION (IDEMPOTENT) ==========
     if (tx_hash) {
-      // Check for duplicate tx_hash (idempotency)
+      // Check for duplicate tx_hash - return existing ticket for idempotency
       const { data: existingTicket, error: dupError } = await supabase
         .from('game_tickets')
-        .select('id')
+        .select('*')
         .eq('tx_hash', tx_hash)
         .maybeSingle();
 
       if (existingTicket) {
-        console.log(`[${requestId}] DUPLICATE_TX_HASH: ${tx_hash} already used for ticket ${existingTicket.id}`);
+        console.log(`[${requestId}] IDEMPOTENT_RETURN: ${tx_hash} already used for ticket ${existingTicket.id}`);
+        
+        // Insert audit log for idempotent return
+        await supabase.from('game_audit_log').insert({
+          event_type: 'TICKET_REGISTER_IDEMPOTENT',
+          wallet_address: wallet_address.toLowerCase(),
+          ticket_id: existingTicket.id,
+          correlation_id: correlation_id || requestId,
+          event_data: {
+            tx_hash,
+            ticket_value: existingTicket.ticket_value,
+            message: 'Returned existing ticket for duplicate tx_hash',
+          },
+        });
+        
+        // Return SUCCESS with existing ticket (idempotent behavior)
         return new Response(
           JSON.stringify({ 
-            error: 'This transaction has already been used to purchase a ticket',
-            existing_ticket_id: existingTicket.id,
-            request_id: requestId 
+            success: true,
+            request_id: requestId,
+            server_time: serverTime,
+            idempotent: true,
+            ticket: {
+              id: existingTicket.id,
+              ticket_value: existingTicket.ticket_value,
+              payment_currency: existingTicket.payment_currency,
+              payment_amount: existingTicket.payment_amount,
+              expires_at: existingTicket.expires_at,
+              created_at: existingTicket.created_at,
+              tx_hash: existingTicket.tx_hash,
+            }
           }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

@@ -41,6 +41,7 @@ export function useGameRound() {
   const [roundHistory, setRoundHistory] = useState<GameRound[]>([]);
   const [currentMultiplier, setCurrentMultiplier] = useState(1.00);
   const [isLoading, setIsLoading] = useState(true);
+  const [serverClockOffset, setServerClockOffset] = useState<number>(0); // ms difference: server - client
   const multiplierIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastStatusRef = useRef<string | null>(null);
   const lastRoundIdRef = useRef<string | null>(null);
@@ -53,16 +54,18 @@ export function useGameRound() {
     }
   }, []);
 
-  // Start multiplier animation with lag compensation
+  // Start multiplier animation with lag compensation + server clock offset
   // Lag compensation ensures frontend display is slightly behind server to prevent
   // showing higher multipliers than what auto-cashouts actually get
-  const startMultiplierAnimation = useCallback((startedAt: string | null) => {
+  const startMultiplierAnimation = useCallback((startedAt: string | null, clockOffset: number = 0) => {
     stopMultiplierAnimation();
     
     const startTime = startedAt ? new Date(startedAt).getTime() : Date.now();
     
     multiplierIntervalRef.current = setInterval(() => {
-      const elapsed = Math.max(0, (Date.now() - startTime - LAG_COMPENSATION_MS) / 1000);
+      // Apply server clock offset for synchronized timing across devices
+      const adjustedNow = Date.now() + clockOffset;
+      const elapsed = Math.max(0, (adjustedNow - startTime - LAG_COMPENSATION_MS) / 1000);
       const multiplier = Math.pow(1.0718, elapsed);
       const capped = Math.min(multiplier, 10.00);
       setCurrentMultiplier(Math.round(capped * 100) / 100);
@@ -111,17 +114,18 @@ export function useGameRound() {
         lastRoundIdRef.current = round.id;
         
         // INSTANT SYNC: When flying, immediately calculate multiplier from started_at
-        // Apply same lag compensation as animation for consistency
+        // Apply same lag compensation as animation for consistency + server clock offset
         if (round.status === 'flying') {
           if (lastStatusRef.current !== 'flying') {
             // First time entering flying - instant sync then start animation
             if (round.started_at) {
-              const elapsed = Math.max(0, (Date.now() - new Date(round.started_at).getTime() - LAG_COMPENSATION_MS) / 1000);
+              const adjustedNow = Date.now() + serverClockOffset;
+              const elapsed = Math.max(0, (adjustedNow - new Date(round.started_at).getTime() - LAG_COMPENSATION_MS) / 1000);
               const instantMultiplier = Math.min(Math.pow(1.0718, elapsed), 10.00);
               setCurrentMultiplier(Math.round(instantMultiplier * 100) / 100);
-              console.log('[useGameRound] Instant sync multiplier (lag comp):', instantMultiplier.toFixed(2));
+              console.log('[useGameRound] Instant sync multiplier (offset:', serverClockOffset, 'ms):', instantMultiplier.toFixed(2));
             }
-            startMultiplierAnimation(round.started_at);
+            startMultiplierAnimation(round.started_at, serverClockOffset);
           }
         } else {
           // Reset multiplier when not flying
@@ -140,7 +144,41 @@ export function useGameRound() {
     } finally {
       setIsLoading(false);
     }
-  }, [fetchRoundHistory, startMultiplierAnimation, stopMultiplierAnimation]);
+  }, [fetchRoundHistory, startMultiplierAnimation, stopMultiplierAnimation, serverClockOffset]);
+
+  // Sync server clock offset on mount
+  useEffect(() => {
+    const syncServerClock = async () => {
+      try {
+        const beforeRequest = Date.now();
+        const { data, error } = await supabase.functions.invoke('game-get-dashboard-state', {
+          body: { wallet_address: null }
+        });
+        const afterRequest = Date.now();
+        
+        if (!error && data?.server_time_ms) {
+          // Calculate offset accounting for round-trip latency
+          const latency = (afterRequest - beforeRequest) / 2;
+          const serverTimeAtResponse = data.server_time_ms;
+          const estimatedServerNow = serverTimeAtResponse + latency;
+          const offset = estimatedServerNow - afterRequest;
+          
+          // Only apply if offset is significant (> 100ms)
+          if (Math.abs(offset) > 100) {
+            console.log('[useGameRound] Server clock offset:', offset, 'ms (latency:', latency, 'ms)');
+            setServerClockOffset(offset);
+          }
+        }
+      } catch (e) {
+        console.warn('[useGameRound] Failed to sync server clock:', e);
+      }
+    };
+    
+    syncServerClock();
+    // Re-sync every 5 minutes
+    const syncInterval = setInterval(syncServerClock, 5 * 60 * 1000);
+    return () => clearInterval(syncInterval);
+  }, []);
 
   // Initial fetch and polling
   useEffect(() => {
@@ -205,6 +243,7 @@ export function useGameRound() {
     roundHistory,
     currentMultiplier,
     isLoading,
+    serverClockOffset,
     refetch: fetchCurrentRound,
   };
 }

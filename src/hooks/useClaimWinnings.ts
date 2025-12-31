@@ -87,6 +87,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
     isRecovering: false,
   });
 
+  // Single-flight guard: prevent duplicate claim attempts
+  const claimInProgressRef = useRef<boolean>(false);
+
   // Ref to track if beforeunload is set
   const beforeUnloadRef = useRef<((e: BeforeUnloadEvent) => void) | null>(null);
 
@@ -307,6 +310,18 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         throw new Error('Wallet not connected');
       }
 
+      // SINGLE-FLIGHT GUARD: Prevent duplicate clicks
+      if (claimInProgressRef.current) {
+        console.log('[ClaimWinnings] Claim already in progress, ignoring duplicate request');
+        toast({
+          title: 'Claim In Progress',
+          description: 'Please wait for the current claim to complete',
+        });
+        throw new Error('Claim already in progress');
+      }
+
+      // Lock immediately before any async operations
+      claimInProgressRef.current = true;
       setClaimState((prev) => ({ ...prev, isClaiming: true }));
 
       const claimAmount = typeof amount === 'number' ? amount.toString() : amount;
@@ -485,6 +500,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         return tx.hash;
       } catch (error: any) {
         console.error('[ClaimWinnings] Error:', error);
+
+        // CRITICAL: Release single-flight lock
+        claimInProgressRef.current = false;
 
         // If bet was locked but NO tx was sent, unlock it immediately
         if (locked && !txHash) {
