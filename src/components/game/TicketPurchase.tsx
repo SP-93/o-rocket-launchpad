@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -9,6 +9,7 @@ import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
 import { toast } from '@/hooks/use-toast';
 import PlayerTicketList from './PlayerTicketList';
+import { ethers } from 'ethers';
 
 interface TicketPurchaseProps {
   walletAddress: string | undefined;
@@ -17,7 +18,44 @@ interface TicketPurchaseProps {
 
 const TICKET_VALUES = [1, 2, 3, 4, 5];
 
-type TxStatus = 'idle' | 'confirming' | 'pending' | 'saving' | 'success' | 'manual';
+type TxStatus = 'idle' | 'confirming' | 'pending' | 'saving' | 'success' | 'manual' | 'recovering';
+
+// Pending purchase storage key
+const PENDING_PURCHASE_KEY = 'pending_ticket_purchase';
+const RECOVERY_CHECK_INTERVAL = 4000; // Check every 4 seconds
+
+interface PendingPurchase {
+  txHash: string;
+  walletAddress: string;
+  ticketValue: number;
+  currency: 'WOVER' | 'USDT';
+  paymentAmount: number;
+  timestamp: number;
+}
+
+// LocalStorage helpers
+const savePendingPurchase = (data: PendingPurchase) => {
+  try {
+    localStorage.setItem(PENDING_PURCHASE_KEY, JSON.stringify(data));
+    console.log('[TicketPurchase] Saved pending purchase:', data.txHash);
+  } catch (e) {
+    console.warn('[TicketPurchase] Failed to save pending purchase:', e);
+  }
+};
+
+const getPendingPurchase = (): PendingPurchase | null => {
+  try {
+    const data = localStorage.getItem(PENDING_PURCHASE_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
+};
+
+const clearPendingPurchase = () => {
+  localStorage.removeItem(PENDING_PURCHASE_KEY);
+  console.log('[TicketPurchase] Cleared pending purchase');
+};
 
 const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => {
   const [selectedValue, setSelectedValue] = useState<number>(1);
@@ -27,6 +65,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [manualTxHash, setManualTxHash] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+  const recoveryIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
@@ -41,6 +80,96 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const usdtAmount = selectedCurrency === 'USDT' && woverPrice 
     ? (selectedValue * woverPrice).toFixed(4)
     : null;
+
+  // Attempt to register ticket with backend (used for recovery)
+  const attemptTicketRegistration = useCallback(async (pending: PendingPurchase): Promise<boolean> => {
+    try {
+      console.log('[TicketPurchase] Attempting ticket registration for tx:', pending.txHash);
+      await buyTicket(pending.ticketValue, pending.currency, pending.paymentAmount, pending.txHash);
+      return true;
+    } catch (error: any) {
+      // If ticket already exists for this tx_hash, consider it a success
+      if (error?.message?.includes('already') || error?.message?.includes('existing')) {
+        console.log('[TicketPurchase] Ticket already registered for this tx');
+        return true;
+      }
+      console.warn('[TicketPurchase] Registration failed:', error);
+      return false;
+    }
+  }, [buyTicket]);
+
+  // Recovery loop: check pending purchase and auto-register when confirmed
+  useEffect(() => {
+    if (!walletAddress) return;
+
+    const checkPendingPurchase = async () => {
+      const pending = getPendingPurchase();
+      if (!pending) return;
+      
+      // Check if this belongs to current wallet
+      if (pending.walletAddress.toLowerCase() !== walletAddress.toLowerCase()) {
+        return;
+      }
+
+      // Check if too old (15 minutes max)
+      const age = Date.now() - pending.timestamp;
+      if (age > 15 * 60 * 1000) {
+        console.log('[TicketPurchase] Pending purchase too old, clearing');
+        clearPendingPurchase();
+        return;
+      }
+
+      // Check transaction status on-chain
+      try {
+        const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
+        const receipt = await provider.getTransactionReceipt(pending.txHash);
+        
+        if (receipt) {
+          if (receipt.status === 1) {
+            // Transaction confirmed! Try to register ticket
+            console.log('[TicketPurchase] Pending tx confirmed, registering ticket...');
+            setTxStatus('recovering');
+            
+            const success = await attemptTicketRegistration(pending);
+            if (success) {
+              toast({
+                title: 'Ticket Recovered! 🎫',
+                description: `${pending.ticketValue} WOVER ticket registered successfully`,
+              });
+              clearPendingPurchase();
+              await refetch();
+              triggerBalanceRefresh();
+            }
+            setTxStatus('idle');
+          } else {
+            // Transaction failed
+            console.log('[TicketPurchase] Pending tx failed on-chain');
+            toast({
+              title: 'Transaction Failed',
+              description: 'The pending transaction failed on-chain',
+              variant: 'destructive',
+            });
+            clearPendingPurchase();
+          }
+        }
+        // If no receipt yet, keep waiting
+      } catch (error) {
+        console.warn('[TicketPurchase] Error checking pending tx:', error);
+      }
+    };
+
+    // Initial check
+    checkPendingPurchase();
+
+    // Set up interval for recovery checks
+    recoveryIntervalRef.current = setInterval(checkPendingPurchase, RECOVERY_CHECK_INTERVAL);
+
+    return () => {
+      if (recoveryIntervalRef.current) {
+        clearInterval(recoveryIntervalRef.current);
+      }
+    };
+  }, [walletAddress, attemptTicketRegistration, refetch]);
 
   const handlePurchase = async () => {
     if (!isConnected || !walletAddress) {
@@ -83,25 +212,41 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         throw new Error(result.error || 'Transaction failed');
       }
 
-      setLastTxHash(result.txHash || null);
+      const txHash = result.txHash;
+      setLastTxHash(txHash || null);
+
+      // CRITICAL: Save pending purchase IMMEDIATELY after getting txHash
+      if (txHash) {
+        savePendingPurchase({
+          txHash,
+          walletAddress: walletAddress.toLowerCase(),
+          ticketValue: selectedValue,
+          currency: selectedCurrency,
+          paymentAmount,
+          timestamp: Date.now(),
+        });
+      }
 
       // Handle different status outcomes
       if (result.status === 'pending') {
         setTxStatus('pending');
         toast({
           title: "Transaction Pending",
-          description: "Your transaction is being processed. You can wait or enter TX hash manually.",
+          description: "Your transaction is being processed. Ticket will be registered automatically when confirmed.",
         });
-        setShowManualInput(true);
+        // Don't show manual input as primary - recovery will handle it
         setIsPurchasing(false);
         return;
       }
 
-      if (result.status === 'confirmed' && result.txHash) {
+      if (result.status === 'confirmed' && txHash) {
         setTxStatus('saving');
 
         // Step 2: Register ticket in database with tx hash
-        await buyTicket(selectedValue, selectedCurrency, paymentAmount, result.txHash);
+        await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash);
+        
+        // Clear pending purchase on success
+        clearPendingPurchase();
         
         setTxStatus('success');
         toast({
@@ -111,7 +256,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         
         // Refresh data immediately
         await refetch();
-        triggerBalanceRefresh(); // Trigger global balance refresh
+        triggerBalanceRefresh();
       }
     } catch (error) {
       toast({

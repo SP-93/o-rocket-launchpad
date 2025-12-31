@@ -30,6 +30,9 @@ import CrashGameContractSection from '@/components/admin/CrashGameContractSectio
 import TicketNFTContractSection from '@/components/admin/TicketNFTContractSection';
 import OnChainRoundManagement from '@/components/admin/OnChainRoundManagement';
 import AutoGameControl from '@/components/admin/AutoGameControl';
+import TicketStatsPanel from '@/components/admin/TicketStatsPanel';
+import BetsOverviewPanel from '@/components/admin/BetsOverviewPanel';
+import GameAuditLogPanel from '@/components/admin/GameAuditLogPanel';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -1044,8 +1047,17 @@ const Admin = () => {
                 <AutoGameControl />
               </GlowCard>
 
+              {/* Tickets & Bets Overview - Side by Side */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <TicketStatsPanel />
+                <BetsOverviewPanel />
+              </div>
+
               {/* Revenue & Pool Management */}
               <GameRevenueSection />
+
+              {/* Game Audit Log */}
+              <GameAuditLogPanel />
             </TabsContent>
 
             {/* Treasury Tab */}
