@@ -94,7 +94,7 @@ const Games = () => {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">
-            <span className="gradient-text">O'Rockets Game's</span>
+            <span className="gradient-text">O'Rocket Game's</span>
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Play provably fair games on OverProtocol. Win WOVER tokens with transparent odds.
