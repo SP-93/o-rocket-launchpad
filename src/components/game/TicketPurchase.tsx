@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink } from 'lucide-react';
+import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink, Zap } from 'lucide-react';
 import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
+import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
 import { toast } from '@/hooks/use-toast';
 import PlayerTicketList from './PlayerTicketList';
-import { ethers } from 'ethers';
+import { ethers, providers } from 'ethers';
+import { getDeployedContracts } from '@/contracts/storage';
 
 interface TicketPurchaseProps {
   walletAddress: string | undefined;
@@ -70,6 +72,14 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
   const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
+  const { buyWithWover, buyWithUsdt, getContract } = useTicketNFT();
+  
+  // Check if NFT contract is deployed
+  const [useNFTContract, setUseNFTContract] = useState(false);
+  useEffect(() => {
+    const contracts = getDeployedContracts();
+    setUseNFTContract(!!(contracts as any).ticketNFT);
+  }, []);
   
   // Use real-time balance hook - refreshes every 3 seconds + on DB changes
   const { balance: tokenBalance, refreshBalance } = useWalletBalance(
@@ -200,19 +210,62 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
     setShowManualInput(false);
 
     try {
-      // Step 1: Execute blockchain transfer
       toast({
         title: "Confirm Transaction",
         description: "Please confirm the transaction in your wallet",
       });
 
+      let txHash: string | undefined;
+
+      // Use NFT Contract if deployed, otherwise fallback to direct transfer
+      if (useNFTContract && typeof window !== 'undefined' && (window as any).ethereum) {
+        try {
+          const provider = new providers.Web3Provider((window as any).ethereum);
+          const signer = provider.getSigner();
+          
+          let tokenId: number;
+          if (selectedCurrency === 'WOVER') {
+            tokenId = await buyWithWover(signer, selectedValue);
+          } else {
+            tokenId = await buyWithUsdt(signer, selectedValue, usdtAmount || '0');
+          }
+          
+          // Get tx hash from recent transaction
+          const nftContract = getContract(signer);
+          if (nftContract) {
+            const filter = nftContract.filters.TicketMinted(null, walletAddress);
+            const events = await nftContract.queryFilter(filter, -5);
+            if (events.length > 0) {
+              txHash = events[events.length - 1].transactionHash;
+            }
+          }
+          
+          // Register in Supabase for tracking
+          await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash || `nft-${tokenId}`);
+          
+          setTxStatus('success');
+          toast({
+            title: "NFT Ticket Minted! 🎫",
+            description: `Ticket #${tokenId} (${selectedValue} WOVER) minted on-chain`,
+          });
+          
+          await refetch();
+          triggerBalanceRefresh();
+          return;
+        } catch (nftError: any) {
+          console.warn('[TicketPurchase] NFT contract failed, falling back to direct transfer:', nftError);
+          // Fall through to legacy method
+        }
+      }
+
+      // Legacy method: Direct token transfer
       const result = await transferToken(selectedCurrency, paymentAmount);
 
       if (!result.success && !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
       }
 
-      const txHash = result.txHash;
+      txHash = result.txHash;
       setLastTxHash(txHash || null);
 
       // CRITICAL: Save pending purchase IMMEDIATELY after getting txHash
@@ -234,7 +287,6 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           title: "Transaction Pending",
           description: "Your transaction is being processed. Ticket will be registered automatically when confirmed.",
         });
-        // Don't show manual input as primary - recovery will handle it
         setIsPurchasing(false);
         return;
       }
@@ -242,10 +294,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       if (result.status === 'confirmed' && txHash) {
         setTxStatus('saving');
 
-        // Step 2: Register ticket in database with tx hash
+        // Register ticket in database with tx hash
         await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash);
         
-        // Clear pending purchase on success
         clearPendingPurchase();
         
         setTxStatus('success');
@@ -254,7 +305,6 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           description: `${selectedValue} WOVER ticket added to your collection`,
         });
         
-        // Refresh data immediately
         await refetch();
         triggerBalanceRefresh();
       }
@@ -351,6 +401,11 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
               <Ticket className="w-4 h-4 text-primary" />
             </div>
             <span className="font-semibold text-sm">Game Tickets</span>
+            {useNFTContract && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/20 text-success flex items-center gap-1">
+                <Zap className="w-2.5 h-2.5" /> NFT
+              </span>
+            )}
           </div>
           {isConnected && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-card/50 border border-border/30">
@@ -516,7 +571,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
             {/* Info */}
             <div className="flex items-start gap-2 p-2 rounded-lg bg-warning/5 border border-warning/10 text-[10px] text-warning">
               <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-              <span>Tokens sent to treasury ({TREASURY_WALLET.slice(0, 6)}...{TREASURY_WALLET.slice(-4)}). TX verified on-chain.</span>
+              <span>
+                {useNFTContract 
+                  ? 'Ticket minted as NFT on-chain. Provably fair.'
+                  : `Tokens sent to treasury (${TREASURY_WALLET.slice(0, 6)}...${TREASURY_WALLET.slice(-4)}). TX verified on-chain.`
+                }
+              </span>
             </div>
           </>
         )}

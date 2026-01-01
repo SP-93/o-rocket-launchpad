@@ -12,7 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useCrashGameContract } from '@/hooks/useCrashGameContract';
-import TicketStatsPanel from './TicketStatsPanel';
+// TicketStatsPanel removed - now only in Admin.tsx Game tab
 
 interface EngineState {
   isEnabled: boolean;
@@ -372,8 +372,6 @@ const AutoGameControl = () => {
         </div>
       </GlowCard>
 
-      {/* Ticket Stats Panel */}
-      <TicketStatsPanel />
     </div>
   );
 };
