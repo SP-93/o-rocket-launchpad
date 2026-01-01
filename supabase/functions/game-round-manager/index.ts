@@ -20,10 +20,10 @@ const ADMIN_WALLETS = [
   '0x8334966329b7f4b459633696a8ca59118253bc89',
 ];
 
-// Game timing configuration (in seconds)
+// Game timing configuration (in seconds) - MUST MATCH CrashGame.sol
 const GAME_CONFIG = {
-  bettingDuration: 20,      // More time for bets
-  countdownDuration: 5,     // Dramatic countdown
+  bettingDuration: 15,      // Match smart contract: 15 seconds
+  countdownDuration: 3,     // Match frontend: 3 seconds countdown
   crashDisplayDuration: 5,  // Time to see crash result
   pauseDuration: 3,         // Pause between rounds
 };

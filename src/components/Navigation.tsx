@@ -37,7 +37,7 @@ const Navigation = () => {
     { to: "/swap", label: "Swap" },
     { to: "/pools", label: "Pools" },
     { to: "/positions", label: "Positions" },
-    { to: "/game", label: "Game🚀" },
+    { to: "/games", label: "O'Rockets Game's" },
     { to: "/info", label: "Info" },
     { to: "/docs", label: "Docs" },
   ];
