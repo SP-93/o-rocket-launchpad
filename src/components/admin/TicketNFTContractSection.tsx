@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ethers, providers } from 'ethers';
+import { ethers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
@@ -10,6 +10,7 @@ import {
   saveTicketNFTAddressToBackend, 
   clearTicketNFTAddressFromBackend 
 } from '@/lib/contractConfigSync';
+import { getUniversalSigner, getReadProvider } from '@/lib/walletProvider';
 import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
 import { 
@@ -31,7 +32,7 @@ const TicketNFTContractSection = () => {
     setWoverPrice,
     isLoading 
   } = useTicketNFT();
-  const { price: cexPrice, loading: cexLoading, refetch: refetchCexPrice } = useCoinGeckoPrice();
+  const { price: marketPrice, loading: marketLoading, refetch: refetchMarketPrice } = useCoinGeckoPrice();
   
   const [localAddress, setLocalAddress] = useState<string | null>(null);
   const [backendAddress, setBackendAddress] = useState<string | null>(null);
@@ -40,54 +41,51 @@ const TicketNFTContractSection = () => {
   const [isSettingPrice, setIsSettingPrice] = useState(false);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
   const [isSyncingBackend, setIsSyncingBackend] = useState(false);
-  const [isSyncingCex, setIsSyncingCex] = useState(false);
+  const [isSyncingMarket, setIsSyncingMarket] = useState(false);
 
   // Calculate price deviation
   const contractPriceNum = contractState?.woverPrice ? parseFloat(contractState.woverPrice) : 0;
-  const priceDeviation = contractPriceNum > 0 && cexPrice > 0 
-    ? ((cexPrice - contractPriceNum) / contractPriceNum) * 100 
+  const priceDeviation = contractPriceNum > 0 && marketPrice > 0 
+    ? ((marketPrice - contractPriceNum) / contractPriceNum) * 100 
     : 0;
   const isPriceOutdated = Math.abs(priceDeviation) > 5; // 5% threshold
 
-  // One-click sync to CEX price
-  const handleSyncToCex = async () => {
-    if (!cexPrice || cexPrice <= 0) {
-      toast.error('CEX price not available');
+  // One-click sync to market price
+  const handleSyncToMarket = async () => {
+    if (!marketPrice || marketPrice <= 0) {
+      toast.error('Market price not available');
       return;
     }
     
-    const signer = await getSigner();
-    if (!signer) {
+    let signer: ethers.Signer;
+    try {
+      signer = await getUniversalSigner();
+    } catch {
       toast.error('Please connect your wallet');
       return;
     }
 
-    setIsSyncingCex(true);
+    setIsSyncingMarket(true);
     try {
-      const priceWei = ethers.utils.parseEther(cexPrice.toFixed(6));
+      const priceWei = ethers.utils.parseEther(marketPrice.toFixed(6));
       await setWoverPrice(signer, priceWei.toString());
       await fetchContractState();
-      toast.success(`Price synced to $${cexPrice.toFixed(6)}`);
+      toast.success(`Price synced to $${marketPrice.toFixed(6)}`);
     } catch (error: any) {
       console.error('Failed to sync price:', error);
       toast.error('Failed to sync: ' + (error.reason || error.message));
     } finally {
-      setIsSyncingCex(false);
+      setIsSyncingMarket(false);
     }
   };
 
   const addressMismatch = localAddress && backendAddress && 
     localAddress.toLowerCase() !== backendAddress.toLowerCase();
 
-  // Get signer from window.ethereum
+  // Get signer using universal method (works with WalletConnect, MetaMask, etc.)
   const getSigner = useCallback(async (): Promise<ethers.Signer | null> => {
-    if (typeof window === 'undefined' || !(window as any).ethereum) {
-      return null;
-    }
     try {
-      const provider = new providers.Web3Provider((window as any).ethereum);
-      const signer = provider.getSigner();
-      return signer;
+      return await getUniversalSigner();
     } catch {
       return null;
     }
@@ -442,16 +440,16 @@ const TicketNFTContractSection = () => {
                   </div>
                 </div>
 
-                {/* CEX Price Comparison */}
+                {/* Market Price Comparison */}
                 <div className={`rounded-lg p-3 border ${isPriceOutdated ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'}`}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <TrendingUp className={`w-4 h-4 ${isPriceOutdated ? 'text-warning' : 'text-success'}`} />
-                      <span className="text-xs text-muted-foreground">CEX Price:</span>
+                      <span className="text-xs text-muted-foreground">Market Price:</span>
                       <span className="text-sm font-semibold">
-                        {cexLoading ? '...' : `$${cexPrice.toFixed(6)}`}
+                        {marketLoading ? '...' : `$${marketPrice.toFixed(6)}`}
                       </span>
-                      {!cexLoading && contractPriceNum > 0 && (
+                      {!marketLoading && contractPriceNum > 0 && (
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
                           isPriceOutdated 
                             ? 'bg-warning/20 text-warning' 
@@ -467,13 +465,13 @@ const TicketNFTContractSection = () => {
                         variant="primary"
                         size="sm"
                         className="text-xs px-3 py-1"
-                        onClick={handleSyncToCex}
-                        disabled={isSyncingCex || cexLoading}
+                        onClick={handleSyncToMarket}
+                        disabled={isSyncingMarket || marketLoading}
                       >
-                        {isSyncingCex ? (
+                        {isSyncingMarket ? (
                           <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
                         ) : (
-                          <><RefreshCw className="w-3 h-3 mr-1" /> Sync to CEX</>
+                          <><RefreshCw className="w-3 h-3 mr-1" /> Sync to Market</>
                         )}
                       </NeonButton>
                     )}
@@ -515,15 +513,15 @@ const TicketNFTContractSection = () => {
                   variant="secondary"
                   className="text-xs px-3 py-2 mt-5"
                   onClick={() => {
-                    refetchCexPrice();
-                    if (cexPrice > 0) {
-                      setNewPriceUSD(cexPrice.toFixed(6));
-                      toast.success(`Fetched price: $${cexPrice.toFixed(6)}`);
+                    refetchMarketPrice();
+                    if (marketPrice > 0) {
+                      setNewPriceUSD(marketPrice.toFixed(6));
+                      toast.success(`Fetched price: $${marketPrice.toFixed(6)}`);
                     }
                   }}
-                  disabled={cexLoading}
+                  disabled={marketLoading}
                 >
-                  <TrendingUp className="w-3 h-3 mr-1" /> Fetch CEX
+                  <TrendingUp className="w-3 h-3 mr-1" /> Fetch Market
                 </NeonButton>
               </div>
               
