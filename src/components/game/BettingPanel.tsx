@@ -93,8 +93,8 @@ const BettingPanel = ({
 
     setClaimingBetId(win.id);
     try {
-      const signer = await getSigner();
-      await claimWinnings(signer, win.id, win.winnings);
+      // claimWinnings now uses getUniversalSigner() internally - no signer needed
+      await claimWinnings(win.id, win.winnings);
       playSound('win');
       refetchPending();
     } catch (error) {
@@ -129,10 +129,9 @@ const BettingPanel = ({
     if (!myBet?.id) return;
 
     try {
-      const signer = await getSigner();
-
+      // claimWinnings now uses getUniversalSigner() internally - no signer needed
       const claimAmount = myBet.winnings ?? pendingAmount;
-      await claimWinnings(signer, myBet.id, claimAmount);
+      await claimWinnings(myBet.id, claimAmount);
       playSound('cashout');
       refetchPending();
     } catch (error) {

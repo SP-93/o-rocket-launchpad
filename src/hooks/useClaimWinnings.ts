@@ -4,7 +4,7 @@ import { toast } from '@/hooks/use-toast';
 import { CRASH_GAME_ABI } from '@/contracts/artifacts/crashGame';
 import { getDeployedContractsAsync } from '@/contracts/storage';
 import { supabase } from '@/integrations/supabase/client';
-
+import { getUniversalSigner } from '@/lib/walletProvider';
 // LocalStorage key for pending claim recovery
 const PENDING_CLAIM_KEY = 'pending_claim';
 const CLAIM_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes max age for recovery
@@ -299,9 +299,9 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
   );
 
   // Request signature from backend and claim on-chain
+  // NOW USES getUniversalSigner() INTERNALLY - no signer parameter required!
   const claimWinnings = useCallback(
     async (
-      signer: ethers.Signer,
       betId: string,
       amount: string | number,
       nonce: number = Date.now()
@@ -310,6 +310,19 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
         throw new Error('Wallet not connected');
       }
 
+      // Get signer using universal method (works with WalletConnect, MetaMask, etc.)
+      let signer: ethers.Signer;
+      try {
+        signer = await getUniversalSigner();
+      } catch (signerError) {
+        console.error('[ClaimWinnings] Failed to get signer:', signerError);
+        toast({
+          title: 'Wallet Not Available',
+          description: 'Please connect your wallet and try again',
+          variant: 'destructive',
+        });
+        throw new Error('No wallet provider');
+      }
       // SINGLE-FLIGHT GUARD: Prevent duplicate clicks
       if (claimInProgressRef.current) {
         console.log('[ClaimWinnings] Claim already in progress, ignoring duplicate request');

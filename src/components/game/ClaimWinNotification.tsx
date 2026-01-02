@@ -4,9 +4,6 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useClaimWinnings } from '@/hooks/useClaimWinnings';
 import { toast } from 'sonner';
-import { useAccount } from 'wagmi';
-import { ethers } from 'ethers';
-
 interface ClaimWinNotificationProps {
   myBet: {
     id: string;
@@ -31,7 +28,6 @@ const ClaimWinNotification = ({
   const [dismissed, setDismissed] = useState(false);
   const [lastNotifiedRound, setLastNotifiedRound] = useState<string | null>(null);
   const { isClaiming, canClaim, txHash, checkCanClaim, claimWinnings } = useClaimWinnings(walletAddress);
-  const { connector } = useAccount();
   
   // Check if user just won
   const justWon = myBet?.status === 'won' && 
@@ -56,20 +52,11 @@ const ClaimWinNotification = ({
   }, [showNotification, myBet?.id, checkCanClaim]);
 
   const handleClaim = async () => {
-    if (!myBet?.id || !myBet.winnings || !connector) return;
+    if (!myBet?.id || !myBet.winnings) return;
 
     try {
-      // Get EIP-1193 provider from wagmi connector (works for all wallet types)
-      const eip1193Provider = await connector.getProvider();
-      if (!eip1193Provider) {
-        toast.error('Wallet not available - please reconnect');
-        return;
-      }
-      
-      const provider = new ethers.providers.Web3Provider(eip1193Provider as any);
-      const signer = provider.getSigner();
-
-      await claimWinnings(signer, myBet.id, myBet.winnings);
+      // claimWinnings now uses getUniversalSigner() internally
+      await claimWinnings(myBet.id, myBet.winnings);
       toast.success('Winnings claimed successfully!');
       onClaimSuccess?.();
       setDismissed(true);
@@ -130,7 +117,7 @@ const ClaimWinNotification = ({
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Claiming...
                 </Button>
-              ) : canClaim && connector ? (
+              ) : canClaim ? (
                 <Button 
                   onClick={handleClaim}
                   className="w-full bg-success hover:bg-success/90 text-success-foreground"
