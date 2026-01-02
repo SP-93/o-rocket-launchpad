@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, FileText, Search, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
+import { useAccount } from 'wagmi';
 
 interface AuditLogEntry {
   id: string;
@@ -45,50 +46,55 @@ const GameAuditLogPanel = () => {
   const [hasMore, setHasMore] = useState(true);
 
   const PAGE_SIZE = 30;
+  const { address: adminWallet } = useAccount();
 
   const fetchLogs = useCallback(async (reset = false) => {
+    if (!adminWallet) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
-      let query = supabase
-        .from('game_audit_log')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      // Apply filters
-      if (walletFilter) {
-        query = query.ilike('wallet_address', `%${walletFilter.toLowerCase()}%`);
-      }
-      if (eventTypeFilter && eventTypeFilter !== 'ALL') {
-        query = query.eq('event_type', eventTypeFilter);
-      }
-      if (correlationFilter) {
-        query = query.ilike('correlation_id', `%${correlationFilter}%`);
-      }
-
       const currentPage = reset ? 0 : page;
-      query = query.range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
-
-      const { data, error } = await query;
+      
+      // Use edge function to bypass RLS
+      const { data, error } = await supabase.functions.invoke('game-admin-stats', {
+        body: {
+          wallet_address: adminWallet,
+          action: 'audit',
+          filters: {
+            wallet_address: walletFilter || undefined,
+            event_type: eventTypeFilter,
+            correlation_id: correlationFilter || undefined,
+            limit: PAGE_SIZE,
+            offset: currentPage * PAGE_SIZE,
+          }
+        }
+      });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const auditLogs = data?.auditLogs || [];
 
       if (reset) {
-        setLogs(data || []);
+        setLogs(auditLogs);
         setPage(0);
       } else {
-        setLogs(prev => [...prev, ...(data || [])]);
+        setLogs(prev => [...prev, ...auditLogs]);
       }
-      setHasMore((data?.length || 0) === PAGE_SIZE);
+      setHasMore(auditLogs.length === PAGE_SIZE);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [walletFilter, eventTypeFilter, correlationFilter, page]);
+  }, [adminWallet, walletFilter, eventTypeFilter, correlationFilter, page]);
 
   useEffect(() => {
     fetchLogs(true);
-  }, [walletFilter, eventTypeFilter, correlationFilter]);
+  }, [adminWallet, walletFilter, eventTypeFilter, correlationFilter]);
 
   const handleLoadMore = () => {
     setPage(p => p + 1);
@@ -117,6 +123,16 @@ const GameAuditLogPanel = () => {
   };
 
   const truncateId = (id: string | null) => id ? `${id.slice(0, 8)}...` : '—';
+
+  if (!adminWallet) {
+    return (
+      <GlowCard className="p-6" glowColor="purple">
+        <div className="text-center py-8 text-muted-foreground">
+          Connect wallet to view audit logs
+        </div>
+      </GlowCard>
+    );
+  }
 
   return (
     <GlowCard className="p-6" glowColor="purple">

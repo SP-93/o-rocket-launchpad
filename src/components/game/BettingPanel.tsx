@@ -24,6 +24,12 @@ interface BettingPanelProps {
 }
 
 type AutoCashout = 'x2' | 'x5' | 'x10' | 'off';
+const AUTO_CASHOUT_OPTIONS: { value: AutoCashout; label: string; multiplier: number | null }[] = [
+  { value: 'off', label: 'Manual', multiplier: null },
+  { value: 'x2', label: '2×', multiplier: 2 },
+  { value: 'x5', label: '5×', multiplier: 5 },
+  { value: 'x10', label: '10×', multiplier: 10 },
+];
 
 const BettingPanel = ({
   walletAddress,
