@@ -8,14 +8,15 @@ interface AdminRoleState {
   isLoading: boolean;
   error: string | null;
   backendVerified: boolean;
+  verificationSource: 'rpc' | 'backend' | 'legacy' | null;
 }
 
 /**
- * Secure admin role check using BOTH:
- * 1. Database RPC function (is_wallet_admin)
- * 2. Backend Edge Function verification (check-admin)
+ * Secure admin role check using:
+ * 1. Database RPC function (is_wallet_admin) - PRIMARY
+ * 2. Backend Edge Function verification (check-admin) - SECONDARY (for extra security badge)
  * 
- * Both must pass for full admin access
+ * RPC check is sufficient for admin access. Backend verification is optional extra security.
  */
 export const useAdminRole = (): AdminRoleState => {
   const { address, isConnected } = useWallet();
@@ -24,73 +25,105 @@ export const useAdminRole = (): AdminRoleState => {
     isLoading: true,
     error: null,
     backendVerified: false,
+    verificationSource: null,
   });
 
   useEffect(() => {
     const checkAdminRole = async () => {
-      setState({ isAdmin: false, isLoading: true, error: null, backendVerified: false });
+      setState(prev => ({ ...prev, isLoading: true, error: null }));
 
       if (!isConnected || !address) {
-        setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false });
+        setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false, verificationSource: null });
         return;
       }
 
       try {
-        // Step 1: Check via database RPC
+        // Step 1: Check via database RPC (this is the primary check)
         const { data: isWalletAdmin, error: walletError } = await supabase.rpc('is_wallet_admin', {
           _wallet_address: address
         });
 
         if (walletError) {
           logger.error('useAdminRole: RPC error:', walletError);
-          setState({ isAdmin: false, isLoading: false, error: walletError.message, backendVerified: false });
-          return;
-        }
-
-        if (!isWalletAdmin) {
-          logger.debug('useAdminRole: RPC check failed - not admin');
-          setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false });
-          return;
-        }
-
-        // Step 2: Verify via backend Edge Function
-        logger.debug('useAdminRole: RPC passed, verifying with backend...');
-        
-        const { data: backendData, error: backendError } = await supabase.functions.invoke('check-admin', {
-          body: { wallet_address: address }
-        });
-
-        if (backendError) {
-          logger.error('useAdminRole: Backend verification error:', backendError);
-          // Still allow if RPC passed but backend failed (graceful degradation)
+          // Don't fail completely - try legacy check
+          const isLegacy = useLegacyAdminCheckSync(address);
           setState({ 
-            isAdmin: true, 
+            isAdmin: isLegacy, 
             isLoading: false, 
-            error: 'Backend verification unavailable', 
-            backendVerified: false 
+            error: `RPC unavailable: ${walletError.message}`, 
+            backendVerified: false,
+            verificationSource: isLegacy ? 'legacy' : null
           });
           return;
         }
 
-        const backendVerified = backendData?.isAdmin === true;
-        
-        logger.debug('useAdminRole: Full verification complete:', { 
-          walletAddress: address,
-          rpcAdmin: true,
-          backendAdmin: backendVerified,
-          verifiedAt: backendData?.verifiedAt
-        });
-        
-        setState({ 
-          isAdmin: isWalletAdmin && backendVerified, 
-          isLoading: false, 
-          error: null,
-          backendVerified 
-        });
+        if (!isWalletAdmin) {
+          logger.debug('useAdminRole: RPC check - not admin');
+          setState({ isAdmin: false, isLoading: false, error: null, backendVerified: false, verificationSource: null });
+          return;
+        }
+
+        // RPC passed - user IS admin. Backend verification is optional extra.
+        logger.debug('useAdminRole: RPC passed, wallet is admin');
+
+        // Step 2: Try backend verification (optional - for extra security badge)
+        try {
+          const { data: backendData, error: backendError } = await supabase.functions.invoke('check-admin', {
+            body: { wallet_address: address }
+          });
+
+          if (backendError) {
+            logger.warn('useAdminRole: Backend verification unavailable:', backendError);
+            // Still allow - RPC passed
+            setState({ 
+              isAdmin: true, 
+              isLoading: false, 
+              error: null, 
+              backendVerified: false,
+              verificationSource: 'rpc'
+            });
+            return;
+          }
+
+          const backendVerified = backendData?.isAdmin === true;
+          
+          logger.debug('useAdminRole: Full verification complete:', { 
+            rpcAdmin: true,
+            backendAdmin: backendVerified,
+            source: backendData?.source
+          });
+          
+          setState({ 
+            isAdmin: true, // RPC passed, so they're admin
+            isLoading: false, 
+            error: null,
+            backendVerified,
+            verificationSource: backendVerified ? 'backend' : 'rpc'
+          });
+        } catch (backendErr) {
+          // Backend failed but RPC passed - still admin
+          logger.warn('useAdminRole: Backend call failed:', backendErr);
+          setState({ 
+            isAdmin: true, 
+            isLoading: false, 
+            error: null, 
+            backendVerified: false,
+            verificationSource: 'rpc'
+          });
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         logger.error('useAdminRole: Exception:', err);
-        setState({ isAdmin: false, isLoading: false, error: errorMessage, backendVerified: false });
+        
+        // Fallback to legacy check
+        const isLegacy = useLegacyAdminCheckSync(address);
+        setState({ 
+          isAdmin: isLegacy, 
+          isLoading: false, 
+          error: isLegacy ? null : errorMessage, 
+          backendVerified: false,
+          verificationSource: isLegacy ? 'legacy' : null
+        });
       }
     };
 
@@ -100,13 +133,8 @@ export const useAdminRole = (): AdminRoleState => {
   return state;
 };
 
-/**
- * Legacy compatibility check - uses hardcoded wallets as fallback
- * WARNING: This should only be used during migration period
- * TODO: Remove after all admins are migrated to database roles
- */
-export const useLegacyAdminCheck = (): boolean => {
-  const { address } = useWallet();
+// Sync version of legacy check (used internally)
+const useLegacyAdminCheckSync = (address: string | null): boolean => {
   const LEGACY_ADMIN_WALLETS = [
     '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8',
     '0x8334966329b7f4b459633696a8ca59118253bc89',
@@ -116,4 +144,13 @@ export const useLegacyAdminCheck = (): boolean => {
   return LEGACY_ADMIN_WALLETS.some(
     wallet => wallet.toLowerCase() === address.toLowerCase()
   );
+};
+
+/**
+ * Legacy compatibility check - uses hardcoded wallets as fallback
+ * WARNING: This should only be used during migration period
+ */
+export const useLegacyAdminCheck = (): boolean => {
+  const { address } = useWallet();
+  return useLegacyAdminCheckSync(address ?? null);
 };

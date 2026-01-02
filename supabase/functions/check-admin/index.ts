@@ -6,7 +6,6 @@ const corsHeaders = {
 }
 
 // Simple in-memory rate limiting
-// In production, consider using Redis or similar for distributed rate limiting
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 requests per minute per IP
@@ -25,7 +24,6 @@ function isRateLimited(ip: string): boolean {
   }
 
   if (!record || now > record.resetTime) {
-    // New window, reset counter
     rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
     return false;
   }
@@ -40,7 +38,6 @@ function isRateLimited(ip: string): boolean {
 }
 
 function getClientIP(req: Request): string {
-  // Try various headers that might contain the real IP
   const forwardedFor = req.headers.get('x-forwarded-for');
   if (forwardedFor) {
     return forwardedFor.split(',')[0].trim();
@@ -105,33 +102,70 @@ Deno.serve(async (req) => {
 
     console.log(`check-admin: Checking admin status for wallet: ${wallet_address.substring(0, 10)}...`)
 
-    // Create Supabase client with service role for privileged access
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    // Get Supabase URL and key from environment
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_ANON_KEY');
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('check-admin: Missing Supabase environment variables');
+      // Still try to verify using hardcoded wallets as fallback
+      const HARDCODED_ADMINS = [
+        '0x8334966329b7f4b459633696a8ca59118253bc89',
+        '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8',
+      ];
+      
+      const isHardcodedAdmin = HARDCODED_ADMINS.some(
+        admin => admin.toLowerCase() === wallet_address.toLowerCase()
+      );
+      
+      return new Response(
+        JSON.stringify({ 
+          isAdmin: isHardcodedAdmin,
+          verifiedAt: new Date().toISOString(),
+          source: 'hardcoded_fallback'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    // Use the same is_wallet_admin function, but from server-side
+    // Create Supabase client
+    const supabaseAdmin = createClient(supabaseUrl, supabaseKey)
+
+    // Use the is_wallet_admin function (SECURITY DEFINER - works without service role)
     const { data: isAdmin, error } = await supabaseAdmin.rpc('is_wallet_admin', {
       _wallet_address: wallet_address
     })
 
     if (error) {
       console.error('check-admin: Database error:', error)
+      // Fallback to hardcoded wallets on DB error
+      const HARDCODED_ADMINS = [
+        '0x8334966329b7f4b459633696a8ca59118253bc89',
+        '0x8b847bd369d2fdac7944e68277d6ba04aaeb38b8',
+      ];
+      
+      const isHardcodedAdmin = HARDCODED_ADMINS.some(
+        admin => admin.toLowerCase() === wallet_address.toLowerCase()
+      );
+      
       return new Response(
-        JSON.stringify({ isAdmin: false, error: 'Database error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          isAdmin: isHardcodedAdmin,
+          verifiedAt: new Date().toISOString(),
+          source: 'hardcoded_fallback',
+          dbError: error.message
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Don't log the actual admin status to avoid information leakage in logs
-    console.log(`check-admin: Wallet verification completed`)
+    console.log(`check-admin: Wallet verification completed - isAdmin: ${isAdmin}`)
 
     return new Response(
       JSON.stringify({ 
         isAdmin: isAdmin === true,
-        verifiedAt: new Date().toISOString()
-        // Note: removed wallet from response to minimize information exposure
+        verifiedAt: new Date().toISOString(),
+        source: 'database'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

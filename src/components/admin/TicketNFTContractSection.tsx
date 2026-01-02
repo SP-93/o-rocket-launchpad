@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
-import { useDexPrice } from '@/hooks/useDexPrice';
+import { useDexPrice, clearDexPriceCache } from '@/hooks/useDexPrice';
 import { getDeployedContracts, clearTicketNFTAddress, saveDeployedContract } from '@/contracts/storage';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG } from '@/config/admin';
 import { 
@@ -17,7 +17,7 @@ import NeonButton from '@/components/ui/NeonButton';
 import { 
   Ticket, ExternalLink, Copy, Trash2, Loader2, CheckCircle, 
   DollarSign, RefreshCw, TrendingUp, AlertTriangle, AlertCircle,
-  Cloud, HardDrive, Download, Upload, Coins
+  Cloud, HardDrive, Download, Upload, Coins, Bug, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -34,7 +34,7 @@ const TicketNFTContractSection = () => {
     isLoading 
   } = useTicketNFT();
   const { price: cexPrice, loading: cexLoading, refetch: refetchCexPrice } = useCoinGeckoPrice();
-  const { dexPrice, isLoading: dexLoading, error: dexError, refetch: refetchDexPrice } = useDexPrice();
+  const { dexPrice, isLoading: dexLoading, error: dexError, refetch: refetchDexPrice, metadata: dexMetadata } = useDexPrice();
   
   const [localAddress, setLocalAddress] = useState<string | null>(null);
   const [backendAddress, setBackendAddress] = useState<string | null>(null);
@@ -45,6 +45,9 @@ const TicketNFTContractSection = () => {
   const [isSyncingBackend, setIsSyncingBackend] = useState(false);
   const [isSyncingDex, setIsSyncingDex] = useState(false);
   const [isSyncingCex, setIsSyncingCex] = useState(false);
+  const [showDexDebug, setShowDexDebug] = useState(false);
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null);
+  const [isRefreshingState, setIsRefreshingState] = useState(false);
 
   // Use DEX price as primary, CEX as fallback
   const primaryPrice = dexPrice || cexPrice || 0;
@@ -58,12 +61,36 @@ const TicketNFTContractSection = () => {
   const isPriceOutdated = Math.abs(priceDeviation) > 5; // 5% threshold
   const isPriceZero = contractPriceNum === 0;
 
+  // Retry fetching contract state with delay
+  const fetchContractStateWithRetry = async (maxRetries = 3, delayMs = 2000) => {
+    setIsRefreshingState(true);
+    for (let i = 0; i < maxRetries; i++) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      await fetchContractState();
+      // Check if price updated
+      const newPrice = contractState?.woverPrice ? parseFloat(contractState.woverPrice) : 0;
+      if (newPrice !== contractPriceNum) {
+        setIsRefreshingState(false);
+        return true;
+      }
+    }
+    setIsRefreshingState(false);
+    return false;
+  };
+
   // Sync to DEX price (primary - on-chain)
   const handleSyncToDex = async () => {
-    if (!dexPrice || dexPrice <= 0) {
-      toast.error('DEX price not available');
+    // Force fresh fetch first
+    clearDexPriceCache();
+    toast.info('Fetching fresh DEX price...');
+    const freshPrice = await refetchDexPrice(true);
+    
+    if (!freshPrice || freshPrice <= 0) {
+      toast.error('Failed to fetch fresh DEX price');
       return;
     }
+    
+    toast.info(`Got fresh DEX price: $${freshPrice.toFixed(8)}`);
     
     let signer: ethers.Signer;
     try {
@@ -75,10 +102,22 @@ const TicketNFTContractSection = () => {
 
     setIsSyncingDex(true);
     try {
-      const priceWei = ethers.utils.parseEther(dexPrice.toFixed(8));
-      await setWoverPrice(signer, priceWei.toString());
-      await fetchContractState();
-      toast.success(`Price synced to DEX: $${dexPrice.toFixed(6)}`);
+      const priceWei = ethers.utils.parseEther(freshPrice.toFixed(8));
+      const receipt = await setWoverPrice(signer, priceWei.toString());
+      
+      if (receipt && 'transactionHash' in receipt) {
+        setLastTxHash(receipt.transactionHash);
+      }
+      
+      toast.success(`TX submitted! Refreshing state...`);
+      
+      // Wait and retry fetch
+      const updated = await fetchContractStateWithRetry(3, 2000);
+      if (updated) {
+        toast.success(`Price synced to DEX: $${freshPrice.toFixed(6)}`);
+      } else {
+        toast.warning('Price may have updated - please refresh manually');
+      }
     } catch (error: any) {
       console.error('Failed to sync to DEX:', error);
       toast.error('Failed to sync: ' + (error.reason || error.message));
@@ -89,6 +128,8 @@ const TicketNFTContractSection = () => {
 
   // Sync to CEX price (secondary - CoinGecko)
   const handleSyncToCex = async () => {
+    await refetchCexPrice();
+    
     if (!cexPrice || cexPrice <= 0) {
       toast.error('CEX price not available');
       return;
@@ -105,9 +146,21 @@ const TicketNFTContractSection = () => {
     setIsSyncingCex(true);
     try {
       const priceWei = ethers.utils.parseEther(cexPrice.toFixed(6));
-      await setWoverPrice(signer, priceWei.toString());
-      await fetchContractState();
-      toast.success(`Price synced to CEX: $${cexPrice.toFixed(6)}`);
+      const receipt = await setWoverPrice(signer, priceWei.toString());
+      
+      if (receipt && 'transactionHash' in receipt) {
+        setLastTxHash(receipt.transactionHash);
+      }
+      
+      toast.success(`TX submitted! Refreshing state...`);
+      
+      // Wait and retry fetch
+      const updated = await fetchContractStateWithRetry(3, 2000);
+      if (updated) {
+        toast.success(`Price synced to CEX: $${cexPrice.toFixed(6)}`);
+      } else {
+        toast.warning('Price may have updated - please refresh manually');
+      }
     } catch (error: any) {
       console.error('Failed to sync to CEX:', error);
       toast.error('Failed to sync: ' + (error.reason || error.message));
@@ -119,7 +172,7 @@ const TicketNFTContractSection = () => {
   const addressMismatch = localAddress && backendAddress && 
     localAddress.toLowerCase() !== backendAddress.toLowerCase();
 
-  // Get signer using universal method (works with WalletConnect, MetaMask, etc.)
+  // Get signer using universal method
   const getSigner = useCallback(async (): Promise<ethers.Signer | null> => {
     try {
       return await getUniversalSigner();
@@ -148,7 +201,6 @@ const TicketNFTContractSection = () => {
   // Auto-pull from backend if local is missing but backend exists
   useEffect(() => {
     if (!localAddress && backendAddress) {
-      // Auto-set local from backend for seamless experience
       saveDeployedContract('ticketNFT', backendAddress);
       setLocalAddress(backendAddress);
       toast.info('Contract address loaded from backend');
@@ -159,7 +211,6 @@ const TicketNFTContractSection = () => {
   useEffect(() => {
     if (effectiveAddress) {
       fetchContractState();
-      // Fetch owner
       const fetchOwner = async () => {
         try {
           const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
@@ -191,7 +242,6 @@ const TicketNFTContractSection = () => {
         setLocalAddress(deployedAddress);
         fetchContractState();
         
-        // Auto-save to backend
         await saveTicketNFTAddressToBackend(deployedAddress);
         setBackendAddress(deployedAddress);
         toast.success('Contract synced to backend');
@@ -248,6 +298,27 @@ const TicketNFTContractSection = () => {
     }
   };
 
+  // Fetch fresh prices and update input
+  const handleFetchPrices = async () => {
+    toast.info('Fetching fresh prices...');
+    clearDexPriceCache();
+    
+    const [freshDex] = await Promise.all([
+      refetchDexPrice(true),
+      refetchCexPrice(),
+    ]);
+    
+    if (freshDex && freshDex > 0) {
+      setNewPriceUSD(freshDex.toFixed(8));
+      toast.success(`Fetched fresh DEX price: $${freshDex.toFixed(8)}`);
+    } else if (cexPrice && cexPrice > 0) {
+      setNewPriceUSD(cexPrice.toFixed(6));
+      toast.success(`Fetched CEX price: $${cexPrice.toFixed(6)}`);
+    } else {
+      toast.error('Could not fetch any price');
+    }
+  };
+
   const handleSetPrice = async () => {
     const signer = await getSigner();
     if (!signer) {
@@ -264,8 +335,20 @@ const TicketNFTContractSection = () => {
     setIsSettingPrice(true);
     try {
       const priceWei = ethers.utils.parseEther(priceUSD.toString());
-      await setWoverPrice(signer, priceWei.toString());
-      await fetchContractState();
+      const receipt = await setWoverPrice(signer, priceWei.toString());
+      
+      if (receipt && 'transactionHash' in receipt) {
+        setLastTxHash(receipt.transactionHash);
+        toast.success(`TX: ${receipt.transactionHash.slice(0, 10)}...`);
+      }
+      
+      // Wait and retry fetch
+      const updated = await fetchContractStateWithRetry(3, 2000);
+      if (updated) {
+        toast.success('Price updated successfully!');
+      } else {
+        toast.warning('Price may have updated - please refresh');
+      }
     } catch (error: any) {
       console.error('Failed to set price:', error);
       toast.error('Failed to set price: ' + (error.reason || error.message));
@@ -299,7 +382,6 @@ const TicketNFTContractSection = () => {
 
       {/* Address Sync Panel */}
       <div className="mb-4 space-y-2">
-        {/* Local Address */}
         <div className="flex items-center gap-2 text-xs bg-background/50 rounded-lg p-2 border border-border/30">
           <HardDrive className="w-4 h-4 text-muted-foreground" />
           <span className="text-muted-foreground w-20">Local:</span>
@@ -313,7 +395,6 @@ const TicketNFTContractSection = () => {
           )}
         </div>
         
-        {/* Backend Address */}
         <div className="flex items-center gap-2 text-xs bg-background/50 rounded-lg p-2 border border-border/30">
           <Cloud className="w-4 h-4 text-muted-foreground" />
           <span className="text-muted-foreground w-20">Backend:</span>
@@ -327,7 +408,6 @@ const TicketNFTContractSection = () => {
           )}
         </div>
 
-        {/* Sync Buttons */}
         {(localAddress || backendAddress) && (
           <div className="flex gap-2">
             {localAddress && !backendAddress && (
@@ -355,7 +435,6 @@ const TicketNFTContractSection = () => {
       </div>
 
       {!localAddress ? (
-        // Not deployed - show deployment UI
         <div className="space-y-4">
           <div className="bg-background/50 rounded-lg p-4 border border-border/30">
             <h4 className="text-sm font-semibold mb-3">Constructor Arguments</h4>
@@ -414,7 +493,6 @@ const TicketNFTContractSection = () => {
           </div>
         </div>
       ) : (
-        // Deployed - show contract info and management
         <div className="space-y-4">
           {/* Contract Address */}
           <div className="flex items-center gap-2 bg-success/10 rounded-lg p-3">
@@ -451,6 +529,22 @@ const TicketNFTContractSection = () => {
             </div>
           )}
 
+          {/* Last TX Hash */}
+          {lastTxHash && (
+            <div className="flex items-center gap-2 text-xs bg-background/30 rounded p-2">
+              <span className="text-muted-foreground">Last TX:</span>
+              <code className="font-mono text-primary">{truncateAddress(lastTxHash)}</code>
+              <a
+                href={`${NETWORK_CONFIG.blockExplorerUrls[0]}/tx/${lastTxHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
+
           {/* Contract State */}
           <div className="bg-background/50 rounded-lg p-4 border border-border/30">
             <div className="flex items-center justify-between mb-3">
@@ -458,9 +552,9 @@ const TicketNFTContractSection = () => {
               <button
                 onClick={() => fetchContractState()}
                 className="text-muted-foreground hover:text-primary p-1"
-                disabled={isLoading}
+                disabled={isLoading || isRefreshingState}
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${(isLoading || isRefreshingState) ? 'animate-spin' : ''}`} />
               </button>
             </div>
             
@@ -509,7 +603,7 @@ const TicketNFTContractSection = () => {
                       size="sm"
                       className="text-xs px-3 py-1"
                       onClick={handleSyncToDex}
-                      disabled={isSyncingDex || dexLoading || !dexPrice || !isOwner}
+                      disabled={isSyncingDex || dexLoading || !isOwner}
                     >
                       {isSyncingDex ? (
                         <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
@@ -519,6 +613,50 @@ const TicketNFTContractSection = () => {
                     </NeonButton>
                   </div>
                   <p className="text-[10px] text-muted-foreground">Recommended - Uses WOVER/USDT pool on Over Protocol</p>
+                  
+                  {/* DEX Debug Toggle */}
+                  <button 
+                    onClick={() => setShowDexDebug(!showDexDebug)}
+                    className="mt-2 flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                  >
+                    <Bug className="w-3 h-3" />
+                    DEX Debug
+                    {showDexDebug ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  </button>
+                  
+                  {/* DEX Debug Info */}
+                  {showDexDebug && dexMetadata && (
+                    <div className="mt-2 p-2 bg-background/50 rounded border border-border/20 text-[10px] font-mono space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pool:</span>
+                        <span className="text-primary">{truncateAddress(dexMetadata.poolAddress)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Token0 ({dexMetadata.token0Symbol}):</span>
+                        <span>{truncateAddress(dexMetadata.token0Address)} ({dexMetadata.token0Decimals} dec)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Token1 ({dexMetadata.token1Symbol}):</span>
+                        <span>{truncateAddress(dexMetadata.token1Address)} ({dexMetadata.token1Decimals} dec)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">WOVER is Token0:</span>
+                        <span className={dexMetadata.isWoverToken0 ? 'text-success' : 'text-warning'}>{String(dexMetadata.isWoverToken0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">sqrtPriceX96:</span>
+                        <span className="truncate max-w-[120px]">{dexMetadata.sqrtPriceX96.slice(0, 15)}...</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Raw Price:</span>
+                        <span>{dexMetadata.rawPrice.toExponential(6)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Last Update:</span>
+                        <span>{dexMetadata.lastUpdated.toLocaleTimeString()}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* CEX Price (CoinGecko) - SECONDARY */}
@@ -587,17 +725,7 @@ const TicketNFTContractSection = () => {
                 <NeonButton
                   variant="secondary"
                   className="text-xs px-3 py-2 mt-5"
-                  onClick={() => {
-                    refetchDexPrice();
-                    refetchCexPrice();
-                    if (dexPrice && dexPrice > 0) {
-                      setNewPriceUSD(dexPrice.toFixed(8));
-                      toast.success(`Fetched DEX price: $${dexPrice.toFixed(8)}`);
-                    } else if (cexPrice && cexPrice > 0) {
-                      setNewPriceUSD(cexPrice.toFixed(6));
-                      toast.success(`Fetched CEX price: $${cexPrice.toFixed(6)}`);
-                    }
-                  }}
+                  onClick={handleFetchPrices}
                   disabled={dexLoading && cexLoading}
                 >
                   <TrendingUp className="w-3 h-3 mr-1" /> Fetch Prices
