@@ -77,7 +77,8 @@ export function useGameBetting(walletAddress: string | undefined) {
 
   const cashOut = useCallback(async (
     betId: string,
-    currentMultiplier: number
+    currentMultiplier: number,
+    serverClockOffset: number = 0
   ) => {
     if (!walletAddress) {
       throw new Error('Wallet not connected');
@@ -87,9 +88,15 @@ export function useGameBetting(walletAddress: string | undefined) {
     setIsCashingOut(true);
     setError(null);
 
+    // Send client timestamp for latency compensation
+    const clientTimestamp = Date.now();
+    const adjustedTimestamp = clientTimestamp + serverClockOffset;
+
     logGameAction(correlationId, 'CASHOUT_START', {
       betId: betId.slice(0, 8),
       clientMultiplier: currentMultiplier,
+      clientTimestamp,
+      serverClockOffset,
     });
 
     try {
@@ -98,6 +105,7 @@ export function useGameBetting(walletAddress: string | undefined) {
           wallet_address: walletAddress,
           bet_id: betId,
           current_multiplier: currentMultiplier,
+          client_timestamp: adjustedTimestamp,
           correlation_id: correlationId,
         },
       });

@@ -125,11 +125,16 @@ export const useTicketNFT = () => {
   const buyWithWover = useCallback(async (
     signer: ethers.Signer,
     ticketValue: number
-  ): Promise<number> => {
+  ): Promise<{ tokenId: number; txHash: string }> => {
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
-    const amountWei = ethers.utils.parseEther(ticketValue.toString());
+    // Get the woverPrice from contract to calculate required approval amount
+    // Contract internally calculates: woverPrice * ticketValue
+    const woverPrice = await contract.woverPrice();
+    const requiredAmount = woverPrice.mul(ticketValue);
+    
+    console.log('[NFT] buyWithWover - ticketValue:', ticketValue, 'woverPrice:', ethers.utils.formatEther(woverPrice), 'requiredAmount:', ethers.utils.formatEther(requiredAmount));
     
     // First approve WOVER transfer
     const woverContract = new Contract(
@@ -141,33 +146,49 @@ export const useTicketNFT = () => {
     const signerAddress = await signer.getAddress();
     const allowance = await woverContract.allowance(signerAddress, contract.address);
     
-    if (allowance.lt(amountWei)) {
+    console.log('[NFT] Current allowance:', ethers.utils.formatEther(allowance), 'Required:', ethers.utils.formatEther(requiredAmount));
+    
+    if (allowance.lt(requiredAmount)) {
       toast.info('Approving WOVER...');
       const approveTx = await woverContract.approve(contract.address, ethers.constants.MaxUint256);
       await approveTx.wait();
+      console.log('[NFT] WOVER approved');
     }
 
     toast.info('Minting ticket NFT...');
     const tx = await contract.buyWithWover(ticketValue, { gasLimit: 500000 });
+    console.log('[NFT] Mint tx sent:', tx.hash);
+    
     const receipt = await tx.wait();
+    console.log('[NFT] Mint receipt status:', receipt.status, 'gasUsed:', receipt.gasUsed?.toString());
+
+    if (receipt.status !== 1) {
+      throw new Error('NFT mint transaction failed on-chain');
+    }
 
     // Find TicketMinted event to get tokenId
     const mintEvent = receipt.events?.find((e: any) => e.event === 'TicketMinted');
     const tokenId = mintEvent?.args?.tokenId?.toNumber() ?? 0;
 
+    console.log('[NFT] Ticket minted! tokenId:', tokenId, 'txHash:', tx.hash);
     toast.success(`Ticket #${tokenId} minted!`);
-    return tokenId;
+    return { tokenId, txHash: tx.hash };
   }, [getContract]);
 
   const buyWithUsdt = useCallback(async (
     signer: ethers.Signer,
     ticketValue: number,
     maxAmount: string
-  ): Promise<number> => {
+  ): Promise<{ tokenId: number; txHash: string }> => {
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
-    const maxAmountWei = ethers.utils.parseEther(maxAmount);
+    // Get actual USDT price from contract
+    const usdtPrice = await contract.getUsdtPrice(ticketValue);
+    // Add 5% slippage tolerance
+    const maxAmountWei = usdtPrice.mul(105).div(100);
+    
+    console.log('[NFT] buyWithUsdt - ticketValue:', ticketValue, 'usdtPrice:', ethers.utils.formatEther(usdtPrice), 'maxAmount:', ethers.utils.formatEther(maxAmountWei));
     
     // First approve USDT transfer
     const usdtContract = new Contract(
@@ -187,13 +208,20 @@ export const useTicketNFT = () => {
 
     toast.info('Minting ticket NFT...');
     const tx = await contract.buyWithUsdt(ticketValue, maxAmountWei, { gasLimit: 500000 });
+    console.log('[NFT] USDT Mint tx sent:', tx.hash);
+    
     const receipt = await tx.wait();
+    
+    if (receipt.status !== 1) {
+      throw new Error('NFT mint transaction failed on-chain');
+    }
 
     const mintEvent = receipt.events?.find((e: any) => e.event === 'TicketMinted');
     const tokenId = mintEvent?.args?.tokenId?.toNumber() ?? 0;
 
+    console.log('[NFT] USDT Ticket minted! tokenId:', tokenId, 'txHash:', tx.hash);
     toast.success(`Ticket #${tokenId} minted!`);
-    return tokenId;
+    return { tokenId, txHash: tx.hash };
   }, [getContract]);
 
   const getPlayerTickets = useCallback(async (playerAddress: string): Promise<number[]> => {
