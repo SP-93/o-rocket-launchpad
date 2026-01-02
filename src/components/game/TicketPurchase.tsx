@@ -24,7 +24,7 @@ type TxStatus = 'idle' | 'confirming' | 'pending' | 'saving' | 'success' | 'manu
 
 // Pending purchase storage key
 const PENDING_PURCHASE_KEY = 'pending_ticket_purchase';
-const RECOVERY_CHECK_INTERVAL = 4000; // Check every 4 seconds
+const RECOVERY_CHECK_INTERVAL = 2000; // Check every 2 seconds (faster recovery)
 
 interface PendingPurchase {
   txHash: string;
@@ -223,25 +223,19 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           const provider = new providers.Web3Provider((window as any).ethereum);
           const signer = provider.getSigner();
           
-          let tokenId: number;
+          let result: { tokenId: number; txHash: string };
           if (selectedCurrency === 'WOVER') {
-            tokenId = await buyWithWover(signer, selectedValue);
+            result = await buyWithWover(signer, selectedValue);
           } else {
-            tokenId = await buyWithUsdt(signer, selectedValue, usdtAmount || '0');
+            result = await buyWithUsdt(signer, selectedValue, usdtAmount || '0');
           }
           
-          // Get tx hash from recent transaction
-          const nftContract = getContract(signer);
-          if (nftContract) {
-            const filter = nftContract.filters.TicketMinted(null, walletAddress);
-            const events = await nftContract.queryFilter(filter, -5);
-            if (events.length > 0) {
-              txHash = events[events.length - 1].transactionHash;
-            }
-          }
+          const { tokenId, txHash: nftTxHash } = result;
           
-          // Register in Supabase for tracking
-          await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash || `nft-${tokenId}`);
+          console.log('[TicketPurchase] NFT minted successfully:', { tokenId, txHash: nftTxHash });
+          
+          // Register in Supabase for tracking with real tx hash
+          await buyTicket(selectedValue, selectedCurrency, paymentAmount, nftTxHash);
           
           setTxStatus('success');
           toast({
@@ -253,8 +247,15 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           triggerBalanceRefresh();
           return;
         } catch (nftError: any) {
-          console.warn('[TicketPurchase] NFT contract failed, falling back to direct transfer:', nftError);
-          // Fall through to legacy method
+          console.error('[TicketPurchase] NFT contract failed:', nftError);
+          toast({
+            title: "NFT Mint Failed",
+            description: nftError.message || "Failed to mint NFT ticket",
+            variant: "destructive",
+          });
+          setIsPurchasing(false);
+          setTxStatus('idle');
+          return; // Don't fall back - NFT contract exists but failed
         }
       }
 

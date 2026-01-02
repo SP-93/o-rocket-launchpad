@@ -1016,48 +1016,84 @@ const Admin = () => {
 
             {/* Game Management Tab */}
             <TabsContent value="game" className="space-y-6">
-              {/* Smart Contracts Section */}
-              <GlowCard className="p-6" glowColor="purple">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Database className="w-5 h-5 text-purple-400" />
-                  Game Smart Contracts
-                </h2>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Deploy and manage the game smart contracts. Deploy TicketNFT first, then CrashGame.
-                </p>
-                
-                <div className="space-y-6">
-                  {/* TicketNFT Contract */}
-                  <TicketNFTContractSection />
-                  
-                  {/* CrashGame Contract */}
-                  <CrashGameContractSection />
-                </div>
-              </GlowCard>
+              {/* Sub-navigation for different games */}
+              <Tabs defaultValue="crash" className="space-y-6">
+                <TabsList className="glass-card p-1">
+                  <TabsTrigger value="crash" className="flex items-center gap-2">
+                    <Rocket className="w-4 h-4" /> Game🚀 Crash
+                  </TabsTrigger>
+                  <TabsTrigger value="dice" disabled className="flex items-center gap-2 opacity-50">
+                    🎲 Dice (Soon)
+                  </TabsTrigger>
+                  <TabsTrigger value="wheel" disabled className="flex items-center gap-2 opacity-50">
+                    🎡 Wheel (Soon)
+                  </TabsTrigger>
+                </TabsList>
 
-              {/* Auto Game Loop - Primary Control */}
-              <GlowCard className="p-6" glowColor="cyan">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Rocket className="w-5 h-5 text-success" />
-                  Game Engine
-                </h2>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Control the automatic game loop. Rounds cycle: betting → countdown → flying → crash → payout → repeat
-                </p>
-                <AutoGameControl />
-              </GlowCard>
+                {/* Crash Game Content */}
+                <TabsContent value="crash" className="space-y-6">
+                  {/* Smart Contracts Section */}
+                  <GlowCard className="p-6" glowColor="purple">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Database className="w-5 h-5 text-purple-400" />
+                      Game Smart Contracts
+                    </h2>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Deploy and manage the game smart contracts. Deploy TicketNFT first, then CrashGame.
+                    </p>
+                    
+                    <div className="space-y-6">
+                      {/* TicketNFT Contract */}
+                      <TicketNFTContractSection />
+                      
+                      {/* CrashGame Contract */}
+                      <CrashGameContractSection />
+                    </div>
+                  </GlowCard>
 
-              {/* Tickets & Bets Overview - Side by Side */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <TicketStatsPanel />
-                <BetsOverviewPanel />
-              </div>
+                  {/* Auto Game Loop - Primary Control */}
+                  <GlowCard className="p-6" glowColor="cyan">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                      <Rocket className="w-5 h-5 text-success" />
+                      Game Engine
+                    </h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Control the automatic game loop. Rounds cycle: betting → countdown → flying → crash → payout → repeat
+                    </p>
+                    <AutoGameControl />
+                  </GlowCard>
 
-              {/* Revenue & Pool Management */}
-              <GameRevenueSection />
+                  {/* Tickets & Bets Overview - Side by Side */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <TicketStatsPanel />
+                    <BetsOverviewPanel />
+                  </div>
 
-              {/* Game Audit Log */}
-              <GameAuditLogPanel />
+                  {/* Revenue & Pool Management */}
+                  <GameRevenueSection />
+
+                  {/* Game Audit Log */}
+                  <GameAuditLogPanel />
+                </TabsContent>
+
+                {/* Dice Game Content - Coming Soon */}
+                <TabsContent value="dice">
+                  <GlowCard className="p-6 text-center">
+                    <span className="text-4xl mb-4 block">🎲</span>
+                    <h3 className="text-xl font-bold mb-2">Dice Game</h3>
+                    <p className="text-muted-foreground">Coming soon...</p>
+                  </GlowCard>
+                </TabsContent>
+
+                {/* Wheel Game Content - Coming Soon */}
+                <TabsContent value="wheel">
+                  <GlowCard className="p-6 text-center">
+                    <span className="text-4xl mb-4 block">🎡</span>
+                    <h3 className="text-xl font-bold mb-2">Wheel Game</h3>
+                    <p className="text-muted-foreground">Coming soon...</p>
+                  </GlowCard>
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             {/* Treasury Tab */}

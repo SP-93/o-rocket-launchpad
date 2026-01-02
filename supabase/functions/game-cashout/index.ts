@@ -54,12 +54,22 @@ serve(async (req) => {
   const serverTimestamp = Date.now();
 
   try {
-    const { wallet_address, bet_id, current_multiplier, correlation_id } = await req.json();
+    const { wallet_address, bet_id, current_multiplier, client_timestamp, correlation_id } = await req.json();
+
+    // Calculate network latency if client_timestamp provided
+    let networkLatencyMs = 0;
+    if (client_timestamp) {
+      networkLatencyMs = Math.max(0, serverTimestamp - client_timestamp);
+      // Cap latency compensation at 1 second to prevent abuse
+      networkLatencyMs = Math.min(networkLatencyMs, 1000);
+    }
 
     console.log(`[${requestId}] CASHOUT_START`, {
       wallet: wallet_address?.slice(0, 10),
       bet_id: bet_id?.slice(0, 8),
       client_multiplier: current_multiplier,
+      client_timestamp,
+      network_latency_ms: networkLatencyMs,
       correlation_id,
       serverTime,
     });
@@ -149,12 +159,16 @@ serve(async (req) => {
       );
     }
 
-    // Calculate server-side multiplier
-    const serverCalculatedMultiplier = calculateServerMultiplier(roundStartedAt);
+    // Calculate server-side multiplier with latency compensation
+    // Subtract latency to give benefit of doubt to user (they clicked earlier)
+    const adjustedServerTimestamp = serverTimestamp - networkLatencyMs;
+    const elapsedSeconds = Math.max(0, (adjustedServerTimestamp - new Date(roundStartedAt).getTime()) / 1000);
+    const serverCalculatedMultiplier = Math.min(Math.pow(1.0718, elapsedSeconds), 10.00);
     
     console.log(`[${requestId}] MULTIPLIER_CHECK`, {
       client: current_multiplier,
       server: serverCalculatedMultiplier.toFixed(4),
+      latency_compensation_ms: networkLatencyMs,
       diff_percent: (Math.abs(current_multiplier - serverCalculatedMultiplier) / serverCalculatedMultiplier * 100).toFixed(2),
       round_status: round.status,
       round_crash_point: round.crash_point,
@@ -211,17 +225,19 @@ serve(async (req) => {
       );
     }
 
-    // Allow 20% tolerance for network latency and timing differences (increased from 15%)
-    const tolerance = 0.20;
+    // Allow 25% tolerance for network latency and timing differences (increased from 20%)
+    // Mobile devices especially need more tolerance
+    const tolerance = 0.25;
     const multiplierDiff = Math.abs(current_multiplier - serverCalculatedMultiplier) / serverCalculatedMultiplier;
     
     if (multiplierDiff > tolerance) {
-      console.warn(`[${requestId}] MULTIPLIER_MISMATCH_REJECTED: client=${current_multiplier}, server=${serverCalculatedMultiplier.toFixed(2)}, diff=${(multiplierDiff * 100).toFixed(1)}%`);
+      console.warn(`[${requestId}] MULTIPLIER_MISMATCH_REJECTED: client=${current_multiplier}, server=${serverCalculatedMultiplier.toFixed(2)}, diff=${(multiplierDiff * 100).toFixed(1)}%, latency=${networkLatencyMs}ms`);
       return new Response(
         JSON.stringify({ 
           error: 'Multiplier validation failed - please try again',
           details: 'Your cashout timing may have been affected by network latency',
           server_multiplier: serverCalculatedMultiplier,
+          network_latency_ms: networkLatencyMs,
           request_id: requestId
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

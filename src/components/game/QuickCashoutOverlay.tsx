@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Zap } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { useGameBetting } from '@/hooks/useGameBetting';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -16,12 +16,19 @@ interface QuickCashoutOverlayProps {
   } | null;
   currentMultiplier: number;
   roundStatus: string;
+  roundId?: string;
+  serverClockOffset?: number;
   onCashout?: () => void;
 }
 
-const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundStatus, onCashout }: QuickCashoutOverlayProps) => {
-  const [isCashingOut, setIsCashingOut] = useState(false);
+const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundStatus, roundId, serverClockOffset = 0, onCashout }: QuickCashoutOverlayProps) => {
   const [justCashedOut, setJustCashedOut] = useState(false);
+  const { cashOut, isCashingOut } = useGameBetting(walletAddress);
+
+  // Reset justCashedOut when round changes
+  useEffect(() => {
+    setJustCashedOut(false);
+  }, [roundId]);
 
   const canCashOut = walletAddress && myBet && 
     myBet.status === 'active' && 
@@ -33,27 +40,17 @@ const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundSta
   const handleCashOut = async () => {
     if (!myBet || !canCashOut || !walletAddress) return;
     
-    setIsCashingOut(true);
     try {
-      const { data, error } = await supabase.functions.invoke('game-cashout', {
-        body: { 
-          wallet_address: walletAddress,
-          bet_id: myBet.id, 
-          current_multiplier: currentMultiplier 
-        }
-      });
+      const result = await cashOut(myBet.id, currentMultiplier, serverClockOffset);
       
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      
-      setJustCashedOut(true);
-      const actualWin = data?.cashout?.winnings?.toFixed(2) || potentialWin;
-      toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin.toFixed(2)} WOVER`);
-      onCashout?.();
+      if (result?.success) {
+        setJustCashedOut(true);
+        const actualWin = result?.cashout?.winnings?.toFixed(2) || potentialWin;
+        toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin} WOVER`);
+        onCashout?.();
+      }
     } catch (error: any) {
       toast.error(error.message || 'Failed to cash out');
-    } finally {
-      setIsCashingOut(false);
     }
   };
 
