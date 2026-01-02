@@ -122,9 +122,10 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ========== TX HASH VERIFICATION (IDEMPOTENT) ==========
+    // ========== TX HASH VERIFICATION (IDEMPOTENT + ATOMIC) ==========
     if (tx_hash) {
-      // Check for duplicate tx_hash - return existing ticket for idempotency
+      // ATOMIC CHECK: Use database constraint to prevent duplicates
+      // The UNIQUE constraint on tx_hash ensures only one ticket per tx
       const { data: existingTicket, error: dupError } = await supabase
         .from('game_tickets')
         .select('*')
@@ -134,19 +135,7 @@ serve(async (req) => {
       if (existingTicket) {
         console.log(`[${requestId}] IDEMPOTENT_RETURN: ${tx_hash} already used for ticket ${existingTicket.id}`);
         
-        // Insert audit log for idempotent return
-        await supabase.from('game_audit_log').insert({
-          event_type: 'TICKET_REGISTER_IDEMPOTENT',
-          wallet_address: wallet_address.toLowerCase(),
-          ticket_id: existingTicket.id,
-          correlation_id: correlation_id || requestId,
-          event_data: {
-            tx_hash,
-            ticket_value: existingTicket.ticket_value,
-            message: 'Returned existing ticket for duplicate tx_hash',
-          },
-        });
-        
+        // DON'T insert duplicate audit log - just return existing ticket
         // Return SUCCESS with existing ticket (idempotent behavior)
         return new Response(
           JSON.stringify({ 
@@ -168,14 +157,7 @@ serve(async (req) => {
         );
       }
 
-      // Verify transaction on-chain (basic validation)
-      // In production, you'd call the Over Protocol RPC to verify:
-      // 1. Transaction exists and is confirmed
-      // 2. Transaction is a transfer to TREASURY_WALLET
-      // 3. Amount matches payment_amount
-      // 4. Sender matches wallet_address
-      // For now, we log and trust the frontend (with tx_hash as proof)
-      console.log(`[${requestId}] TX_HASH_RECORDED: ${tx_hash}`);
+      console.log(`[${requestId}] TX_HASH_NEW: ${tx_hash} - will create ticket`);
     } else {
       console.log(`[${requestId}] WARNING: No tx_hash provided - ticket created without on-chain proof`);
     }

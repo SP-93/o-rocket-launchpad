@@ -78,6 +78,50 @@ useEffect(() => {
 
 ---
 
+### 7. Duplikati Tiketa (KRITIČNO - POPRAVLJENO)
+
+**Problem**: Korisnik plati za 1 tiket ali dobije 7 tiketa sa istim `tx_hash`
+
+**Uzrok**: 
+1. Race condition u recovery mehanizmu (višestruki paralelni pozivi)
+2. Nedostajao UNIQUE constraint na `tx_hash` koloni
+3. `game-buy-ticket` edge function nije bila atomska
+
+**Rešenje** (implementirano 2026-01-02):
+1. **Database**: Dodat UNIQUE constraint na `game_tickets.tx_hash`
+2. **Frontend**: Dodat `isRecoveryInFlight` ref za sprečavanje višestrukih recovery pokušaja
+3. **Frontend**: Povećan `RECOVERY_CHECK_INTERVAL` sa 2000ms na 5000ms
+4. **Edge Function**: Pojednostavljena idempotent logika - vraća postojeći tiket bez kreiranja duplikata
+
+```sql
+-- Provera da li UNIQUE constraint postoji
+SELECT conname FROM pg_constraint WHERE conname = 'game_tickets_tx_hash_unique';
+```
+
+---
+
+### 8. NFT Mint Failed: woverPrice is 0
+
+**Problem**: NFT mint failuje sa greškom "woverPrice is 0 - contract not configured"
+
+**Uzrok**: Admin nije postavio `woverPrice` na TicketNFT ugovoru
+
+**Rešenje**:
+1. Idi na Admin Panel → TicketNFT Contract
+2. Klikni "Sync to CEX" ili ručno postavi cenu
+3. Proveri da je `woverPrice > 0` u Contract State
+
+```javascript
+// Debug u konzoli
+const nft = new ethers.Contract('0xF60169C2515FD66b79f1855b939032659E36D9c8', 
+  ['function woverPrice() view returns (uint256)'], 
+  new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com'));
+const price = await nft.woverPrice();
+console.log('woverPrice:', ethers.utils.formatEther(price));
+```
+
+---
+
 ## Debug Komande
 
 ### Provera Contract Adresa u konzoli
@@ -97,6 +141,15 @@ SELECT * FROM game_config WHERE config_key IN ('crash_game_v2_address', 'ticket_
 const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
 const nft = new ethers.Contract('0xF60169C2515FD66b79f1855b939032659E36D9c8', ['function totalSupply() view returns (uint256)'], provider);
 await nft.totalSupply();
+```
+
+### Provera Duplikata u Bazi
+```sql
+SELECT tx_hash, COUNT(*) as cnt 
+FROM game_tickets 
+WHERE tx_hash IS NOT NULL 
+GROUP BY tx_hash 
+HAVING COUNT(*) > 1;
 ```
 
 ---

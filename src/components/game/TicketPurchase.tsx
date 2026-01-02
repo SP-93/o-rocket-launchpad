@@ -24,7 +24,7 @@ type TxStatus = 'idle' | 'confirming' | 'pending' | 'saving' | 'success' | 'manu
 
 // Pending purchase storage key
 const PENDING_PURCHASE_KEY = 'pending_ticket_purchase';
-const RECOVERY_CHECK_INTERVAL = 2000; // Check every 2 seconds (faster recovery)
+const RECOVERY_CHECK_INTERVAL = 5000; // Check every 5 seconds (prevent duplicate requests)
 
 interface PendingPurchase {
   txHash: string;
@@ -68,6 +68,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const [showManualInput, setShowManualInput] = useState(false);
   const [lastTxHash, setLastTxHash] = useState<string | null>(null);
   const recoveryIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isRecoveryInFlight = useRef(false); // Prevent duplicate recovery attempts
   
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
   const { dexPrice: woverPrice, isLoading: isPriceLoading } = useDexPrice();
@@ -113,6 +114,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
     if (!walletAddress) return;
 
     const checkPendingPurchase = async () => {
+      // CRITICAL: Prevent duplicate recovery attempts
+      if (isRecoveryInFlight.current) {
+        console.log('[TicketPurchase] Recovery already in flight, skipping');
+        return;
+      }
+      
       const pending = getPendingPurchase();
       if (!pending) return;
       
@@ -129,6 +136,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         return;
       }
 
+      // Set in-flight flag BEFORE async operations
+      isRecoveryInFlight.current = true;
+
       // Check transaction status on-chain
       try {
         const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
@@ -142,11 +152,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
             
             const success = await attemptTicketRegistration(pending);
             if (success) {
+              // CRITICAL: Clear pending IMMEDIATELY after success
+              clearPendingPurchase();
               toast({
                 title: 'Ticket Recovered! 🎫',
                 description: `${pending.ticketValue} WOVER ticket registered successfully`,
               });
-              clearPendingPurchase();
               await refetch();
               triggerBalanceRefresh();
             }
@@ -154,27 +165,31 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           } else {
             // Transaction failed
             console.log('[TicketPurchase] Pending tx failed on-chain');
+            clearPendingPurchase();
             toast({
               title: 'Transaction Failed',
               description: 'The pending transaction failed on-chain',
               variant: 'destructive',
             });
-            clearPendingPurchase();
           }
         }
         // If no receipt yet, keep waiting
       } catch (error) {
         console.warn('[TicketPurchase] Error checking pending tx:', error);
+      } finally {
+        // ALWAYS reset in-flight flag
+        isRecoveryInFlight.current = false;
       }
     };
 
-    // Initial check
-    checkPendingPurchase();
+    // Initial check with slight delay to prevent race conditions
+    const initialTimeout = setTimeout(checkPendingPurchase, 1000);
 
     // Set up interval for recovery checks
     recoveryIntervalRef.current = setInterval(checkPendingPurchase, RECOVERY_CHECK_INTERVAL);
 
     return () => {
+      clearTimeout(initialTimeout);
       if (recoveryIntervalRef.current) {
         clearInterval(recoveryIntervalRef.current);
       }
