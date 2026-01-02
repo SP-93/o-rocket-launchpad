@@ -338,6 +338,27 @@ const Admin = () => {
             </div>
           </div>
 
+          {/* Wallet Troubleshooting Hint */}
+          {typeof window !== 'undefined' && (window as any).ethereum && !isConnected && (
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-warning text-sm">Wallet Not Connected</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    If you're seeing "source not authorized" errors in console:
+                  </p>
+                  <ol className="text-xs text-muted-foreground mt-2 ml-4 list-decimal space-y-1">
+                    <li>Open MetaMask extension</li>
+                    <li>Click the <strong>3 dots menu</strong> → <strong>Connected sites</strong></li>
+                    <li>Add <code className="bg-background/50 px-1 rounded">orocket.lovable.app</code></li>
+                    <li>Refresh this page</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Network Info */}
           <GlowCard className="p-4 mb-6" glowColor="cyan">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -346,14 +367,17 @@ const Admin = () => {
                 <span className="text-sm font-medium">{NETWORK_CONFIG.chainName}</span>
                 <span className="text-xs text-muted-foreground">Chain ID: {NETWORK_CONFIG.chainId}</span>
               </div>
-              <a 
-                href={NETWORK_CONFIG.blockExplorerUrls[0]} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-primary hover:underline flex items-center gap-1"
-              >
-                Explorer <ExternalLink className="w-3 h-3" />
-              </a>
+              <div className="flex items-center gap-3">
+                <BuildVersion showHardRefresh />
+                <a 
+                  href={NETWORK_CONFIG.blockExplorerUrls[0]} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                >
+                  Explorer <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
             </div>
           </GlowCard>
 

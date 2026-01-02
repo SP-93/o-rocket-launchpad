@@ -115,14 +115,23 @@ export const useTicketNFT = () => {
     try {
       const contract = getContract();
       if (!contract) {
+        console.warn('[TicketNFT] No contract address configured');
         setContractState(null);
         return null;
       }
+
+      console.log('[TicketNFT] Fetching state from:', contract.address);
 
       const [totalSupply, woverPrice] = await Promise.all([
         contract.totalSupply(),
         contract.woverPrice(),
       ]);
+
+      console.log('[TicketNFT] State fetched:', { 
+        totalSupply: totalSupply.toString(), 
+        woverPrice: woverPrice.toString(),
+        woverPriceFormatted: ethers.utils.formatEther(woverPrice)
+      });
 
       const state: TicketNFTState = {
         totalSupply: totalSupply.toNumber(),
@@ -131,8 +140,15 @@ export const useTicketNFT = () => {
 
       setContractState(state);
       return state;
-    } catch (error) {
-      console.error('Failed to fetch TicketNFT state:', error);
+    } catch (error: any) {
+      console.error('[TicketNFT] Failed to fetch state:', error.message || error);
+      // Show toast only once per session to avoid spam
+      if (!sessionStorage.getItem('ticketNFT_fetch_error_shown')) {
+        toast.error('Cannot read contract - check wallet connection', {
+          description: 'Ensure your wallet has authorized this site',
+        });
+        sessionStorage.setItem('ticketNFT_fetch_error_shown', 'true');
+      }
       return null;
     } finally {
       setIsLoading(false);

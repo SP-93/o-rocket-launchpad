@@ -119,41 +119,56 @@ export const useDexPrice = (): DexPriceResult => {
         return null;
       }
 
-      // Calculate price from sqrtPriceX96
+      // Calculate price from sqrtPriceX96 using BigInt for precision
       // Formula: price = (sqrtPriceX96 / 2^96)^2
       // This gives price of token1 in terms of token0
-      const sqrtPriceNum = parseFloat(sqrtPriceX96.toString());
-      const Q96 = Math.pow(2, 96);
-      const sqrtPrice = sqrtPriceNum / Q96;
-      const rawPrice = sqrtPrice * sqrtPrice;
+      
+      // Use BigInt to avoid floating point precision loss on large numbers
+      const sqrtPriceX96Str = sqrtPriceX96.toString();
+      const sqrtBig = BigInt(sqrtPriceX96Str);
+      const Q96 = BigInt(2) ** BigInt(96);
+      const Q192 = Q96 * Q96;
+      
+      // ratioX192 = sqrtPriceX96^2
+      const ratioX192 = sqrtBig * sqrtBig;
+      
+      // Scale to get decimal precision (use 10^18 for high precision)
+      const SCALE = BigInt(10) ** BigInt(18);
+      const scaledRatio = (ratioX192 * SCALE) / Q192;
+      const rawPrice = Number(scaledRatio) / 1e18;
 
       // Adjust for decimals: price needs to account for different token decimals
       // rawPrice = token1/token0 (in their smallest units)
       // We need to convert to "USD per WOVER"
       
       let woverPriceInUsdt: number;
+      const decimalDiff = token0Decimals - token1Decimals;
       
       if (isWoverToken0) {
         // token0 = WOVER, token1 = USDT
         // rawPrice = USDT/WOVER (in smallest units)
         // Adjust: multiply by 10^(wover_decimals - usdt_decimals)
-        const decimalAdjustment = Math.pow(10, token0Decimals - token1Decimals);
+        const decimalAdjustment = Math.pow(10, decimalDiff);
         woverPriceInUsdt = rawPrice * decimalAdjustment;
       } else {
         // token0 = USDT, token1 = WOVER
         // rawPrice = WOVER/USDT (in smallest units), we need 1/rawPrice
         // Adjust: multiply by 10^(usdt_decimals - wover_decimals)
-        const decimalAdjustment = Math.pow(10, token0Decimals - token1Decimals);
-        woverPriceInUsdt = (1 / rawPrice) * decimalAdjustment;
+        const decimalAdjustment = Math.pow(10, decimalDiff);
+        woverPriceInUsdt = rawPrice > 0 ? (1 / rawPrice) * decimalAdjustment : 0;
       }
 
       // Validate the price is reasonable (between $0.0000001 and $1000)
       if (woverPriceInUsdt < 0.0000001 || woverPriceInUsdt > 1000) {
         logger.warn('DEX price seems unrealistic:', woverPriceInUsdt, {
-          sqrtPriceX96: sqrtPriceX96.toString(),
+          sqrtPriceX96: sqrtPriceX96Str,
+          sqrtBig: sqrtBig.toString(),
+          ratioX192: ratioX192.toString(),
+          scaledRatio: scaledRatio.toString(),
           rawPrice,
           token0Decimals,
           token1Decimals,
+          decimalDiff,
           isWoverToken0,
         });
       }
