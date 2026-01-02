@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { useWallet } from '@/hooks/useWallet';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
+import { useDexPrice } from '@/hooks/useDexPrice';
 import { getDeployedContracts, clearTicketNFTAddress, saveDeployedContract } from '@/contracts/storage';
 import { TOKEN_ADDRESSES, NETWORK_CONFIG } from '@/config/admin';
 import { 
@@ -15,8 +16,8 @@ import GlowCard from '@/components/ui/GlowCard';
 import NeonButton from '@/components/ui/NeonButton';
 import { 
   Ticket, ExternalLink, Copy, Trash2, Loader2, CheckCircle, 
-  DollarSign, RefreshCw, TrendingUp, AlertTriangle,
-  Cloud, HardDrive, Download, Upload
+  DollarSign, RefreshCw, TrendingUp, AlertTriangle, AlertCircle,
+  Cloud, HardDrive, Download, Upload, Coins
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,7 +33,8 @@ const TicketNFTContractSection = () => {
     setWoverPrice,
     isLoading 
   } = useTicketNFT();
-  const { price: marketPrice, loading: marketLoading, refetch: refetchMarketPrice } = useCoinGeckoPrice();
+  const { price: cexPrice, loading: cexLoading, refetch: refetchCexPrice } = useCoinGeckoPrice();
+  const { dexPrice, isLoading: dexLoading, error: dexError, refetch: refetchDexPrice } = useDexPrice();
   
   const [localAddress, setLocalAddress] = useState<string | null>(null);
   const [backendAddress, setBackendAddress] = useState<string | null>(null);
@@ -41,19 +43,25 @@ const TicketNFTContractSection = () => {
   const [isSettingPrice, setIsSettingPrice] = useState(false);
   const [contractOwner, setContractOwner] = useState<string | null>(null);
   const [isSyncingBackend, setIsSyncingBackend] = useState(false);
-  const [isSyncingMarket, setIsSyncingMarket] = useState(false);
+  const [isSyncingDex, setIsSyncingDex] = useState(false);
+  const [isSyncingCex, setIsSyncingCex] = useState(false);
 
-  // Calculate price deviation
+  // Use DEX price as primary, CEX as fallback
+  const primaryPrice = dexPrice || cexPrice || 0;
+  const primaryPriceSource = dexPrice ? 'DEX' : 'CEX';
+  
+  // Calculate price deviation from contract
   const contractPriceNum = contractState?.woverPrice ? parseFloat(contractState.woverPrice) : 0;
-  const priceDeviation = contractPriceNum > 0 && marketPrice > 0 
-    ? ((marketPrice - contractPriceNum) / contractPriceNum) * 100 
+  const priceDeviation = contractPriceNum > 0 && primaryPrice > 0 
+    ? ((primaryPrice - contractPriceNum) / contractPriceNum) * 100 
     : 0;
   const isPriceOutdated = Math.abs(priceDeviation) > 5; // 5% threshold
+  const isPriceZero = contractPriceNum === 0;
 
-  // One-click sync to market price
-  const handleSyncToMarket = async () => {
-    if (!marketPrice || marketPrice <= 0) {
-      toast.error('Market price not available');
+  // Sync to DEX price (primary - on-chain)
+  const handleSyncToDex = async () => {
+    if (!dexPrice || dexPrice <= 0) {
+      toast.error('DEX price not available');
       return;
     }
     
@@ -65,17 +73,46 @@ const TicketNFTContractSection = () => {
       return;
     }
 
-    setIsSyncingMarket(true);
+    setIsSyncingDex(true);
     try {
-      const priceWei = ethers.utils.parseEther(marketPrice.toFixed(6));
+      const priceWei = ethers.utils.parseEther(dexPrice.toFixed(8));
       await setWoverPrice(signer, priceWei.toString());
       await fetchContractState();
-      toast.success(`Price synced to $${marketPrice.toFixed(6)}`);
+      toast.success(`Price synced to DEX: $${dexPrice.toFixed(6)}`);
     } catch (error: any) {
-      console.error('Failed to sync price:', error);
+      console.error('Failed to sync to DEX:', error);
       toast.error('Failed to sync: ' + (error.reason || error.message));
     } finally {
-      setIsSyncingMarket(false);
+      setIsSyncingDex(false);
+    }
+  };
+
+  // Sync to CEX price (secondary - CoinGecko)
+  const handleSyncToCex = async () => {
+    if (!cexPrice || cexPrice <= 0) {
+      toast.error('CEX price not available');
+      return;
+    }
+    
+    let signer: ethers.Signer;
+    try {
+      signer = await getUniversalSigner();
+    } catch {
+      toast.error('Please connect your wallet');
+      return;
+    }
+
+    setIsSyncingCex(true);
+    try {
+      const priceWei = ethers.utils.parseEther(cexPrice.toFixed(6));
+      await setWoverPrice(signer, priceWei.toString());
+      await fetchContractState();
+      toast.success(`Price synced to CEX: $${cexPrice.toFixed(6)}`);
+    } catch (error: any) {
+      console.error('Failed to sync to CEX:', error);
+      toast.error('Failed to sync: ' + (error.reason || error.message));
+    } finally {
+      setIsSyncingCex(false);
     }
   };
 
@@ -440,62 +477,100 @@ const TicketNFTContractSection = () => {
                   </div>
                 </div>
 
-                {/* Market Price Comparison */}
-                <div className={`rounded-lg p-3 border ${isPriceOutdated ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className={`w-4 h-4 ${isPriceOutdated ? 'text-warning' : 'text-success'}`} />
-                      <span className="text-xs text-muted-foreground">Market Price:</span>
-                      <span className="text-sm font-semibold">
-                        {marketLoading ? '...' : `$${marketPrice.toFixed(6)}`}
-                      </span>
-                      {!marketLoading && contractPriceNum > 0 && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          isPriceOutdated 
-                            ? 'bg-warning/20 text-warning' 
-                            : 'bg-success/20 text-success'
-                        }`}>
-                          {priceDeviation >= 0 ? '+' : ''}{priceDeviation.toFixed(1)}%
-                        </span>
-                      )}
+                {/* CRITICAL WARNING: Price is Zero */}
+                {isPriceZero && (
+                  <div className="rounded-lg p-4 bg-destructive/20 border-2 border-destructive animate-pulse">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-6 h-6 text-destructive flex-shrink-0" />
+                      <div>
+                        <h5 className="font-bold text-destructive">CRITICAL: NFT Tickets DISABLED!</h5>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          WOVER price is $0.00 - NFT ticket purchases will NOT work until you set a price.
+                          Click "Sync to DEX" below to enable NFT tickets.
+                        </p>
+                      </div>
                     </div>
-                    
-                    {isPriceOutdated && isOwner && (
-                      <NeonButton
-                        variant="primary"
-                        size="sm"
-                        className="text-xs px-3 py-1"
-                        onClick={handleSyncToMarket}
-                        disabled={isSyncingMarket || marketLoading}
-                      >
-                        {isSyncingMarket ? (
-                          <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
-                        ) : (
-                          <><RefreshCw className="w-3 h-3 mr-1" /> Sync to Market</>
-                        )}
-                      </NeonButton>
-                    )}
                   </div>
-                  
-                  {isPriceOutdated && (
-                    <p className="text-xs text-warning mt-2 flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" />
-                      Price outdated by more than 5%
-                    </p>
-                  )}
+                )}
+
+                {/* DEX Price (On-chain) - PRIMARY */}
+                <div className={`rounded-lg p-3 border ${dexPrice && dexPrice > 0 ? 'bg-success/10 border-success/30' : 'bg-muted/20 border-border/30'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-success" />
+                      <span className="text-xs text-muted-foreground">DEX Price (On-chain):</span>
+                      <span className="text-sm font-bold text-success">
+                        {dexLoading ? '...' : dexPrice ? `$${dexPrice.toFixed(8)}` : 'N/A'}
+                      </span>
+                      {dexError && <span className="text-xs text-destructive">(Error)</span>}
+                    </div>
+                    <NeonButton
+                      variant="primary"
+                      size="sm"
+                      className="text-xs px-3 py-1"
+                      onClick={handleSyncToDex}
+                      disabled={isSyncingDex || dexLoading || !dexPrice || !isOwner}
+                    >
+                      {isSyncingDex ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
+                      ) : (
+                        <><RefreshCw className="w-3 h-3 mr-1" /> Sync to DEX</>
+                      )}
+                    </NeonButton>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Recommended - Uses WOVER/USDT pool on Over Protocol</p>
                 </div>
+
+                {/* CEX Price (CoinGecko) - SECONDARY */}
+                <div className="rounded-lg p-3 border bg-muted/10 border-border/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">CEX Price (CoinGecko):</span>
+                      <span className="text-sm font-semibold">
+                        {cexLoading ? '...' : cexPrice ? `$${cexPrice.toFixed(6)}` : 'N/A'}
+                      </span>
+                    </div>
+                    <NeonButton
+                      variant="secondary"
+                      size="sm"
+                      className="text-xs px-3 py-1"
+                      onClick={handleSyncToCex}
+                      disabled={isSyncingCex || cexLoading || !cexPrice || !isOwner}
+                    >
+                      {isSyncingCex ? (
+                        <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Syncing...</>
+                      ) : (
+                        <><RefreshCw className="w-3 h-3 mr-1" /> Sync to CEX</>
+                      )}
+                    </NeonButton>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Alternative - Uses OVER price from CoinGecko API</p>
+                </div>
+
+                {/* Price Deviation Warning */}
+                {isPriceOutdated && contractPriceNum > 0 && (
+                  <div className="rounded-lg p-3 bg-warning/10 border border-warning/30">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning" />
+                      <span className="text-xs text-warning font-medium">
+                        Contract price outdated by {priceDeviation >= 0 ? '+' : ''}{priceDeviation.toFixed(1)}%
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Loading...</p>
             )}
           </div>
 
-          {/* Set WOVER Price (Owner Only) */}
+          {/* Set WOVER Price Manually (Owner Only) */}
           {isOwner && (
             <div className="bg-primary/5 rounded-lg p-4 border border-primary/30">
               <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-primary" />
-                Set WOVER Price
+                Set WOVER Price Manually
               </h4>
               
               <div className="flex items-center gap-3 mb-3">
@@ -513,15 +588,19 @@ const TicketNFTContractSection = () => {
                   variant="secondary"
                   className="text-xs px-3 py-2 mt-5"
                   onClick={() => {
-                    refetchMarketPrice();
-                    if (marketPrice > 0) {
-                      setNewPriceUSD(marketPrice.toFixed(6));
-                      toast.success(`Fetched price: $${marketPrice.toFixed(6)}`);
+                    refetchDexPrice();
+                    refetchCexPrice();
+                    if (dexPrice && dexPrice > 0) {
+                      setNewPriceUSD(dexPrice.toFixed(8));
+                      toast.success(`Fetched DEX price: $${dexPrice.toFixed(8)}`);
+                    } else if (cexPrice && cexPrice > 0) {
+                      setNewPriceUSD(cexPrice.toFixed(6));
+                      toast.success(`Fetched CEX price: $${cexPrice.toFixed(6)}`);
                     }
                   }}
-                  disabled={marketLoading}
+                  disabled={dexLoading && cexLoading}
                 >
-                  <TrendingUp className="w-3 h-3 mr-1" /> Fetch Market
+                  <TrendingUp className="w-3 h-3 mr-1" /> Fetch Prices
                 </NeonButton>
               </div>
               
