@@ -34,7 +34,8 @@ const POLL_INTERVAL = 2000;
 
 // Lag compensation: display multiplier slightly behind server to ensure
 // auto-cashouts trigger before the displayed multiplier reaches the target
-const LAG_COMPENSATION_MS = 350;
+// Increased to 500ms for better mobile experience
+const LAG_COMPENSATION_MS = 500;
 
 export function useGameRound() {
   const [currentRound, setCurrentRound] = useState<GameRound | null>(null);

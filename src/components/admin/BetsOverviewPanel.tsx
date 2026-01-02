@@ -3,9 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import GlowCard from '@/components/ui/GlowCard';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, TrendingUp, TrendingDown, Clock, CheckCircle, AlertTriangle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Loader2, TrendingUp, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { NETWORK_CONFIG } from '@/config/admin';
+import { useAccount } from 'wagmi';
 
 interface BetStats {
   total: number;
@@ -26,15 +27,12 @@ interface RecentBet {
   cashed_out_at: number | null;
   claim_tx_hash: string | null;
   created_at: string;
-  round_number?: number;
 }
 
 interface StuckClaim {
   id: string;
-  wallet_address: string;
   winnings: number;
   claiming_started_at: string;
-  round_number?: number;
 }
 
 const BetsOverviewPanel = () => {
@@ -43,57 +41,39 @@ const BetsOverviewPanel = () => {
   const [stuckClaims, setStuckClaims] = useState<StuckClaim[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
+  
+  const { address: walletAddress } = useAccount();
 
   const fetchData = useCallback(async () => {
+    if (!walletAddress) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // Fetch bet stats
-      const { data: bets, error: betsError } = await supabase
-        .from('game_bets')
-        .select('id, status, winnings, claiming_started_at');
+      // Use edge function to bypass RLS
+      const { data, error } = await supabase.functions.invoke('game-admin-stats', {
+        body: { 
+          wallet_address: walletAddress,
+          action: 'all'
+        }
+      });
 
-      if (betsError) throw betsError;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      const allBets = bets || [];
-      const statsData: BetStats = {
-        total: allBets.length,
-        active: allBets.filter(b => b.status === 'active').length,
-        won: allBets.filter(b => b.status === 'won').length,
-        lost: allBets.filter(b => b.status === 'lost').length,
-        claiming: allBets.filter(b => b.status === 'claiming').length,
-        claimed: allBets.filter(b => b.status === 'claimed').length,
-        pendingLiability: allBets
-          .filter(b => b.status === 'won' || b.status === 'claiming')
-          .reduce((sum, b) => sum + (b.winnings || 0), 0),
-      };
-      setStats(statsData);
-
-      // Fetch stuck claims (claiming for > 5 minutes)
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const stuck = allBets
-        .filter(b => b.status === 'claiming' && b.claiming_started_at && b.claiming_started_at < fiveMinutesAgo)
-        .map(b => ({
-          id: b.id,
-          wallet_address: '',
-          winnings: b.winnings || 0,
-          claiming_started_at: b.claiming_started_at || '',
-        }));
-      setStuckClaims(stuck as StuckClaim[]);
-
-      // Fetch recent bets with round info
-      const { data: recent, error: recentError } = await supabase
-        .from('game_bets')
-        .select('id, wallet_address, bet_amount, status, winnings, cashed_out_at, claim_tx_hash, created_at, round_id')
-        .order('created_at', { ascending: false })
-        .limit(30);
-
-      if (recentError) throw recentError;
-      setRecentBets((recent || []) as RecentBet[]);
-    } catch (error) {
+      setStats(data.stats || null);
+      setRecentBets(data.recentBets || []);
+      setStuckClaims(data.stuckClaims || []);
+    } catch (error: any) {
       console.error('Error fetching bets data:', error);
+      if (error.message?.includes('Unauthorized')) {
+        toast.error('Admin access required');
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [walletAddress]);
 
   useEffect(() => {
     fetchData();
@@ -139,6 +119,16 @@ const BetsOverviewPanel = () => {
       <GlowCard className="p-6">
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </GlowCard>
+    );
+  }
+
+  if (!walletAddress) {
+    return (
+      <GlowCard className="p-6">
+        <div className="text-center py-8 text-muted-foreground">
+          Connect wallet to view stats
         </div>
       </GlowCard>
     );

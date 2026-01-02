@@ -38,6 +38,7 @@ const STORAGE_KEYS = {
 };
 
 // Get hardcoded contracts from config (available to all users)
+// GAME CONTRACTS: Deployed on Over Protocol Mainnet
 const getHardcodedContracts = (): DeployedContracts => ({
   factory: MAINNET_CONTRACTS.factory || null,
   router: MAINNET_CONTRACTS.router || null,
@@ -45,8 +46,9 @@ const getHardcodedContracts = (): DeployedContracts => ({
   nftDescriptor: MAINNET_CONTRACTS.nftDescriptor || null,
   positionManager: MAINNET_CONTRACTS.positionManager || null,
   quoter: MAINNET_CONTRACTS.quoter || null,
-  crashGame: null,
-  ticketNFT: null,
+  // Hardcoded game contract addresses (deployed and verified)
+  crashGame: '0xb1849345d279bE4065B1455e5538c29ea31327c8',
+  ticketNFT: '0xF60169C2515FD66b79f1855b939032659E36D9c8',
 });
 
 // Get hardcoded pools from config (available to all users)

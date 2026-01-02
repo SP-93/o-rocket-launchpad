@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Zap } from 'lucide-react';
+import { Loader2, Zap, Check } from 'lucide-react';
 import { useGameBetting } from '@/hooks/useGameBetting';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -23,22 +23,31 @@ interface QuickCashoutOverlayProps {
 
 const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundStatus, roundId, serverClockOffset = 0, onCashout }: QuickCashoutOverlayProps) => {
   const [justCashedOut, setJustCashedOut] = useState(false);
+  const [optimisticCashout, setOptimisticCashout] = useState(false);
+  const [cashoutMultiplier, setCashoutMultiplier] = useState<number | null>(null);
   const { cashOut, isCashingOut } = useGameBetting(walletAddress);
 
-  // Reset justCashedOut when round changes
+  // Reset states when round changes
   useEffect(() => {
     setJustCashedOut(false);
+    setOptimisticCashout(false);
+    setCashoutMultiplier(null);
   }, [roundId]);
 
   const canCashOut = walletAddress && myBet && 
     myBet.status === 'active' && 
     roundStatus === 'flying' && 
-    !myBet.cashed_out_at;
+    !myBet.cashed_out_at &&
+    !optimisticCashout;
 
   const potentialWin = myBet ? (myBet.bet_amount * currentMultiplier).toFixed(2) : '0.00';
 
   const handleCashOut = async () => {
     if (!myBet || !canCashOut || !walletAddress) return;
+    
+    // Optimistic UI: immediately show feedback
+    setOptimisticCashout(true);
+    setCashoutMultiplier(currentMultiplier);
     
     try {
       const result = await cashOut(myBet.id, currentMultiplier, serverClockOffset);
@@ -48,8 +57,15 @@ const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundSta
         const actualWin = result?.cashout?.winnings?.toFixed(2) || potentialWin;
         toast.success(`Cashed out at ${currentMultiplier.toFixed(2)}x! Won ${actualWin} WOVER`);
         onCashout?.();
+      } else {
+        // Revert optimistic update on failure
+        setOptimisticCashout(false);
+        setCashoutMultiplier(null);
       }
     } catch (error: any) {
+      // Revert optimistic update on error
+      setOptimisticCashout(false);
+      setCashoutMultiplier(null);
       toast.error(error.message || 'Failed to cash out');
     }
   };
@@ -57,14 +73,31 @@ const QuickCashoutOverlay = ({ walletAddress, myBet, currentMultiplier, roundSta
   // Don't show if no active bet
   if (!myBet || myBet.status !== 'active') return null;
 
-  // Already cashed out
-  if (myBet.cashed_out_at || justCashedOut) {
+  // Already cashed out or optimistic cashout in progress
+  if (myBet.cashed_out_at || justCashedOut || (optimisticCashout && !isCashingOut)) {
     return (
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
         <div className="bg-success/90 backdrop-blur-md px-6 py-3 rounded-xl border border-success/50 shadow-lg shadow-success/20">
-          <div className="text-center">
+          <div className="text-center flex items-center gap-2">
+            <Check className="w-5 h-5 text-success-foreground" />
             <div className="text-success-foreground font-bold text-lg">
-              ✓ Cashed Out at {(myBet.cashed_out_at || currentMultiplier).toFixed(2)}x
+              Cashed Out at {(myBet.cashed_out_at || cashoutMultiplier || currentMultiplier).toFixed(2)}x
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Optimistic: show processing state immediately
+  if (optimisticCashout && isCashingOut) {
+    return (
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20">
+        <div className="bg-warning/90 backdrop-blur-md px-6 py-3 rounded-xl border border-warning/50 shadow-lg shadow-warning/20 animate-pulse">
+          <div className="text-center flex items-center gap-2">
+            <Loader2 className="w-5 h-5 text-warning-foreground animate-spin" />
+            <div className="text-warning-foreground font-bold text-lg">
+              Cashing Out at {cashoutMultiplier?.toFixed(2)}x...
             </div>
           </div>
         </div>
