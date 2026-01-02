@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink, Zap } from 'lucide-react';
 import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
-import { useCoinGeckoPrice } from '@/hooks/useCoinGeckoPrice';
+import { useDexPrice } from '@/hooks/useDexPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
@@ -70,7 +70,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const recoveryIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
-  const { price: woverPrice, loading: isPriceLoading } = useCoinGeckoPrice();
+  const { dexPrice: woverPrice, isLoading: isPriceLoading } = useDexPrice();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
   const { buyWithWover, buyWithUsdt, getContract } = useTicketNFT();
   
