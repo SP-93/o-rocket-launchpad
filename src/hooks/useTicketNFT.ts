@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { TICKET_NFT_ABI, TICKET_NFT_BYTECODE } from '@/contracts/artifacts/ticketNFT';
 import { getDeployedContracts, saveDeployedContract } from '@/contracts/storage';
 import { TOKEN_ADDRESSES } from '@/config/admin';
+import { getUniversalSigner, getReadProvider } from '@/lib/walletProvider';
 
 interface TicketInfo {
   ticketValue: number;
@@ -36,10 +37,11 @@ export const useTicketNFT = () => {
       return new Contract(ticketNFTAddress, TICKET_NFT_ABI, signerOrProvider);
     }
 
-    const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
-    return new Contract(ticketNFTAddress, TICKET_NFT_ABI, provider);
+    // Use read-only provider for queries
+    return new Contract(ticketNFTAddress, TICKET_NFT_ABI, getReadProvider());
   }, []);
 
+  // Deploy requires explicit signer (admin action)
   const deployTicketNFT = useCallback(async (
     signer: ethers.Signer,
     options?: { gasLimit?: number }
@@ -53,12 +55,11 @@ export const useTicketNFT = () => {
       const factory = new ContractFactory(TICKET_NFT_ABI, TICKET_NFT_BYTECODE, signer);
 
       // Constructor: (_woverToken, _usdtToken, _factoryWallet, _priceOracle)
-      // Using factory wallet as price oracle for manual price mode
       const contract = await factory.deploy(
         TOKEN_ADDRESSES.WOVER,
         TOKEN_ADDRESSES.USDT,
         FACTORY_WALLET,
-        FACTORY_WALLET, // priceOracle = factory wallet for manual price
+        FACTORY_WALLET,
         { gasLimit }
       );
 
@@ -79,7 +80,6 @@ export const useTicketNFT = () => {
 
       await contract.deployed();
 
-      // Save to storage (extend DeployedContracts type)
       saveDeployedContract('ticketNFT' as any, contract.address);
 
       toast.success(`RocketTicketNFT deployed at ${contract.address}`);
@@ -122,21 +122,23 @@ export const useTicketNFT = () => {
     }
   }, [getContract]);
 
+  /**
+   * Buy ticket with WOVER - uses universal signer (works with all wallet types)
+   */
   const buyWithWover = useCallback(async (
-    signer: ethers.Signer,
     ticketValue: number
   ): Promise<{ tokenId: number; txHash: string }> => {
+    // Get signer via universal method (handles WalletConnect, MetaMask, etc.)
+    const signer = await getUniversalSigner();
+    
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
-    // Get the woverPrice from contract to calculate required approval amount
-    // Contract internally calculates: woverPrice * ticketValue
     const woverPrice = await contract.woverPrice();
     
     console.log('[NFT DEBUG] woverPrice raw:', woverPrice.toString());
     console.log('[NFT DEBUG] woverPrice formatted:', ethers.utils.formatEther(woverPrice));
     
-    // CRITICAL: Check if woverPrice is configured
     if (woverPrice.isZero()) {
       console.error('[NFT ERROR] woverPrice is 0 - contract not configured!');
       throw new Error('NFT contract woverPrice is 0. Admin must set price first via Admin Panel.');
@@ -146,7 +148,7 @@ export const useTicketNFT = () => {
     
     console.log('[NFT] buyWithWover - ticketValue:', ticketValue, 'woverPrice:', ethers.utils.formatEther(woverPrice), 'requiredAmount:', ethers.utils.formatEther(requiredAmount));
     
-    // First approve WOVER transfer
+    // Approve WOVER transfer
     const woverContract = new Contract(
       TOKEN_ADDRESSES.WOVER,
       ['function approve(address,uint256) returns (bool)', 'function allowance(address,address) view returns (uint256)'],
@@ -176,7 +178,6 @@ export const useTicketNFT = () => {
       throw new Error('NFT mint transaction failed on-chain');
     }
 
-    // Find TicketMinted event to get tokenId
     const mintEvent = receipt.events?.find((e: any) => e.event === 'TicketMinted');
     const tokenId = mintEvent?.args?.tokenId?.toNumber() ?? 0;
 
@@ -185,22 +186,23 @@ export const useTicketNFT = () => {
     return { tokenId, txHash: tx.hash };
   }, [getContract]);
 
+  /**
+   * Buy ticket with USDT - uses universal signer
+   */
   const buyWithUsdt = useCallback(async (
-    signer: ethers.Signer,
     ticketValue: number,
     maxAmount: string
   ): Promise<{ tokenId: number; txHash: string }> => {
+    const signer = await getUniversalSigner();
+    
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
-    // Get actual USDT price from contract
     const usdtPrice = await contract.getUsdtPrice(ticketValue);
-    // Add 5% slippage tolerance
-    const maxAmountWei = usdtPrice.mul(105).div(100);
+    const maxAmountWei = usdtPrice.mul(105).div(100); // 5% slippage
     
     console.log('[NFT] buyWithUsdt - ticketValue:', ticketValue, 'usdtPrice:', ethers.utils.formatEther(usdtPrice), 'maxAmount:', ethers.utils.formatEther(maxAmountWei));
     
-    // First approve USDT transfer
     const usdtContract = new Contract(
       TOKEN_ADDRESSES.USDT,
       ['function approve(address,uint256) returns (bool)', 'function allowance(address,address) view returns (uint256)'],
@@ -293,6 +295,7 @@ export const useTicketNFT = () => {
     }
   }, [getContract]);
 
+  // setWoverPrice requires explicit signer (admin action)
   const setWoverPrice = useCallback(async (signer: ethers.Signer, priceInWei: string) => {
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
