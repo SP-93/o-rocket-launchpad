@@ -71,5 +71,6 @@ export default defineConfig(({ mode }) => ({
   // Prevent leaking env variables
   define: {
     __DEV__: mode === "development",
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
   },
 }));

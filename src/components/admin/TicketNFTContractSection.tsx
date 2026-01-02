@@ -207,10 +207,26 @@ const TicketNFTContractSection = () => {
     }
   }, [localAddress, backendAddress]);
 
-  // Fetch contract state when effective address is available
+  // Fetch contract state when effective address is available (with retry)
   useEffect(() => {
     if (effectiveAddress) {
-      fetchContractState();
+      // Fetch with retry logic
+      const fetchWithRetry = async () => {
+        for (let i = 0; i < 3; i++) {
+          const state = await fetchContractState();
+          if (state) {
+            console.log('[TicketNFT] State loaded on attempt', i + 1);
+            break;
+          }
+          if (i < 2) {
+            console.log('[TicketNFT] Retry fetch in 1s...');
+            await new Promise(r => setTimeout(r, 1000));
+          }
+        }
+      };
+      fetchWithRetry();
+      
+      // Fetch owner
       const fetchOwner = async () => {
         try {
           const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
