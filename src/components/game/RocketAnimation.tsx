@@ -185,6 +185,10 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       
       ctx.translate(x + offsetX, y + offsetY);
       
+      // Scale rocket based on canvas size (smaller on mobile)
+      const rocketScale = Math.min(width / 400, height / 300, 1);
+      ctx.scale(rocketScale, rocketScale);
+      
       // Orbit ring (behind rocket)
       orbitAngle.current += 0.03;
       ctx.save();
@@ -373,6 +377,7 @@ const RocketAnimation = ({ status, multiplier, crashPoint }: RocketAnimationProp
       ctx.fillStyle = '#292524';
       ctx.fill();
       
+      // Restore scale before ending
       ctx.restore();
     };
 

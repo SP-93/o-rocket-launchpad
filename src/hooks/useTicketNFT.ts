@@ -6,6 +6,23 @@ import { getDeployedContracts, saveDeployedContract } from '@/contracts/storage'
 import { TOKEN_ADDRESSES } from '@/config/admin';
 import { getUniversalSigner, getReadProvider } from '@/lib/walletProvider';
 
+// SafeWait helper - handles TRANSACTION_REPLACED errors gracefully
+const safeWait = async (tx: ethers.ContractTransaction): Promise<ethers.ContractReceipt> => {
+  try {
+    return await tx.wait(1);
+  } catch (err: any) {
+    // Handle speed-up/cancel transactions - if replaced but succeeded, return the new receipt
+    if (err.code === 'TRANSACTION_REPLACED') {
+      if (err.cancelled === false && err.receipt) {
+        console.log('[NFT] Transaction replaced but succeeded:', err.receipt.transactionHash);
+        return err.receipt;
+      }
+      // Transaction was cancelled
+      throw new Error('Transaction was cancelled');
+    }
+    throw err;
+  }
+};
 interface TicketInfo {
   ticketValue: number;
   expireAt: number;
@@ -163,7 +180,7 @@ export const useTicketNFT = () => {
     if (allowance.lt(requiredAmount)) {
       toast.info('Approving WOVER...');
       const approveTx = await woverContract.approve(contract.address, ethers.constants.MaxUint256);
-      await approveTx.wait();
+      await safeWait(approveTx);
       console.log('[NFT] WOVER approved');
     }
 
@@ -171,7 +188,7 @@ export const useTicketNFT = () => {
     const tx = await contract.buyWithWover(ticketValue, { gasLimit: 500000 });
     console.log('[NFT] Mint tx sent:', tx.hash);
     
-    const receipt = await tx.wait();
+    const receipt = await safeWait(tx);
     console.log('[NFT] Mint receipt status:', receipt.status, 'gasUsed:', receipt.gasUsed?.toString());
 
     if (receipt.status !== 1) {
@@ -215,15 +232,15 @@ export const useTicketNFT = () => {
     if (allowance.lt(maxAmountWei)) {
       toast.info('Approving USDT...');
       const approveTx = await usdtContract.approve(contract.address, ethers.constants.MaxUint256);
-      await approveTx.wait();
+      await safeWait(approveTx);
     }
 
     toast.info('Minting ticket NFT...');
     const tx = await contract.buyWithUsdt(ticketValue, maxAmountWei, { gasLimit: 500000 });
     console.log('[NFT] USDT Mint tx sent:', tx.hash);
     
-    const receipt = await tx.wait();
-    
+    const receipt = await safeWait(tx);
+
     if (receipt.status !== 1) {
       throw new Error('NFT mint transaction failed on-chain');
     }
@@ -302,7 +319,7 @@ export const useTicketNFT = () => {
 
     toast.info('Setting WOVER price...');
     const tx = await contract.setWoverPrice(priceInWei);
-    await tx.wait();
+    await safeWait(tx);
     toast.success('WOVER price updated');
   }, [getContract]);
 

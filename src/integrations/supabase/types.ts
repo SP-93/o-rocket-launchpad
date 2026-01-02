@@ -162,6 +162,27 @@ export type Database = {
           },
         ]
       }
+      game_chat_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       game_config: {
         Row: {
           config_key: string
