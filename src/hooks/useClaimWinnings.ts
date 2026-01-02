@@ -469,7 +469,21 @@ export const useClaimWinnings = (walletAddress: string | undefined) => {
           description: `DO NOT REFRESH! TX: ${tx.hash.slice(0, 10)}...`,
         });
 
-        const receipt = await tx.wait();
+        // SafeWait - handles TRANSACTION_REPLACED errors
+        let receipt: ethers.providers.TransactionReceipt;
+        try {
+          receipt = await tx.wait();
+        } catch (waitErr: any) {
+          if (waitErr.code === 'TRANSACTION_REPLACED' && waitErr.cancelled === false && waitErr.receipt) {
+            console.log('[ClaimWinnings] Transaction replaced but succeeded:', waitErr.receipt.transactionHash);
+            receipt = waitErr.receipt;
+            txHash = waitErr.receipt.transactionHash;
+            updatePendingClaimTxHash(txHash);
+          } else {
+            throw waitErr;
+          }
+        }
+        
         if (receipt.status === 0) {
           throw new Error('Claim transaction failed');
         }

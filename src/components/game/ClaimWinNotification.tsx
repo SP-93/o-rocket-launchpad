@@ -69,69 +69,68 @@ const ClaimWinNotification = ({
   if (!showNotification) return null;
 
   return (
-    <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+    <div className="fixed bottom-24 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up px-2 w-full max-w-[360px]">
       <div className={cn(
-        "relative glass-card p-4 rounded-2xl border-2 border-success/50",
+        "relative glass-card p-3 md:p-4 rounded-xl md:rounded-2xl border-2 border-success/50",
         "bg-gradient-to-r from-success/20 via-card to-success/20",
-        "shadow-lg shadow-success/20",
-        "min-w-[320px] max-w-[400px]"
+        "shadow-lg shadow-success/20"
       )}>
         {/* Dismiss button */}
         <button 
           onClick={() => setDismissed(true)}
-          className="absolute top-2 right-2 p-1 rounded-full hover:bg-muted/50 transition-colors"
+          className="absolute top-1.5 right-1.5 p-1 rounded-full hover:bg-muted/50 transition-colors"
         >
-          <X className="w-4 h-4 text-muted-foreground" />
+          <X className="w-3.5 h-3.5 text-muted-foreground" />
         </button>
         
         {/* Win animation glow */}
-        <div className="absolute inset-0 rounded-2xl bg-success/10 animate-pulse" />
+        <div className="absolute inset-0 rounded-xl md:rounded-2xl bg-success/10 animate-pulse" />
         
-        <div className="relative flex items-start gap-4">
-          {/* Trophy icon */}
-          <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-success/20 flex items-center justify-center">
-            <Trophy className="w-6 h-6 text-success animate-bounce" />
+        <div className="relative flex items-center gap-3">
+          {/* Trophy icon - smaller on mobile */}
+          <div className="flex-shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-success/20 flex items-center justify-center">
+            <Trophy className="w-5 h-5 md:w-6 md:h-6 text-success animate-bounce" />
           </div>
           
           <div className="flex-1 min-w-0">
-            <h4 className="font-bold text-success flex items-center gap-2">
+            <h4 className="font-bold text-success text-sm md:text-base flex items-center gap-1">
               🎉 You Won!
             </h4>
             
-            <div className="flex items-center gap-2 mt-1">
-              <Coins className="w-4 h-4 text-warning" />
-              <span className="text-lg font-bold text-warning">
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <Coins className="w-3.5 h-3.5 text-warning" />
+              <span className="text-base md:text-lg font-bold text-warning">
                 {myBet.winnings?.toFixed(2)} WOVER
               </span>
               {myBet.cashed_out_at && (
-                <span className="text-xs text-muted-foreground">
+                <span className="text-[10px] md:text-xs text-muted-foreground">
                   @ {myBet.cashed_out_at.toFixed(2)}x
                 </span>
               )}
             </div>
             
-            {/* Claim button */}
-            <div className="mt-3">
+            {/* Claim button - inline on mobile */}
+            <div className="mt-2">
               {isClaiming ? (
-                <Button disabled className="w-full" size="sm">
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Button disabled className="h-8 w-full text-xs" size="sm">
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                   Claiming...
                 </Button>
               ) : canClaim ? (
                 <Button 
                   onClick={handleClaim}
-                  className="w-full bg-success hover:bg-success/90 text-success-foreground"
+                  className="h-8 w-full bg-success hover:bg-success/90 text-success-foreground text-xs"
                   size="sm"
                 >
                   Claim Winnings
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
                 </Button>
               ) : txHash ? (
-                <p className="text-xs text-success">
+                <p className="text-[10px] md:text-xs text-success">
                   ✓ Already claimed
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] md:text-xs text-muted-foreground">
                   Winnings added to your balance
                 </p>
               )}

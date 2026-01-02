@@ -17,11 +17,12 @@ import { LiveStatusHUD } from '@/components/game/LiveStatusHUD';
 import GameDebugOverlay from '@/components/game/GameDebugOverlay';
 import ClaimWinNotification from '@/components/game/ClaimWinNotification';
 import GameHistoryPanel from '@/components/game/GameHistoryPanel';
+import PlayerChat from '@/components/game/PlayerChat';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
 import { useWeb3Modal } from '@web3modal/wagmi/react';
-import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Ticket, History, Trophy, ClipboardList } from 'lucide-react';
+import { Wallet, Volume2, VolumeX, Pause, Loader2, Rocket, Users, TrendingUp, Clock, Ticket, History, Trophy, ClipboardList, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import useGameSounds from '@/hooks/useGameSounds';
@@ -32,6 +33,7 @@ import { GameTicketsProvider } from '@/contexts/GameTicketsContext';
 const MemoizedLeaderboard = memo(Leaderboard);
 const MemoizedCrashHistory = memo(CrashHistory);
 const MemoizedLiveBetsFeed = memo(LiveBetsFeed);
+const MemoizedPlayerChat = memo(PlayerChat);
 
 const Game = () => {
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -412,8 +414,8 @@ const Game = () => {
                     </div>
                   </div>
                   
-                  {/* Game Screen - Enhanced with glow */}
-                  <div className="relative aspect-[16/10] md:aspect-video bg-gradient-to-b from-card/60 via-background/40 to-background/60" data-tutorial="rocket-display">
+                  {/* Game Screen - Enhanced with glow - MOBILE OPTIMIZED */}
+                  <div className="relative aspect-[4/3] md:aspect-video bg-gradient-to-b from-card/60 via-background/40 to-background/60" data-tutorial="rocket-display">
                     {/* Animated grid overlay */}
                     <div 
                       className="absolute inset-0 opacity-[0.03]" 
@@ -579,6 +581,14 @@ const Game = () => {
                 <div className="mt-3 hidden lg:block">
                   <MemoizedLiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
                 </div>
+                
+                {/* Player Chat - Desktop */}
+                <div className="mt-3 hidden lg:block">
+                  <MemoizedPlayerChat 
+                    walletAddress={address} 
+                    isConnected={isConnected}
+                  />
+                </div>
               </div>
 
               {/* Connect Wallet CTA */}
@@ -625,33 +635,40 @@ const Game = () => {
           {isConnected && (
             <div className="mt-4 lg:hidden">
               <Tabs defaultValue="tickets" className="w-full">
-                <TabsList className="w-full grid grid-cols-4 bg-card/50 backdrop-blur border border-border/30 rounded-xl h-11">
+                <TabsList className="w-full grid grid-cols-5 bg-card/50 backdrop-blur border border-border/30 rounded-xl h-11">
                   <TabsTrigger 
                     value="tickets" 
-                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                    className="text-[10px] font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg px-1"
                   >
-                    <Ticket className="w-3.5 h-3.5 mr-1" />
+                    <Ticket className="w-3 h-3 mr-0.5" />
                     Tickets
                   </TabsTrigger>
                   <TabsTrigger 
                     value="rounds" 
-                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                    className="text-[10px] font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg px-1"
                   >
-                    <History className="w-3.5 h-3.5 mr-1" />
+                    <History className="w-3 h-3 mr-0.5" />
                     Rounds
                   </TabsTrigger>
                   <TabsTrigger 
-                    value="my-history" 
-                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                    value="chat" 
+                    className="text-[10px] font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg px-1"
                   >
-                    <ClipboardList className="w-3.5 h-3.5 mr-1" />
+                    <MessageCircle className="w-3 h-3 mr-0.5" />
+                    Chat
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="my-history" 
+                    className="text-[10px] font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg px-1"
+                  >
+                    <ClipboardList className="w-3 h-3 mr-0.5" />
                     My Bets
                   </TabsTrigger>
                   <TabsTrigger 
                     value="leaderboard" 
-                    className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg"
+                    className="text-[10px] font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary rounded-lg px-1"
                   >
-                    <Trophy className="w-3.5 h-3.5 mr-1" />
+                    <Trophy className="w-3 h-3 mr-0.5" />
                     Top
                   </TabsTrigger>
                 </TabsList>
@@ -663,6 +680,14 @@ const Game = () => {
                 <TabsContent value="rounds" className="mt-3 space-y-3">
                   <MemoizedCrashHistory history={roundHistory} />
                   <MemoizedLiveBetsFeed bets={bets} currentStatus={currentRound?.status || 'idle'} />
+                </TabsContent>
+                
+                <TabsContent value="chat" className="mt-3">
+                  <MemoizedPlayerChat 
+                    walletAddress={address} 
+                    isConnected={isConnected}
+                    className="w-full h-[320px]"
+                  />
                 </TabsContent>
                 
                 <TabsContent value="my-history" className="mt-3">
