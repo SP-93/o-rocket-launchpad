@@ -28,10 +28,14 @@ const MobileBetBar = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isTicketSheetOpen, setIsTicketSheetOpen] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedAutoCashout, setSelectedAutoCashout] = useState<number | null>(null);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isCashingOut, setIsCashingOut] = useState(false);
   
   const { availableTickets, markTicketUsed } = useGameTicketsContext();
+
+  // Auto-cashout opcije: samo x2, x5, x10
+  const AUTO_CASHOUT_OPTIONS = [2, 5, 10];
 
   if (!isConnected) return null;
 
@@ -60,7 +64,7 @@ const MobileBetBar = ({
           wallet_address: walletAddress,
           ticket_id: ticket.id,
           round_id: currentRound.id,
-          auto_cashout_at: null
+          auto_cashout_at: selectedAutoCashout
         }
       });
       
@@ -210,7 +214,7 @@ const MobileBetBar = ({
                 <div className="space-y-4 py-4">
                   <h3 className="text-lg font-bold text-center">Select Ticket</h3>
                   
-                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
                     {availableTickets.map((ticket) => (
                       <button
                         key={ticket.id}
@@ -230,6 +234,38 @@ const MobileBetBar = ({
                     ))}
                   </div>
 
+                  {/* Auto-Cashout Selection */}
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Auto-Stop (optional)</div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedAutoCashout(null)}
+                        className={cn(
+                          "flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all",
+                          selectedAutoCashout === null
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border hover:border-primary/50"
+                        )}
+                      >
+                        Manual
+                      </button>
+                      {AUTO_CASHOUT_OPTIONS.map((multiplier) => (
+                        <button
+                          key={multiplier}
+                          onClick={() => setSelectedAutoCashout(multiplier)}
+                          className={cn(
+                            "flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-all",
+                            selectedAutoCashout === multiplier
+                              ? "border-warning bg-warning/10 text-warning"
+                              : "border-border hover:border-warning/50"
+                          )}
+                        >
+                          x{multiplier}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <Button
                     onClick={handlePlaceBet}
                     disabled={isPlacingBet || !selectedTicketId}
@@ -242,7 +278,7 @@ const MobileBetBar = ({
                         Placing Bet...
                       </>
                     ) : (
-                      'Place Bet'
+                      selectedAutoCashout ? `Place Bet (Auto x${selectedAutoCashout})` : 'Place Bet'
                     )}
                   </Button>
                 </div>
