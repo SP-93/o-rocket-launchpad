@@ -132,6 +132,16 @@ export const useTicketNFT = () => {
     // Get the woverPrice from contract to calculate required approval amount
     // Contract internally calculates: woverPrice * ticketValue
     const woverPrice = await contract.woverPrice();
+    
+    console.log('[NFT DEBUG] woverPrice raw:', woverPrice.toString());
+    console.log('[NFT DEBUG] woverPrice formatted:', ethers.utils.formatEther(woverPrice));
+    
+    // CRITICAL: Check if woverPrice is configured
+    if (woverPrice.isZero()) {
+      console.error('[NFT ERROR] woverPrice is 0 - contract not configured!');
+      throw new Error('NFT contract woverPrice is 0. Admin must set price first via Admin Panel.');
+    }
+    
     const requiredAmount = woverPrice.mul(ticketValue);
     
     console.log('[NFT] buyWithWover - ticketValue:', ticketValue, 'woverPrice:', ethers.utils.formatEther(woverPrice), 'requiredAmount:', ethers.utils.formatEther(requiredAmount));
