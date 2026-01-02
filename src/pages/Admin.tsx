@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import BuildVersion from '@/components/BuildVersion';
 import { useNavigate } from 'react-router-dom';
 import { useWallet } from '@/hooks/useWallet';
 import { useAdminRole, useLegacyAdminCheck } from '@/hooks/useAdminRole';
@@ -1271,6 +1272,11 @@ const Admin = () => {
               <AuditLogSection />
             </TabsContent>
           </Tabs>
+          
+          {/* Build Version Indicator */}
+          <div className="mt-8 flex justify-center">
+            <BuildVersion showUpdatePrompt={true} />
+          </div>
         </div>
       </main>
     </div>

@@ -1,5 +1,5 @@
 // Hook za dobijanje WOVER cene sa DEX-a (iz liquidity pool-a)
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
 import { MAINNET_POOLS, TOKEN_ADDRESSES } from '@/config/admin';
 import logger from '@/lib/logger';
@@ -11,16 +11,37 @@ const POOL_ABI = [
   'function token1() external view returns (address)',
 ];
 
+// ERC20 ABI za decimale
+const ERC20_ABI = [
+  'function decimals() external view returns (uint8)',
+  'function symbol() external view returns (string)',
+];
+
 // Cache za DEX cenu (60 sekundi)
 const CACHE_DURATION_MS = 60 * 1000;
-let cachedPrice: { price: number; timestamp: number } | null = null;
+let cachedPrice: { price: number; timestamp: number; metadata: DexPriceMetadata } | null = null;
+
+export interface DexPriceMetadata {
+  poolAddress: string;
+  token0Address: string;
+  token1Address: string;
+  token0Decimals: number;
+  token1Decimals: number;
+  token0Symbol: string;
+  token1Symbol: string;
+  isWoverToken0: boolean;
+  sqrtPriceX96: string;
+  rawPrice: number;
+  lastUpdated: Date;
+}
 
 export interface DexPriceResult {
   dexPrice: number | null;
   isLoading: boolean;
   error: string | null;
-  refetch: () => Promise<void>;
+  refetch: (force?: boolean) => Promise<number | null>;
   lastUpdated: Date | null;
+  metadata: DexPriceMetadata | null;
 }
 
 export const useDexPrice = (): DexPriceResult => {
@@ -28,81 +49,158 @@ export const useDexPrice = (): DexPriceResult => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [metadata, setMetadata] = useState<DexPriceMetadata | null>(null);
+  const fetchingRef = useRef(false);
 
-  const fetchDexPrice = useCallback(async () => {
-    // Proveri cache
-    if (cachedPrice && Date.now() - cachedPrice.timestamp < CACHE_DURATION_MS) {
-      setDexPrice(cachedPrice.price);
-      setLastUpdated(new Date(cachedPrice.timestamp));
-      return;
+  const fetchDexPrice = useCallback(async (forceRefresh: boolean = false): Promise<number | null> => {
+    // Prevent concurrent fetches
+    if (fetchingRef.current) {
+      logger.debug('DEX price fetch already in progress, skipping');
+      return dexPrice;
     }
 
+    // Check cache (unless force refresh)
+    if (!forceRefresh && cachedPrice && Date.now() - cachedPrice.timestamp < CACHE_DURATION_MS) {
+      logger.debug('Using cached DEX price:', cachedPrice.price);
+      setDexPrice(cachedPrice.price);
+      setLastUpdated(new Date(cachedPrice.timestamp));
+      setMetadata(cachedPrice.metadata);
+      return cachedPrice.price;
+    }
+
+    fetchingRef.current = true;
     setIsLoading(true);
     setError(null);
 
     try {
-      // Dobij WOVER/USDT pool adresu iz config-a
+      // Get WOVER/USDT pool address from config
       const poolAddress = MAINNET_POOLS['WOVER/USDT'];
 
       if (!poolAddress) {
         logger.warn('WOVER/USDT pool not found in MAINNET_POOLS');
-        setError('DEX pool not found');
+        setError('DEX pool not configured');
         setIsLoading(false);
-        return;
+        fetchingRef.current = false;
+        return null;
       }
 
       const provider = new ethers.providers.JsonRpcProvider('https://rpc.overprotocol.com');
       const poolContract = new ethers.Contract(poolAddress, POOL_ABI, provider);
 
-      // Dobij slot0 za cenu
-      const [sqrtPriceX96] = await poolContract.slot0();
-      const token0Address = await poolContract.token0();
-      
-      // Izračunaj cenu iz sqrtPriceX96
-      // price = (sqrtPriceX96 / 2^96)^2
-      const sqrtPrice = parseFloat(sqrtPriceX96.toString()) / Math.pow(2, 96);
-      let price = sqrtPrice * sqrtPrice;
+      // Read token addresses from pool
+      const [token0Address, token1Address, slot0] = await Promise.all([
+        poolContract.token0(),
+        poolContract.token1(),
+        poolContract.slot0(),
+      ]);
 
-      // Proveri koji token je token0 da bismo dobili WOVER cenu u USDT
+      const sqrtPriceX96 = slot0[0];
+
+      // Read decimals from both tokens
+      const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
+      const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+
+      const [token0Decimals, token1Decimals, token0Symbol, token1Symbol] = await Promise.all([
+        token0Contract.decimals(),
+        token1Contract.decimals(),
+        token0Contract.symbol().catch(() => 'UNKNOWN'),
+        token1Contract.symbol().catch(() => 'UNKNOWN'),
+      ]);
+
+      // Determine which token is WOVER
       const isWoverToken0 = token0Address.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase();
+      const isWoverToken1 = token1Address.toLowerCase() === TOKEN_ADDRESSES.WOVER.toLowerCase();
       
-      // USDT ima 6 decimala, WOVER ima 18 decimala
-      // Ako je WOVER token0: price = USDT/WOVER, treba invertovati i adjustovati decimale
-      // Ako je USDT token0: price = WOVER/USDT, treba adjustovati decimale
-      
-      if (isWoverToken0) {
-        // price je u USDT po WOVER, ali treba adjustovati za decimale
-        // WOVER (18 dec) / USDT (6 dec) = 10^12 faktor
-        price = price * Math.pow(10, 18 - 6);
-      } else {
-        // price je u WOVER po USDT, treba invertovati
-        // USDT (6 dec) / WOVER (18 dec) = 10^-12 faktor
-        price = (1 / price) * Math.pow(10, 18 - 6);
+      if (!isWoverToken0 && !isWoverToken1) {
+        logger.error('WOVER token not found in pool!', { token0Address, token1Address, expectedWover: TOKEN_ADDRESSES.WOVER });
+        setError('WOVER token not found in pool');
+        setIsLoading(false);
+        fetchingRef.current = false;
+        return null;
       }
 
-      // Zaokruži na 8 decimala
-      const roundedPrice = Math.round(price * 100000000) / 100000000;
+      // Calculate price from sqrtPriceX96
+      // Formula: price = (sqrtPriceX96 / 2^96)^2
+      // This gives price of token1 in terms of token0
+      const sqrtPriceNum = parseFloat(sqrtPriceX96.toString());
+      const Q96 = Math.pow(2, 96);
+      const sqrtPrice = sqrtPriceNum / Q96;
+      const rawPrice = sqrtPrice * sqrtPrice;
 
-      logger.info(`DEX Price: 1 WOVER = ${roundedPrice} USDT`);
+      // Adjust for decimals: price needs to account for different token decimals
+      // rawPrice = token1/token0 (in their smallest units)
+      // We need to convert to "USD per WOVER"
+      
+      let woverPriceInUsdt: number;
+      
+      if (isWoverToken0) {
+        // token0 = WOVER, token1 = USDT
+        // rawPrice = USDT/WOVER (in smallest units)
+        // Adjust: multiply by 10^(wover_decimals - usdt_decimals)
+        const decimalAdjustment = Math.pow(10, token0Decimals - token1Decimals);
+        woverPriceInUsdt = rawPrice * decimalAdjustment;
+      } else {
+        // token0 = USDT, token1 = WOVER
+        // rawPrice = WOVER/USDT (in smallest units), we need 1/rawPrice
+        // Adjust: multiply by 10^(usdt_decimals - wover_decimals)
+        const decimalAdjustment = Math.pow(10, token0Decimals - token1Decimals);
+        woverPriceInUsdt = (1 / rawPrice) * decimalAdjustment;
+      }
 
-      // Sačuvaj u cache
-      cachedPrice = { price: roundedPrice, timestamp: Date.now() };
+      // Validate the price is reasonable (between $0.0000001 and $1000)
+      if (woverPriceInUsdt < 0.0000001 || woverPriceInUsdt > 1000) {
+        logger.warn('DEX price seems unrealistic:', woverPriceInUsdt, {
+          sqrtPriceX96: sqrtPriceX96.toString(),
+          rawPrice,
+          token0Decimals,
+          token1Decimals,
+          isWoverToken0,
+        });
+      }
+
+      // Round to 8 decimals
+      const roundedPrice = Math.round(woverPriceInUsdt * 100000000) / 100000000;
+
+      const now = new Date();
+      const priceMetadata: DexPriceMetadata = {
+        poolAddress,
+        token0Address,
+        token1Address,
+        token0Decimals,
+        token1Decimals,
+        token0Symbol,
+        token1Symbol,
+        isWoverToken0,
+        sqrtPriceX96: sqrtPriceX96.toString(),
+        rawPrice,
+        lastUpdated: now,
+      };
+
+      logger.info(`DEX Price: 1 WOVER = ${roundedPrice} USDT`, priceMetadata);
+
+      // Save to cache
+      cachedPrice = { price: roundedPrice, timestamp: Date.now(), metadata: priceMetadata };
       
       setDexPrice(roundedPrice);
-      setLastUpdated(new Date());
+      setLastUpdated(now);
+      setMetadata(priceMetadata);
+      
+      return roundedPrice;
     } catch (err: any) {
       logger.error('Failed to fetch DEX price:', err);
       setError(err.message || 'Failed to fetch DEX price');
+      return null;
     } finally {
       setIsLoading(false);
+      fetchingRef.current = false;
     }
-  }, []);
+  }, [dexPrice]);
 
   useEffect(() => {
     fetchDexPrice();
     
-    // Refresh svakih 60 sekundi
-    const interval = setInterval(fetchDexPrice, CACHE_DURATION_MS);
+    // Refresh every 60 seconds
+    const interval = setInterval(() => fetchDexPrice(), CACHE_DURATION_MS);
     return () => clearInterval(interval);
   }, [fetchDexPrice]);
 
@@ -112,12 +210,18 @@ export const useDexPrice = (): DexPriceResult => {
     error,
     refetch: fetchDexPrice,
     lastUpdated,
+    metadata,
   };
 };
 
-// Helper funkcija za kalkulaciju USDT cene tiketa
+// Helper function to calculate USDT price of ticket
 export const calculateUsdtTicketPrice = (woverAmount: number, dexPrice: number): number => {
   return woverAmount * dexPrice;
+};
+
+// Clear cache (useful for testing)
+export const clearDexPriceCache = () => {
+  cachedPrice = null;
 };
 
 export default useDexPrice;

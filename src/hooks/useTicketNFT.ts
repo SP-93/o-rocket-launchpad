@@ -313,14 +313,16 @@ export const useTicketNFT = () => {
   }, [getContract]);
 
   // setWoverPrice requires explicit signer (admin action)
-  const setWoverPrice = useCallback(async (signer: ethers.Signer, priceInWei: string) => {
+  // Returns transaction receipt for caller to use
+  const setWoverPrice = useCallback(async (signer: ethers.Signer, priceInWei: string): Promise<ethers.providers.TransactionReceipt | null> => {
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
     toast.info('Setting WOVER price...');
     const tx = await contract.setWoverPrice(priceInWei);
-    await safeWait(tx);
+    const receipt = await safeWait(tx);
     toast.success('WOVER price updated');
+    return receipt;
   }, [getContract]);
 
   return {

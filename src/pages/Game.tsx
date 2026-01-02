@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
+import BuildVersion from '@/components/BuildVersion';
 import RocketAnimation from '@/components/game/RocketAnimation';
 import TicketPurchase from '@/components/game/TicketPurchase';
 import BettingPanel from '@/components/game/BettingPanel';
@@ -726,6 +727,11 @@ const Game = () => {
                 </div>
               </div>
             ))}
+          </div>
+          
+          {/* Build Version */}
+          <div className="mt-4 flex justify-center">
+            <BuildVersion />
           </div>
         </div>
       </div>
