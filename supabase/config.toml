@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.set-chat-nickname]
 verify_jwt = false
+
+[functions.rpc-proxy]
+verify_jwt = false

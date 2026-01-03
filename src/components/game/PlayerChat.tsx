@@ -363,10 +363,13 @@ const PlayerChat = ({ walletAddress, isConnected, className }: PlayerChatProps) 
               <Input
                 value={nicknameInput}
                 onChange={(e) => setNicknameInput(e.target.value)}
-                placeholder="Enter nickname"
-                className="h-6 text-xs flex-1"
+                placeholder="Enter nickname (A-z, 0-9, _)"
+                className="h-6 text-xs flex-1 normal-case"
                 maxLength={20}
                 disabled={isSettingNickname}
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <Button 
                 size="sm" 

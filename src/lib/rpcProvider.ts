@@ -112,10 +112,39 @@ export const resetProvider = (): void => {
   lastWorkingEndpoint = null;
 };
 
+/**
+ * Get a proxied provider that routes through our edge function
+ * This bypasses CORS issues when reading from browser
+ */
+export const getProxiedProvider = (): ethers.providers.JsonRpcProvider => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    logger.warn('Supabase env vars not set, falling back to direct RPC');
+    return getProviderSync();
+  }
+
+  // Create custom provider that routes through edge function
+  const proxyUrl = `${supabaseUrl}/functions/v1/rpc-proxy`;
+  
+  // Custom fetch connection with auth header
+  const connection = {
+    url: proxyUrl,
+    headers: {
+      'apikey': supabaseKey,
+      'Content-Type': 'application/json',
+    },
+  };
+
+  return new ethers.providers.JsonRpcProvider(connection);
+};
+
 export default {
   getProvider,
   executeWithRetry,
   getProviderSync,
+  getProxiedProvider,
   getRpcStatus,
   resetProvider,
 };

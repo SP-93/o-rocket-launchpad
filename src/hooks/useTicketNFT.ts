@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import { TICKET_NFT_ABI, TICKET_NFT_BYTECODE } from '@/contracts/artifacts/ticketNFT';
 import { getDeployedContracts, saveDeployedContract } from '@/contracts/storage';
 import { TOKEN_ADDRESSES } from '@/config/admin';
-import { getUniversalSigner, getReadProvider } from '@/lib/walletProvider';
+import { getUniversalSigner } from '@/lib/walletProvider';
+import { getProxiedProvider } from '@/lib/rpcProvider';
 
 // SafeWait helper - handles TRANSACTION_REPLACED errors gracefully
 const safeWait = async (tx: ethers.ContractTransaction): Promise<ethers.ContractReceipt> => {
@@ -54,8 +55,8 @@ export const useTicketNFT = () => {
       return new Contract(ticketNFTAddress, TICKET_NFT_ABI, signerOrProvider);
     }
 
-    // Use read-only provider for queries
-    return new Contract(ticketNFTAddress, TICKET_NFT_ABI, getReadProvider());
+    // Use proxied provider for queries (CORS-safe)
+    return new Contract(ticketNFTAddress, TICKET_NFT_ABI, getProxiedProvider());
   }, []);
 
   // Deploy requires explicit signer (admin action)
