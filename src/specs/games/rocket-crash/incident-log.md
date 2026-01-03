@@ -137,18 +137,38 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 
 ---
 
+## 2026-01-03 (Round 5): woverPrice Removal - Fixed 1 WOVER = 1 Ticket Value
+
+### Issue: woverPrice() Causes Reverts
+**Symptoms:**
+- "Contract State: Loading..." forever
+- `woverPrice()` CALL_EXCEPTION / revert
+- NFT contract check fails, tickets don't work
+
+**Root Cause:**
+- Contract's `woverPrice()` function not initialized or set to 0
+- All code tried to read this value → reverts
+
+**Solution:**
+- **HARDCODED** pricing: 1 WOVER = 1 ticket value unit
+- Ticket value 1 = 1 WOVER, Ticket value 5 = 5 WOVER
+- Removed ALL woverPrice reads from frontend
+
+**Files Modified:**
+1. `src/components/game/TicketPurchase.tsx` - Removed woverPrice check, simple address check
+2. `src/hooks/useTicketNFT.ts` - Hardcoded 1 WOVER per unit, removed woverPrice from state
+3. `src/components/admin/OnChainInspector.tsx` - Removed woverPrice display
+4. `src/components/admin/TicketNFTContractSection.tsx` - Removed DEX/CEX sync, manual price set
+
+**Benefits:**
+- No more CORS/RPC issues related to woverPrice
+- Simpler code, fewer failure points
+- Predictable pricing: player always knows cost
+- NFT contract now works reliably
+
+---
+
 ## 2026-01-03 (Round 4): Documentation + Chat Fixes
-
-### Issue: USDT References Still in Documentation
-**Fix Applied:**
-1. Updated `WhitepaperSection.tsx` - removed all USDT references for Crash Game
-2. Updated `GameTutorial.tsx` - changed "WOVER or USDT" to "WOVER"
-3. Updated `Games.tsx` - changed description to "Buy tickets with WOVER"
-4. Updated `TicketStatsPanel.tsx` - removed USDT stats
-
-### Issue: Chat Collapsed by Default on PC
-**Fix Applied:**
-1. Changed `PlayerChat.tsx` initial state to open on desktop (width >= 768px)
 
 ---
 

@@ -11,8 +11,6 @@ import { NETWORK_CONFIG } from '@/config/admin';
 
 interface OnChainState {
   address: string;
-  woverPrice: string;
-  woverPriceFormatted: string;
   totalSupply: number;
   chainId: number;
   blockNumber: number;
@@ -62,17 +60,9 @@ const OnChainInspector = () => {
 
       const contract = new ethers.Contract(ticketNFTAddress, TICKET_NFT_ABI, provider);
       
-      // Test basic calls first with detailed error catching
-      let woverPrice, totalSupply, owner;
+      // Only fetch totalSupply and owner - woverPrice removed (fixed 1 WOVER = 1 ticket)
+      let totalSupply, owner;
       
-      try {
-        woverPrice = await contract.woverPrice();
-        console.log('[OnChainInspector] woverPrice raw:', woverPrice.toString());
-      } catch (e: any) {
-        console.error('[OnChainInspector] woverPrice() failed:', e);
-        throw new Error(`woverPrice() reverted: ${e.reason || e.message || 'unknown'}`);
-      }
-
       try {
         totalSupply = await contract.totalSupply();
       } catch (e: any) {
@@ -94,8 +84,6 @@ const OnChainInspector = () => {
 
       setState({
         address: ticketNFTAddress,
-        woverPrice: woverPrice.toString(),
-        woverPriceFormatted: ethers.utils.formatEther(woverPrice),
         totalSupply: totalSupply.toNumber(),
         chainId: network.chainId,
         blockNumber,
@@ -178,21 +166,10 @@ const OnChainInspector = () => {
             </div>
           </div>
 
-          {/* WOVER Price */}
-          <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg">
-            <span className="text-muted-foreground">woverPrice():</span>
-            <div className="flex items-center gap-2">
-              <code className="font-mono text-primary font-bold">{state.woverPriceFormatted} WOVER</code>
-              {parseFloat(state.woverPriceFormatted) === 0 && (
-                <AlertTriangle className="w-3.5 h-3.5 text-warning" />
-              )}
-            </div>
-          </div>
-
-          {/* Raw Price */}
-          <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg">
-            <span className="text-muted-foreground">Raw (wei):</span>
-            <code className="font-mono text-[10px] text-muted-foreground">{state.woverPrice}</code>
+          {/* Pricing Info */}
+          <div className="flex items-center justify-between p-2 bg-primary/10 rounded-lg">
+            <span className="text-muted-foreground">Pricing:</span>
+            <span className="font-bold text-primary">1 WOVER = 1 Ticket Value</span>
           </div>
 
           {/* Total Supply */}
