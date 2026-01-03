@@ -19,6 +19,7 @@ import GameDebugOverlay from '@/components/game/GameDebugOverlay';
 import ClaimWinNotification from '@/components/game/ClaimWinNotification';
 import GameHistoryPanel from '@/components/game/GameHistoryPanel';
 import PlayerChat from '@/components/game/PlayerChat';
+import DiagnosticsPanel from '@/components/DiagnosticsPanel';
 import { useWallet } from '@/hooks/useWallet';
 import { useGameRound, useGameBets } from '@/hooks/useGameRound';
 import { useGameEngine } from '@/hooks/useGameEngine';
@@ -729,9 +730,10 @@ const Game = () => {
             ))}
           </div>
           
-          {/* Build Version */}
-          <div className="mt-4 flex justify-center">
+          {/* Build Version & Diagnostics */}
+          <div className="mt-4 flex justify-center items-center gap-4">
             <BuildVersion />
+            <DiagnosticsPanel compact />
           </div>
         </div>
       </div>

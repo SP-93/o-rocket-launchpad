@@ -20,6 +20,7 @@ import {
   Cloud, HardDrive, Download, Upload, Coins, Bug, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
+import OnChainInspector from './OnChainInspector';
 
 const FACTORY_WALLET = '0x8334966329b7f4b459633696a8ca59118253bc89';
 
@@ -718,6 +719,9 @@ const TicketNFTContractSection = () => {
               <p className="text-sm text-muted-foreground">Loading...</p>
             )}
           </div>
+
+          {/* On-Chain Inspector - Independent RPC Read */}
+          <OnChainInspector />
 
           {/* Set WOVER Price Manually (Owner Only) */}
           {isOwner && (

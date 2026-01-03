@@ -153,7 +153,7 @@ const TicketCleanupPanel = () => {
   };
 
   return (
-    <GlowCard className="p-5" glowColor="orange">
+    <GlowCard className="p-5" glowColor="purple">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Trash2 className="w-5 h-5 text-orange-400" />

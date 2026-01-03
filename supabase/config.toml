@@ -62,3 +62,9 @@ verify_jwt = false
 
 [functions.game-admin-stats]
 verify_jwt = false
+
+[functions.game-admin-cleanup]
+verify_jwt = false
+
+[functions.set-chat-nickname]
+verify_jwt = false
