@@ -34,6 +34,8 @@ import AutoGameControl from '@/components/admin/AutoGameControl';
 import TicketStatsPanel from '@/components/admin/TicketStatsPanel';
 import BetsOverviewPanel from '@/components/admin/BetsOverviewPanel';
 import GameAuditLogPanel from '@/components/admin/GameAuditLogPanel';
+import TicketCleanupPanel from '@/components/admin/TicketCleanupPanel';
+import DiagnosticsPanel from '@/components/DiagnosticsPanel';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -369,6 +371,7 @@ const Admin = () => {
               </div>
               <div className="flex items-center gap-3">
                 <BuildVersion showHardRefresh />
+                <DiagnosticsPanel compact />
                 <a 
                   href={NETWORK_CONFIG.blockExplorerUrls[0]} 
                   target="_blank" 
@@ -1096,6 +1099,9 @@ const Admin = () => {
 
                   {/* Revenue & Pool Management */}
                   <GameRevenueSection />
+
+                  {/* Ticket Cleanup Tools */}
+                  <TicketCleanupPanel />
 
                   {/* Game Audit Log */}
                   <GameAuditLogPanel />

@@ -53,6 +53,30 @@ export type Database = {
         }
         Relationships: []
       }
+      chat_profiles: {
+        Row: {
+          created_at: string
+          id: string
+          nickname: string
+          updated_at: string
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nickname: string
+          updated_at?: string
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nickname?: string
+          updated_at?: string
+          wallet_address?: string
+        }
+        Relationships: []
+      }
       game_audit_log: {
         Row: {
           bet_id: string | null
