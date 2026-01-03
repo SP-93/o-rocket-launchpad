@@ -33,7 +33,6 @@ interface TicketInfo {
 
 interface TicketNFTState {
   totalSupply: number;
-  woverPrice: string;
 }
 
 const FACTORY_WALLET = '0x8334966329b7f4b459633696a8ca59118253bc89';
@@ -123,33 +122,21 @@ export const useTicketNFT = () => {
 
       console.log('[TicketNFT] Fetching state from:', contract.address);
 
-      const [totalSupply, woverPrice] = await Promise.all([
-        contract.totalSupply(),
-        contract.woverPrice(),
-      ]);
+      // Only fetch totalSupply - woverPrice is not needed (1 WOVER = 1 ticket value)
+      const totalSupply = await contract.totalSupply();
 
       console.log('[TicketNFT] State fetched:', { 
-        totalSupply: totalSupply.toString(), 
-        woverPrice: woverPrice.toString(),
-        woverPriceFormatted: ethers.utils.formatEther(woverPrice)
+        totalSupply: totalSupply.toString()
       });
 
       const state: TicketNFTState = {
         totalSupply: totalSupply.toNumber(),
-        woverPrice: ethers.utils.formatEther(woverPrice),
       };
 
       setContractState(state);
       return state;
     } catch (error: any) {
       console.error('[TicketNFT] Failed to fetch state:', error.message || error);
-      // Show toast only once per session to avoid spam
-      if (!sessionStorage.getItem('ticketNFT_fetch_error_shown')) {
-        toast.error('Cannot read contract - check wallet connection', {
-          description: 'Ensure your wallet has authorized this site',
-        });
-        sessionStorage.setItem('ticketNFT_fetch_error_shown', 'true');
-      }
       return null;
     } finally {
       setIsLoading(false);
@@ -158,6 +145,7 @@ export const useTicketNFT = () => {
 
   /**
    * Buy ticket with WOVER - uses universal signer (works with all wallet types)
+   * Fixed pricing: 1 WOVER = 1 ticket value (hardcoded)
    */
   const buyWithWover = useCallback(async (
     ticketValue: number
@@ -168,19 +156,14 @@ export const useTicketNFT = () => {
     const contract = getContract(signer);
     if (!contract) throw new Error('TicketNFT not deployed');
 
-    const woverPrice = await contract.woverPrice();
+    // HARDCODED: 1 WOVER = 1 ticket value unit
+    // ticketValue 1 = 1 WOVER, ticketValue 5 = 5 WOVER
+    const woverPricePerUnit = ethers.utils.parseEther('1');
+    const requiredAmount = woverPricePerUnit.mul(ticketValue);
     
-    console.log('[NFT DEBUG] woverPrice raw:', woverPrice.toString());
-    console.log('[NFT DEBUG] woverPrice formatted:', ethers.utils.formatEther(woverPrice));
+    console.log('[NFT] buyWithWover - ticketValue:', ticketValue, 'requiredAmount:', ethers.utils.formatEther(requiredAmount), 'WOVER');
     
-    if (woverPrice.isZero()) {
-      console.error('[NFT ERROR] woverPrice is 0 - contract not configured!');
-      throw new Error('NFT contract woverPrice is 0. Admin must set price first via Admin Panel.');
-    }
     
-    const requiredAmount = woverPrice.mul(ticketValue);
-    
-    console.log('[NFT] buyWithWover - ticketValue:', ticketValue, 'woverPrice:', ethers.utils.formatEther(woverPrice), 'requiredAmount:', ethers.utils.formatEther(requiredAmount));
     
     // Approve WOVER transfer
     const woverContract = new Contract(

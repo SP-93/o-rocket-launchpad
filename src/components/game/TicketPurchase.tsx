@@ -69,43 +69,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
-  const { buyWithWover, getContract, fetchContractState, contractState } = useTicketNFT();
+  const { buyWithWover } = useTicketNFT();
   
-  // Check if NFT contract is deployed AND has valid woverPrice
-  const [nftContractReady, setNftContractReady] = useState(false);
-  const [nftWoverPrice, setNftWoverPrice] = useState<string>('0');
-  
-  useEffect(() => {
-    const checkNFTContract = async () => {
-      const contracts = getDeployedContracts();
-      const ticketNFTAddress = (contracts as any).ticketNFT;
-      
-      if (!ticketNFTAddress) {
-        setNftContractReady(false);
-        return;
-      }
-      
-      // Check woverPrice on contract using proxied provider (CORS-safe)
-      try {
-        const provider = getProxiedProvider();
-        const contract = new ethers.Contract(
-          ticketNFTAddress,
-          ['function woverPrice() view returns (uint256)'],
-          provider
-        );
-        const price = await contract.woverPrice();
-        const priceFormatted = ethers.utils.formatEther(price);
-        setNftWoverPrice(priceFormatted);
-        setNftContractReady(!price.isZero());
-        console.log('[TicketPurchase] NFT contract check - price:', priceFormatted, 'ready:', !price.isZero());
-      } catch (e) {
-        console.warn('[TicketPurchase] Failed to check NFT contract:', e);
-        setNftContractReady(false);
-      }
-    };
-    
-    checkNFTContract();
-  }, []);
+  // Check if NFT contract is deployed (simple check - no woverPrice needed)
+  const contracts = getDeployedContracts();
+  const ticketNFTAddress = (contracts as any).ticketNFT;
+  const nftContractReady = !!ticketNFTAddress;
   
   // Use real-time balance hook - always WOVER
   const { balance: tokenBalance, refreshBalance } = useWalletBalance(
