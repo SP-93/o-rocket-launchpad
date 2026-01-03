@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Trash2, RefreshCw, AlertTriangle, Loader2, CheckCircle } from 'lucide-react';
+import { Trash2, RefreshCw, AlertTriangle, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import GlowCard from '@/components/ui/GlowCard';
+import { useWallet } from '@/hooks/useWallet';
 
 interface CleanupStats {
   totalTickets: number;
@@ -13,10 +14,12 @@ interface CleanupStats {
 }
 
 const TicketCleanupPanel = () => {
+  const { address: walletAddress } = useWallet();
   const [stats, setStats] = useState<CleanupStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [lastCleanupResult, setLastCleanupResult] = useState<string | null>(null);
+  const [cleanupError, setCleanupError] = useState<string | null>(null);
 
   const fetchStats = async () => {
     setIsLoading(true);
@@ -125,21 +128,47 @@ const TicketCleanupPanel = () => {
   };
 
   const runFullCleanup = async () => {
+    if (!walletAddress) {
+      toast.error('Wallet not connected');
+      setCleanupError('Wallet not connected. Please connect your admin wallet first.');
+      return;
+    }
+
     if (!confirm('Run full cleanup? This will:\n1. Delete ghost tickets (no tx_hash)\n2. Mark expired tickets as used\n\nContinue?')) {
       return;
     }
     
     setIsCleaningUp(true);
+    setCleanupError(null);
+    setLastCleanupResult(null);
+    
     try {
-      // Call backend cleanup function
+      console.log('[Cleanup] Calling with wallet:', walletAddress);
+      
+      // Call backend cleanup function with connected wallet address
       const { data, error } = await supabase.functions.invoke('game-admin-cleanup', {
         body: { 
-          wallet_address: (window as any).ethereum?.selectedAddress || '',
+          wallet_address: walletAddress,
           action: 'cleanup_ghost_tickets'
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('[Cleanup] Function error:', error);
+        // Check if it's a 403 (authorization) error
+        if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
+          setCleanupError(`Unauthorized: Wallet ${walletAddress.slice(0, 8)}... is not an admin`);
+          throw new Error(`Wallet not authorized as admin`);
+        }
+        throw error;
+      }
+
+      // Check for error in response body
+      if (data?.error) {
+        console.error('[Cleanup] Response error:', data.error);
+        setCleanupError(data.error);
+        throw new Error(data.error);
+      }
       
       setLastCleanupResult(`Cleanup complete: ${data?.deleted_count || 0} ghost tickets removed`);
       toast.success('Full cleanup completed');
@@ -244,6 +273,22 @@ const TicketCleanupPanel = () => {
               <span>{lastCleanupResult}</span>
             </div>
           )}
+
+          {/* Error Display */}
+          {cleanupError && (
+            <div className="flex items-center gap-2 text-xs p-2 bg-destructive/10 border border-destructive/30 rounded-lg">
+              <XCircle className="w-3.5 h-3.5 text-destructive" />
+              <span className="text-destructive">{cleanupError}</span>
+            </div>
+          )}
+
+          {/* Connected Wallet Info */}
+          <div className="flex items-center gap-2 text-xs p-2 bg-muted/30 rounded-lg">
+            <span className="text-muted-foreground">Connected wallet:</span>
+            <code className="font-mono text-foreground">
+              {walletAddress ? `${walletAddress.slice(0, 8)}...${walletAddress.slice(-6)}` : 'Not connected'}
+            </code>
+          </div>
 
           {/* Warning */}
           <div className="flex items-start gap-2 text-xs p-2 bg-warning/10 border border-warning/30 rounded-lg">
