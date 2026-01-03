@@ -1,11 +1,11 @@
 import { useState, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { getProviderSync } from '@/lib/rpcProvider';
+import { getProvider, executeWithRetry, getRpcStatus } from '@/lib/rpcProvider';
 import { getDeployedContracts } from '@/contracts/storage';
 import { TICKET_NFT_ABI } from '@/contracts/artifacts/ticketNFT';
 import GlowCard from '@/components/ui/GlowCard';
 import { Button } from '@/components/ui/button';
-import { Database, RefreshCw, Copy, ExternalLink, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Database, RefreshCw, Copy, ExternalLink, AlertTriangle, CheckCircle, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { NETWORK_CONFIG } from '@/config/admin';
 
@@ -18,16 +18,21 @@ interface OnChainState {
   blockNumber: number;
   owner: string;
   lastFetchedAt: string;
+  rpcEndpoint: string;
+  bytecodeLength: number;
+  bytecodeHash: string;
 }
 
 const OnChainInspector = () => {
   const [state, setState] = useState<OnChainState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
 
   const fetchOnChainState = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    setErrorDetails(null);
 
     try {
       const contracts = getDeployedContracts();
@@ -38,34 +43,76 @@ const OnChainInspector = () => {
         return;
       }
 
-      // Use stable RPC provider (no MetaMask dependency)
-      const provider = getProviderSync();
-      const contract = new ethers.Contract(ticketNFTAddress, TICKET_NFT_ABI, provider);
-      
-      // Fetch all data in parallel
-      const [woverPrice, totalSupply, owner, network, blockNumber] = await Promise.all([
-        contract.woverPrice(),
-        contract.totalSupply(),
-        contract.owner().catch(() => 'unknown'),
-        provider.getNetwork(),
-        provider.getBlockNumber(),
-      ]);
+      console.log('[OnChainInspector] Fetching for address:', ticketNFTAddress);
 
-      setState({
-        address: ticketNFTAddress,
-        woverPrice: woverPrice.toString(),
-        woverPriceFormatted: ethers.utils.formatEther(woverPrice),
-        totalSupply: totalSupply.toNumber(),
-        chainId: network.chainId,
-        blockNumber,
-        owner: typeof owner === 'string' ? owner : 'unknown',
-        lastFetchedAt: new Date().toISOString().slice(11, 19),
+      // Use async provider with fallback/retry
+      const result = await executeWithRetry(async (provider) => {
+        const rpcStatus = getRpcStatus();
+        console.log('[OnChainInspector] Using RPC:', rpcStatus.endpoint);
+
+        // First, get bytecode to verify contract exists
+        const bytecode = await provider.getCode(ticketNFTAddress);
+        if (bytecode === '0x' || bytecode.length < 10) {
+          throw new Error(`No contract deployed at ${ticketNFTAddress}`);
+        }
+
+        const bytecodeLength = (bytecode.length - 2) / 2; // hex chars to bytes
+        const bytecodeHash = ethers.utils.keccak256(bytecode).slice(0, 18) + '...';
+
+        const contract = new ethers.Contract(ticketNFTAddress, TICKET_NFT_ABI, provider);
+        
+        // Test basic calls first with detailed error catching
+        let woverPrice, totalSupply, owner;
+        
+        try {
+          woverPrice = await contract.woverPrice();
+          console.log('[OnChainInspector] woverPrice raw:', woverPrice.toString());
+        } catch (e: any) {
+          console.error('[OnChainInspector] woverPrice() failed:', e);
+          throw new Error(`woverPrice() reverted: ${e.reason || e.message || 'unknown'}`);
+        }
+
+        try {
+          totalSupply = await contract.totalSupply();
+        } catch (e: any) {
+          console.error('[OnChainInspector] totalSupply() failed:', e);
+          throw new Error(`totalSupply() reverted: ${e.reason || e.message || 'unknown'}`);
+        }
+
+        try {
+          owner = await contract.owner();
+        } catch (e: any) {
+          console.warn('[OnChainInspector] owner() failed:', e);
+          owner = 'unknown';
+        }
+
+        const [network, blockNumber] = await Promise.all([
+          provider.getNetwork(),
+          provider.getBlockNumber(),
+        ]);
+
+        return {
+          address: ticketNFTAddress,
+          woverPrice: woverPrice.toString(),
+          woverPriceFormatted: ethers.utils.formatEther(woverPrice),
+          totalSupply: totalSupply.toNumber(),
+          chainId: network.chainId,
+          blockNumber,
+          owner: typeof owner === 'string' ? owner : 'unknown',
+          lastFetchedAt: new Date().toISOString().slice(11, 19),
+          rpcEndpoint: rpcStatus.endpoint || 'unknown',
+          bytecodeLength,
+          bytecodeHash,
+        };
       });
 
+      setState(result);
       toast.success('On-chain state refreshed');
     } catch (err: any) {
       console.error('OnChainInspector error:', err);
+      const rpcStatus = getRpcStatus();
       setError(err.message || 'Failed to fetch on-chain state');
+      setErrorDetails(`RPC: ${rpcStatus.endpoint || 'none'} | Code: ${err.code || 'N/A'}`);
       toast.error('Failed to fetch on-chain state');
     } finally {
       setIsLoading(false);
@@ -99,9 +146,16 @@ const OnChainInspector = () => {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-2 rounded-lg mb-3">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          {error}
+        <div className="space-y-1 mb-3">
+          <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 p-2 rounded-lg">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          {errorDetails && (
+            <div className="text-[10px] text-muted-foreground font-mono px-2">
+              {errorDetails}
+            </div>
+          )}
         </div>
       )}
 
@@ -153,6 +207,26 @@ const OnChainInspector = () => {
           <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg">
             <span className="text-muted-foreground">owner():</span>
             <code className="font-mono">{truncateAddress(state.owner)}</code>
+          </div>
+
+          {/* Bytecode Verification */}
+          <div className="flex items-center justify-between p-2 bg-primary/10 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-primary" />
+              <span className="text-muted-foreground">Bytecode:</span>
+            </div>
+            <div className="text-right">
+              <div className="font-mono text-[10px]">{state.bytecodeHash}</div>
+              <div className="text-[9px] text-muted-foreground">{state.bytecodeLength} bytes</div>
+            </div>
+          </div>
+
+          {/* RPC Info */}
+          <div className="flex items-center justify-between p-2 bg-muted/30 rounded-lg">
+            <span className="text-muted-foreground text-[10px]">RPC:</span>
+            <code className="font-mono text-[10px] text-muted-foreground truncate max-w-[200px]">
+              {state.rpcEndpoint}
+            </code>
           </div>
 
           {/* Chain Info */}
