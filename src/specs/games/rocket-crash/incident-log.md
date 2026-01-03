@@ -5,6 +5,29 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 
 ---
 
+## 2026-01-03 (Round 2): FK Constraint Fix
+
+### Issue: Ticket Cleanup 500 Error - Foreign Key Constraint
+**Symptoms:**
+- "Full Cleanup" fails with 500 internal server error
+- Edge function logs show FK constraint violation
+- Cannot delete ghost tickets that have bets
+
+**Root Cause:**
+- Edge function tried to delete `game_tickets` rows that are still referenced by `game_bets.ticket_id`
+- Foreign key constraint prevents deletion
+
+**Fix Applied:**
+1. Before deleting, query `game_bets` to find which ticket IDs have bets
+2. Exclude those tickets from deletion
+3. Report count of skipped tickets in response
+4. Improved logging and error handling
+
+**Files Modified:**
+- `supabase/functions/game-admin-cleanup/index.ts`
+
+---
+
 ## 2026-01-03: Admin Panel Fixes
 
 ### Issues Identified
