@@ -5,6 +5,51 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 
 ---
 
+## 2026-01-03 (Round 3): CORS Fix + WOVER-Only Tickets
+
+### Issue: CORS Blocks Browser RPC Calls
+**Symptoms:**
+- On-Chain Inspector shows "502 Bad Gateway"
+- Console shows "access-control-allow-origin" CORS errors
+- "Contract State: Loading..." forever
+- `woverPrice()` CALL_EXCEPTION
+
+**Root Cause:**
+- Browser direct calls to `https://rpc.overprotocol.com` are blocked by CORS
+- RPC endpoint doesn't return `Access-Control-Allow-Origin` header
+
+**Fix Applied:**
+1. Created `rpc-proxy` edge function that forwards RPC calls
+2. Added `getProxiedProvider()` function in `rpcProvider.ts`
+3. Updated `OnChainInspector` to use proxy provider
+4. Updated `useTicketNFT` to use proxy provider for reads
+5. Updated `TicketPurchase` to use proxy provider
+
+**Files Created:**
+- `supabase/functions/rpc-proxy/index.ts`
+
+**Files Modified:**
+- `supabase/config.toml` (added rpc-proxy config)
+- `src/lib/rpcProvider.ts` (added getProxiedProvider)
+- `src/components/admin/OnChainInspector.tsx`
+- `src/hooks/useTicketNFT.ts`
+- `src/components/game/TicketPurchase.tsx`
+
+---
+
+### Issue: USDT Ticket Option Causing DEX Price Complexity
+**Symptoms:**
+- DEX price fetching added unnecessary complexity
+- Multiple points of failure
+
+**Fix Applied:**
+1. Removed USDT option from TicketPurchase
+2. Now only WOVER payments accepted
+3. Removed `useDexPrice` hook usage
+4. Simplified UI (removed Tabs component)
+
+---
+
 ## 2026-01-03 (Round 2): FK Constraint Fix
 
 ### Issue: Ticket Cleanup 500 Error - Foreign Key Constraint
@@ -62,7 +107,7 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 - Poor error details when RPC fails
 
 **Fix Applied:**
-- Switch to async `executeWithRetry()` with fallback RPC endpoints
+- Switch to RPC proxy edge function to bypass CORS
 - Add bytecode length and hash display for contract verification
 - Add detailed error messages including RPC endpoint info
 - Add individual try/catch for each contract call
@@ -97,11 +142,12 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 After applying fixes, verify:
 
 1. [ ] Admin → Ticket Cleanup → Scan → Shows connected wallet
-2. [ ] Admin → Ticket Cleanup → Full Cleanup → No 403 error
+2. [ ] Admin → Ticket Cleanup → Full Cleanup → No 403/500 error
 3. [ ] Admin → OnChain Inspector → Fetch → Shows bytecode hash
-4. [ ] Admin → OnChain Inspector → Shows RPC endpoint used
-5. [ ] Admin → DEX Price → Consistent value after multiple refreshes
-6. [ ] Price update → After refresh, value stays the same
+4. [ ] Admin → OnChain Inspector → Shows "Edge Proxy" as RPC
+5. [ ] Game → Ticket Purchase → Only WOVER option (no USDT)
+6. [ ] Game → Ticket Purchase → Balance shows correctly
+7. [ ] Chat → Set Nickname → Uppercase letters work
 
 ---
 
@@ -111,6 +157,7 @@ After applying fixes, verify:
 |----------|--------|-------|
 | `https://rpc.overprotocol.com` | Primary | Main endpoint |
 | `https://wallet-dolphin.rpc.over.network` | Fallback | Used when primary fails |
+| Edge Proxy (`/functions/v1/rpc-proxy`) | CORS-safe | For browser reads |
 
 ---
 
@@ -127,4 +174,4 @@ These are hardcoded in `is_wallet_admin` DB function:
 1. Add "Contract Bytecode Match" verification against known artifact
 2. Add transaction proof display after price updates
 3. Add DEX vs Contract price deviation checker
-4. Consider caching RPC responses client-side for faster UI
+4. Consider caching RPC responses in edge function

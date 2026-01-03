@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, Ticket, Clock, AlertCircle, Wallet, Sparkles, CheckCircle, ExternalLink, Zap } from 'lucide-react';
 import { useGameTicketsContext } from '@/contexts/GameTicketsContext';
-import { useDexPrice } from '@/hooks/useDexPrice';
 import { useTokenTransfer, TREASURY_WALLET } from '@/hooks/useTokenTransfer';
 import { useTicketNFT } from '@/hooks/useTicketNFT';
 import { useWalletBalance, triggerBalanceRefresh } from '@/hooks/useWalletBalance';
@@ -12,7 +10,7 @@ import { toast } from '@/hooks/use-toast';
 import PlayerTicketList from './PlayerTicketList';
 import { ethers } from 'ethers';
 import { getDeployedContracts } from '@/contracts/storage';
-import { getReadProvider } from '@/lib/walletProvider';
+import { getProxiedProvider } from '@/lib/rpcProvider';
 
 interface TicketPurchaseProps {
   walletAddress: string | undefined;
@@ -31,7 +29,6 @@ interface PendingPurchase {
   txHash: string;
   walletAddress: string;
   ticketValue: number;
-  currency: 'WOVER' | 'USDT';
   paymentAmount: number;
   timestamp: number;
 }
@@ -62,7 +59,6 @@ const clearPendingPurchase = () => {
 
 const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => {
   const [selectedValue, setSelectedValue] = useState<number>(1);
-  const [selectedCurrency, setSelectedCurrency] = useState<'WOVER' | 'USDT'>('WOVER');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [txStatus, setTxStatus] = useState<TxStatus>('idle');
   const [manualTxHash, setManualTxHash] = useState('');
@@ -72,9 +68,8 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
   const isRecoveryInFlight = useRef(false);
   
   const { buyTicket, availableTickets, refetch } = useGameTicketsContext();
-  const { dexPrice: woverPrice, isLoading: isPriceLoading } = useDexPrice();
   const { transferToken, verifyTransaction, isPending: isTransferPending, pendingTxHash } = useTokenTransfer();
-  const { buyWithWover, buyWithUsdt, getContract, fetchContractState, contractState } = useTicketNFT();
+  const { buyWithWover, getContract, fetchContractState, contractState } = useTicketNFT();
   
   // Check if NFT contract is deployed AND has valid woverPrice
   const [nftContractReady, setNftContractReady] = useState(false);
@@ -90,9 +85,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         return;
       }
       
-      // Check woverPrice on contract
+      // Check woverPrice on contract using proxied provider (CORS-safe)
       try {
-        const provider = getReadProvider();
+        const provider = getProxiedProvider();
         const contract = new ethers.Contract(
           ticketNFTAddress,
           ['function woverPrice() view returns (uint256)'],
@@ -112,21 +107,17 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
     checkNFTContract();
   }, []);
   
-  // Use real-time balance hook
+  // Use real-time balance hook - always WOVER
   const { balance: tokenBalance, refreshBalance } = useWalletBalance(
     isConnected ? walletAddress : undefined,
-    { currency: selectedCurrency, refreshInterval: 3000 }
+    { currency: 'WOVER', refreshInterval: 3000 }
   );
-
-  const usdtAmount = selectedCurrency === 'USDT' && woverPrice 
-    ? (selectedValue * woverPrice).toFixed(4)
-    : null;
 
   // Attempt to register ticket with backend (used for recovery)
   const attemptTicketRegistration = useCallback(async (pending: PendingPurchase): Promise<boolean> => {
     try {
       console.log('[TicketPurchase] Attempting ticket registration for tx:', pending.txHash);
-      await buyTicket(pending.ticketValue, pending.currency, pending.paymentAmount, pending.txHash);
+      await buyTicket(pending.ticketValue, 'WOVER', pending.paymentAmount, pending.txHash);
       return true;
     } catch (error: any) {
       if (error?.message?.includes('already') || error?.message?.includes('existing')) {
@@ -164,7 +155,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       isRecoveryInFlight.current = true;
 
       try {
-        const provider = getReadProvider();
+        const provider = getProxiedProvider();
         const receipt = await provider.getTransactionReceipt(pending.txHash);
         
         if (receipt) {
@@ -221,14 +212,12 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       return;
     }
 
-    const paymentAmount = selectedCurrency === 'WOVER' 
-      ? selectedValue 
-      : parseFloat(usdtAmount || '0');
+    const paymentAmount = selectedValue;
 
     if (tokenBalance !== null && tokenBalance < paymentAmount) {
       toast({
         title: "Insufficient Balance",
-        description: `You need ${paymentAmount} ${selectedCurrency} but only have ${tokenBalance.toFixed(4)}`,
+        description: `You need ${paymentAmount} WOVER but only have ${tokenBalance.toFixed(4)}`,
         variant: "destructive",
       });
       return;
@@ -251,20 +240,13 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         try {
           console.log('[TicketPurchase] Using NFT contract for purchase');
           
-          let result: { tokenId: number; txHash: string };
-          if (selectedCurrency === 'WOVER') {
-            // buyWithWover now uses getUniversalSigner internally
-            result = await buyWithWover(selectedValue);
-          } else {
-            result = await buyWithUsdt(selectedValue, usdtAmount || '0');
-          }
-          
+          const result = await buyWithWover(selectedValue);
           const { tokenId, txHash: nftTxHash } = result;
           
           console.log('[TicketPurchase] NFT minted successfully:', { tokenId, txHash: nftTxHash });
           
           // Register in Supabase for tracking
-          await buyTicket(selectedValue, selectedCurrency, paymentAmount, nftTxHash);
+          await buyTicket(selectedValue, 'WOVER', paymentAmount, nftTxHash);
           
           setTxStatus('success');
           toast({
@@ -290,7 +272,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
 
       // Legacy method: Direct token transfer (default when NFT not ready)
       console.log('[TicketPurchase] Using legacy transfer method');
-      const result = await transferToken(selectedCurrency, paymentAmount);
+      const result = await transferToken('WOVER', paymentAmount);
 
       if (!result.success && !result.txHash) {
         throw new Error(result.error || 'Transaction failed');
@@ -304,7 +286,6 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           txHash,
           walletAddress: walletAddress.toLowerCase(),
           ticketValue: selectedValue,
-          currency: selectedCurrency,
           paymentAmount,
           timestamp: Date.now(),
         });
@@ -323,7 +304,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
       if (result.status === 'confirmed' && txHash) {
         setTxStatus('saving');
 
-        await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash);
+        await buyTicket(selectedValue, 'WOVER', paymentAmount, txHash);
         
         clearPendingPurchase();
         
@@ -374,11 +355,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
         throw new Error('Transaction failed on-chain');
       }
 
-      const paymentAmount = selectedCurrency === 'WOVER' 
-        ? selectedValue 
-        : parseFloat(usdtAmount || '0');
+      const paymentAmount = selectedValue;
 
-      await buyTicket(selectedValue, selectedCurrency, paymentAmount, txHash);
+      await buyTicket(selectedValue, 'WOVER', paymentAmount, txHash);
       
       setTxStatus('success');
       toast({
@@ -437,7 +416,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
               <Wallet className="w-3 h-3 text-primary" />
               <span className="text-xs font-medium">
                 <span className="text-muted-foreground">Balance:</span>{' '}
-                <span className="text-foreground">{tokenBalance?.toFixed(2) || '...'} {selectedCurrency}</span>
+                <span className="text-foreground">{tokenBalance?.toFixed(2) || '...'} WOVER</span>
               </span>
             </div>
           )}
@@ -516,20 +495,9 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
           </div>
         )}
 
-        {/* Currency Selection */}
+        {/* Ticket Value Selection - WOVER ONLY */}
         {txStatus !== 'success' && (
           <>
-            <Tabs value={selectedCurrency} onValueChange={(v) => setSelectedCurrency(v as 'WOVER' | 'USDT')}>
-              <TabsList className="grid w-full grid-cols-2 bg-card/50 h-9">
-                <TabsTrigger value="WOVER" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-                  WOVER
-                </TabsTrigger>
-                <TabsTrigger value="USDT" className="text-xs font-medium data-[state=active]:bg-primary/20 data-[state=active]:text-primary">
-                  USDT
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-
             {/* Ticket Value Selection */}
             <div className="grid grid-cols-5 gap-2">
               {TICKET_VALUES.map((value) => (
@@ -553,15 +521,7 @@ const TicketPurchase = ({ walletAddress, isConnected }: TicketPurchaseProps) => 
             <div className="p-3 rounded-xl bg-card/50 border border-border/20 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground text-xs">You Pay</span>
-                <span className="font-bold text-base">
-                  {selectedCurrency === 'WOVER' ? (
-                    `${selectedValue} WOVER`
-                  ) : isPriceLoading ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    `${usdtAmount} USDT`
-                  )}
-                </span>
+                <span className="font-bold text-base">{selectedValue} WOVER</span>
               </div>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                 <div className="flex items-center gap-1">
