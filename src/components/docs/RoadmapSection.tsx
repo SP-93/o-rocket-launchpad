@@ -16,7 +16,7 @@ const RoadmapSection = () => {
       items: [
         "Multiplayer crash betting game",
         "Provably fair crash algorithm",
-        "Ticket-based entry system (WOVER/USDT)",
+        "Ticket-based entry system (WOVER)",
         "Real-time multiplier display",
         "Auto cash-out functionality",
         "Prize pool & revenue distribution",
