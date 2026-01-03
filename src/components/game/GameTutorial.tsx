@@ -28,7 +28,7 @@ const tutorialSteps: TutorialStep[] = [
   {
     icon: Ticket,
     title: 'Buy Tickets',
-    description: 'First, purchase game tickets using WOVER or USDT tokens. Look for the "Game Tickets" panel on the LEFT side of the screen. Each ticket has a WOVER value that determines your potential winnings.',
+    description: 'First, purchase game tickets using WOVER tokens. Look for the "Game Tickets" panel on the LEFT side of the screen. Each ticket has a WOVER value that determines your potential winnings.',
     tip: 'Tickets expire after 15 days, so use them before they expire!',
     color: 'text-primary',
     highlight: 'ticket-purchase',

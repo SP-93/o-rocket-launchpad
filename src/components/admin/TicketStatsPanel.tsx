@@ -23,7 +23,6 @@ interface TicketData {
 
 interface TicketStats {
   totalWover: number;
-  totalUsdt: number;
   count: number;
   activeCount: number;
   usedCount: number;
@@ -36,7 +35,6 @@ const TicketStatsPanel = () => {
   const [tickets, setTickets] = useState<TicketData[]>([]);
   const [stats, setStats] = useState<TicketStats>({
     totalWover: 0,
-    totalUsdt: 0,
     count: 0,
     activeCount: 0,
     usedCount: 0,
@@ -67,7 +65,6 @@ const TicketStatsPanel = () => {
       if (response.data?.stats) {
         setStats({
           totalWover: response.data.stats.totalWover || 0,
-          totalUsdt: response.data.stats.totalUsdt || 0,
           count: response.data.stats.count || 0,
           activeCount: response.data.stats.activeCount || 0,
           usedCount: response.data.stats.usedCount || 0,
@@ -166,7 +163,7 @@ const TicketStatsPanel = () => {
           </div>
           <p className="text-2xl font-bold text-primary">{stats.count}</p>
           <p className="text-xs text-muted-foreground mt-1">
-            {stats.totalWover.toLocaleString()} WOVER / {stats.totalUsdt.toLocaleString()} USDT
+            {stats.totalWover.toLocaleString()} WOVER
           </p>
         </div>
       </div>

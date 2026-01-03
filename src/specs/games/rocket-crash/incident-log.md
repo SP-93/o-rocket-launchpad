@@ -137,17 +137,35 @@ This document tracks all debugging sessions, fixes, and findings related to the 
 
 ---
 
+## 2026-01-03 (Round 4): Documentation + Chat Fixes
+
+### Issue: USDT References Still in Documentation
+**Fix Applied:**
+1. Updated `WhitepaperSection.tsx` - removed all USDT references for Crash Game
+2. Updated `GameTutorial.tsx` - changed "WOVER or USDT" to "WOVER"
+3. Updated `Games.tsx` - changed description to "Buy tickets with WOVER"
+4. Updated `TicketStatsPanel.tsx` - removed USDT stats
+
+### Issue: Chat Collapsed by Default on PC
+**Fix Applied:**
+1. Changed `PlayerChat.tsx` initial state to open on desktop (width >= 768px)
+
+---
+
 ## Verification Checklist
 
 After applying fixes, verify:
 
-1. [ ] Admin → Ticket Cleanup → Scan → Shows connected wallet
-2. [ ] Admin → Ticket Cleanup → Full Cleanup → No 403/500 error
-3. [ ] Admin → OnChain Inspector → Fetch → Shows bytecode hash
-4. [ ] Admin → OnChain Inspector → Shows "Edge Proxy" as RPC
-5. [ ] Game → Ticket Purchase → Only WOVER option (no USDT)
-6. [ ] Game → Ticket Purchase → Balance shows correctly
-7. [ ] Chat → Set Nickname → Uppercase letters work
+1. [ ] Hard refresh (`Ctrl+Shift+R`) to clear cache
+2. [ ] Admin → Ticket Cleanup → Scan → Shows connected wallet
+3. [ ] Admin → Ticket Cleanup → Full Cleanup → No 403/500 error
+4. [ ] Admin → OnChain Inspector → Fetch → Shows bytecode hash, no CORS error
+5. [ ] Admin → OnChain Inspector → Shows "Edge Proxy" as RPC
+6. [ ] Game → Ticket Purchase → Only WOVER option (no USDT tabs)
+7. [ ] Game → Ticket Purchase → Balance shows correctly
+8. [ ] Chat → Set Nickname → Uppercase letters work
+9. [ ] Chat → Open by default on desktop
+10. [ ] Docs → Whitepaper → No USDT mentions for Crash Game tickets
 
 ---
 

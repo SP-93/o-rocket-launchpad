@@ -48,7 +48,10 @@ const PlayerChat = ({ walletAddress, isConnected, className }: PlayerChatProps) 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    // Open by default on desktop (screen width >= 768px)
+    return typeof window !== 'undefined' && window.innerWidth >= 768;
+  });
   const [lastSentAt, setLastSentAt] = useState(0);
   const [nicknames, setNicknames] = useState<Map<string, string>>(new Map());
   const [myNickname, setMyNickname] = useState<string | null>(null);

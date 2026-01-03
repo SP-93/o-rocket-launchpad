@@ -64,7 +64,7 @@ const Games = () => {
   const games: GameCardProps[] = [
     {
       title: "Rocket Crash 🚀",
-      description: "Watch the rocket fly and cash out before it crashes! Multipliers up to 10x. Buy tickets with WOVER or USDT.",
+      description: "Watch the rocket fly and cash out before it crashes! Multipliers up to 10x. Buy tickets with WOVER.",
       icon: <Rocket className="w-8 h-8 text-primary" />,
       path: "/game",
       status: 'live',
