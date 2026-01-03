@@ -46,6 +46,7 @@ export async function getUniversalSigner(): Promise<ethers.Signer> {
 /**
  * Get a read-only provider (no wallet required)
  * Use this for reading contract state without transactions
+ * SYNC version - for compatibility with existing code
  */
 export function getReadProvider(): ethers.providers.JsonRpcProvider {
   return new ethers.providers.JsonRpcProvider(RPC_URL);
