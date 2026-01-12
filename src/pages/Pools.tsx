@@ -1,19 +1,23 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Plus, Loader2 } from "lucide-react";
+import { Search, Plus, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SpaceBackground from "@/components/backgrounds/SpaceBackground";
 import GlowCard from "@/components/ui/GlowCard";
 import { TokenPairIcon } from "@/components/TokenIcon";
 import { useLiquidity } from "@/hooks/useLiquidity";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
+import { useDexPrice } from "@/hooks/useDexPrice";
 import { PoolDetailsModal } from "@/components/PoolDetailsModal";
 
 interface PoolTVLData {
   token0Balance: string;
   token1Balance: string;
   tvlUSD: number;
+  tvlDEX?: number;
+  tvlCEX?: number;
+  dexPrice?: number;
   loading: boolean;
 }
 
@@ -30,7 +34,8 @@ interface Pool {
 const Pools = () => {
   const navigate = useNavigate();
   const { getPoolTVL, getPoolPrice } = useLiquidity();
-  const { price: overPrice, loading: priceLoading } = useCoinGeckoPrice();
+  const { price: cexPrice, loading: cexPriceLoading } = useCoinGeckoPrice();
+  const { dexPrice, isLoading: dexPriceLoading } = useDexPrice();
   const [poolTVLs, setPoolTVLs] = useState<Record<string, PoolTVLData>>({});
   const [poolPrices, setPoolPrices] = useState<Record<string, number>>({});
   const [isLoadingTVL, setIsLoadingTVL] = useState(true);
@@ -70,7 +75,7 @@ const Pools = () => {
   // Fetch TVL and prices for all pools
   useEffect(() => {
     const fetchAllPoolData = async () => {
-      if (priceLoading) return;
+      if (cexPriceLoading || dexPriceLoading) return;
       
       setIsLoadingTVL(true);
       const tvlData: Record<string, PoolTVLData> = {};
@@ -79,14 +84,17 @@ const Pools = () => {
       await Promise.all(
         pools.map(async (pool) => {
           const [tvl, price] = await Promise.all([
-            getPoolTVL(pool.token0, pool.token1, pool.feeValue, overPrice),
+            getPoolTVL(pool.token0, pool.token1, pool.feeValue, cexPrice, true),
             getPoolPrice(pool.token0, pool.token1, pool.feeValue),
           ]);
           
           tvlData[pool.pair] = {
             token0Balance: tvl?.token0Balance || "0",
             token1Balance: tvl?.token1Balance || "0",
-            tvlUSD: tvl?.tvlUSD || 0,
+            tvlUSD: tvl?.tvlDEX || 0, // Use DEX TVL as primary
+            tvlDEX: tvl?.tvlDEX,
+            tvlCEX: tvl?.tvlCEX,
+            dexPrice: tvl?.dexPrice,
             loading: false,
           };
           priceData[pool.pair] = price || 0;
@@ -99,11 +107,17 @@ const Pools = () => {
     };
 
     fetchAllPoolData();
-  }, [overPrice, priceLoading, getPoolTVL, getPoolPrice]);
+  }, [cexPrice, cexPriceLoading, dexPrice, dexPriceLoading, getPoolTVL, getPoolPrice]);
 
-  // Calculate total TVL
-  const totalTVL = Object.values(poolTVLs).reduce((sum, tvl) => sum + tvl.tvlUSD, 0);
+  // Calculate total TVL (using DEX prices)
+  const totalTVLDex = Object.values(poolTVLs).reduce((sum, tvl) => sum + (tvl.tvlDEX || 0), 0);
+  const totalTVLCex = Object.values(poolTVLs).reduce((sum, tvl) => sum + (tvl.tvlCEX || 0), 0);
   const activePoolsCount = Object.values(poolTVLs).filter(tvl => tvl.tvlUSD > 0).length;
+
+  // Calculate price difference percentage
+  const priceDiffPercent = dexPrice && cexPrice && dexPrice > 0 
+    ? ((cexPrice - dexPrice) / dexPrice * 100) 
+    : 0;
 
   const handleAddLiquidity = (token0: string, token1: string, fee: number) => {
     navigate(`/add-liquidity?token0=${token0}&token1=${token1}&fee=${fee}`);
@@ -137,30 +151,77 @@ const Pools = () => {
               </Button>
             </div>
 
-            {/* Stats Card */}
+            {/* Stats Card with DEX/CEX prices */}
             <GlowCard className="p-4 md:p-6 mb-6">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                {/* Total DEX TVL */}
                 <div className="text-center sm:text-left">
-                  <p className="text-sm text-muted-foreground mb-1">Total Value Locked</p>
+                  <p className="text-sm text-muted-foreground mb-1">DEX TVL (Actual)</p>
                   {isLoadingTVL ? (
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   ) : (
-                    <p className="text-2xl md:text-3xl font-bold text-primary">{formatTVL(totalTVL)}</p>
+                    <p className="text-2xl md:text-3xl font-bold text-primary">{formatTVL(totalTVLDex)}</p>
                   )}
                 </div>
+                
+                {/* DEX Price */}
                 <div className="text-center sm:text-left">
-                  <p className="text-sm text-muted-foreground mb-1">OVER Price</p>
-                  {priceLoading ? (
+                  <p className="text-sm text-muted-foreground mb-1">DEX Price</p>
+                  {dexPriceLoading ? (
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   ) : (
-                    <p className="text-2xl md:text-3xl font-bold">${overPrice.toFixed(4)}</p>
+                    <div>
+                      <p className="text-2xl md:text-3xl font-bold text-primary">${dexPrice?.toFixed(6) || '0.00'}</p>
+                      <p className="text-xs text-muted-foreground">Pool price</p>
+                    </div>
                   )}
                 </div>
+                
+                {/* CEX Price */}
+                <div className="text-center sm:text-left">
+                  <p className="text-sm text-muted-foreground mb-1">CEX Price</p>
+                  {cexPriceLoading ? (
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  ) : (
+                    <div>
+                      <p className="text-2xl md:text-3xl font-bold">${cexPrice?.toFixed(6) || '0.00'}</p>
+                      <div className="flex items-center gap-1 text-xs">
+                        {priceDiffPercent > 0 ? (
+                          <>
+                            <TrendingUp className="w-3 h-3 text-success" />
+                            <span className="text-success">+{priceDiffPercent.toFixed(1)}%</span>
+                          </>
+                        ) : priceDiffPercent < 0 ? (
+                          <>
+                            <TrendingDown className="w-3 h-3 text-destructive" />
+                            <span className="text-destructive">{priceDiffPercent.toFixed(1)}%</span>
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">CoinGecko</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Active Pools */}
                 <div className="text-center sm:text-left">
                   <p className="text-sm text-muted-foreground mb-1">Active Pools</p>
                   <p className="text-2xl md:text-3xl font-bold text-success">{activePoolsCount}</p>
                 </div>
               </div>
+              
+              {/* CEX TVL reference */}
+              {!isLoadingTVL && totalTVLCex > 0 && totalTVLCex !== totalTVLDex && (
+                <div className="mt-4 pt-4 border-t border-border/30">
+                  <p className="text-xs text-muted-foreground">
+                    CEX Reference TVL: <span className="text-foreground font-medium">{formatTVL(totalTVLCex)}</span>
+                    {priceDiffPercent > 10 && (
+                      <span className="ml-2 text-warning">⚠️ Large price deviation - Arbitrage opportunity</span>
+                    )}
+                  </p>
+                </div>
+              )}
             </GlowCard>
 
             {/* Search */}
@@ -205,7 +266,7 @@ const Pools = () => {
                     {pool.description}
                   </p>
 
-                  {/* TVL Display */}
+                  {/* TVL Display with DEX/CEX */}
                   <div className="pt-4 border-t border-border/30 mb-4">
                     {isLoadingTVL ? (
                       <div className="flex items-center gap-2">
@@ -213,11 +274,29 @@ const Pools = () => {
                         <span className="text-sm text-muted-foreground">Loading TVL...</span>
                       </div>
                     ) : hasLiquidity ? (
-                      <div>
-                        <div className="flex items-baseline gap-2 mb-1">
-                          <span className="text-lg font-bold text-primary">{formatTVL(tvlData.tvlUSD)}</span>
-                          <span className="text-xs text-muted-foreground">TVL</span>
+                      <div className="space-y-2">
+                        {/* DEX TVL - Primary */}
+                        <div className="flex items-baseline justify-between">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-lg font-bold text-primary">{formatTVL(tvlData.tvlDEX || tvlData.tvlUSD)}</span>
+                            <span className="text-xs text-muted-foreground">DEX TVL</span>
+                          </div>
+                          {tvlData.dexPrice && (pool.token0 === 'WOVER' || pool.token1 === 'WOVER') && (
+                            <span className="text-xs text-muted-foreground">
+                              @ ${tvlData.dexPrice.toFixed(6)}
+                            </span>
+                          )}
                         </div>
+                        
+                        {/* CEX TVL - Reference */}
+                        {tvlData.tvlCEX && tvlData.tvlCEX !== tvlData.tvlDEX && (
+                          <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                            <span>CEX Ref:</span>
+                            <span className="text-foreground/70">{formatTVL(tvlData.tvlCEX)}</span>
+                          </div>
+                        )}
+                        
+                        {/* Token balances */}
                         <p className="text-xs text-muted-foreground">
                           {tvlData.token0Balance} {pool.token0} + {tvlData.token1Balance} {pool.token1}
                         </p>

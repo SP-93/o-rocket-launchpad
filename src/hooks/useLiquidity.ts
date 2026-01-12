@@ -961,16 +961,20 @@ export const useLiquidity = () => {
     }
   }, [getReadProvider]);
 
-  // Get Pool TVL (Total Value Locked) in USD
+  // Get Pool TVL (Total Value Locked) in USD - supports both DEX and CEX pricing
   const getPoolTVL = useCallback(async (
     token0Symbol: string,
     token1Symbol: string,
     fee: number = 3000,
-    overPriceUSD: number = 0
+    overPriceUSD: number = 0,
+    useDexPrice: boolean = false
   ): Promise<{
     token0Balance: string;
     token1Balance: string;
     tvlUSD: number;
+    tvlDEX?: number;
+    tvlCEX?: number;
+    dexPrice?: number;
     poolAddress: string;
   } | null> => {
     const contracts = getDeployedContracts();
@@ -1008,17 +1012,64 @@ export const useLiquidity = () => {
       const sortedSymbol0 = getTokenSymbol(sortedToken0);
       const sortedSymbol1 = getTokenSymbol(sortedToken1);
 
-      // Calculate USD value
-      // USDT/USDC = $1.00, WOVER = CoinGecko price
-      const getTokenPriceUSD = (symbol: string): number => {
+      // Calculate DEX price from pool if WOVER is involved
+      let dexPriceWover: number | null = null;
+      
+      if (sortedSymbol0 === 'WOVER' || sortedSymbol1 === 'WOVER') {
+        try {
+          const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
+          const slot0 = await pool.slot0();
+          const sqrtPriceX96 = slot0.sqrtPriceX96;
+          
+          // Calculate price from sqrtPriceX96
+          const sqrtBig = BigInt(sqrtPriceX96.toString());
+          const Q96 = BigInt(2) ** BigInt(96);
+          const Q192 = Q96 * Q96;
+          const ratioX192 = sqrtBig * sqrtBig;
+          const SCALE = BigInt(10) ** BigInt(18);
+          const scaledRatio = (ratioX192 * SCALE) / Q192;
+          const rawPriceToken0InToken1 = Number(scaledRatio) / 1e18;
+          
+          // Decimal adjustment
+          const decimalAdjustment = Math.pow(10, decimals1 - decimals0);
+          const priceToken0InToken1 = rawPriceToken0InToken1 * decimalAdjustment;
+          
+          // Determine WOVER price
+          if (sortedSymbol0 === 'WOVER') {
+            // WOVER is token0, price is WOVER -> stablecoin
+            dexPriceWover = priceToken0InToken1;
+          } else {
+            // WOVER is token1, invert the price
+            dexPriceWover = priceToken0InToken1 > 0 ? 1 / priceToken0InToken1 : 0;
+          }
+          
+          logger.debug(`Pool ${token0Symbol}/${token1Symbol} DEX price: ${dexPriceWover}`);
+        } catch (priceErr) {
+          logger.warn('Could not fetch DEX price from pool:', priceErr);
+        }
+      }
+
+      // Calculate TVL with CEX price (CoinGecko)
+      const getTokenPriceCEX = (symbol: string): number => {
         if (symbol === 'USDT' || symbol === 'USDC') return 1;
         if (symbol === 'WOVER') return overPriceUSD;
         return 0;
       };
+      
+      // Calculate TVL with DEX price (from pool)
+      const getTokenPriceDEX = (symbol: string): number => {
+        if (symbol === 'USDT' || symbol === 'USDC') return 1;
+        if (symbol === 'WOVER') return dexPriceWover || 0;
+        return 0;
+      };
 
-      const value0USD = formattedBalance0 * getTokenPriceUSD(sortedSymbol0);
-      const value1USD = formattedBalance1 * getTokenPriceUSD(sortedSymbol1);
-      const tvlUSD = value0USD + value1USD;
+      const value0CEX = formattedBalance0 * getTokenPriceCEX(sortedSymbol0);
+      const value1CEX = formattedBalance1 * getTokenPriceCEX(sortedSymbol1);
+      const tvlCEX = value0CEX + value1CEX;
+      
+      const value0DEX = formattedBalance0 * getTokenPriceDEX(sortedSymbol0);
+      const value1DEX = formattedBalance1 * getTokenPriceDEX(sortedSymbol1);
+      const tvlDEX = value0DEX + value1DEX;
 
       // Return in original token order
       const tokensSwapped = sortedToken0 !== token0Address;
@@ -1026,7 +1077,10 @@ export const useLiquidity = () => {
       return {
         token0Balance: tokensSwapped ? formattedBalance1.toFixed(4) : formattedBalance0.toFixed(4),
         token1Balance: tokensSwapped ? formattedBalance0.toFixed(4) : formattedBalance1.toFixed(4),
-        tvlUSD,
+        tvlUSD: useDexPrice ? tvlDEX : tvlCEX, // Backward compatible - use DEX if requested
+        tvlDEX,
+        tvlCEX,
+        dexPrice: dexPriceWover || undefined,
         poolAddress,
       };
     } catch (err) {
