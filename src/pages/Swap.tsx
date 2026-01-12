@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import logger from "@/lib/logger";
 import { ArrowDownUp, Settings, Info, ChevronDown, Check, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -113,16 +113,23 @@ const Swap = () => {
     fetchBalances();
   }, [isConnected, address, fromToken.symbol, toToken.symbol, getTokenBalance, status]);
 
+  // Quote version ref to prevent race conditions
+  const quoteVersionRef = useRef(0);
+
   // Get quote when amount changes (auto-converts OVER to WOVER for quotes)
   useEffect(() => {
     if (activeTab !== "swap") return;
 
-    // If user can't swap anyway, don't request quotes (avoids misleading "liquidity" errors)
-    if (fromAmount && parseFloat(fromAmount) > parseFloat(fromBalance)) {
+    // Only block quote if wallet IS connected AND user has insufficient balance
+    // This allows price display when wallet is not connected
+    if (isConnected && fromAmount && parseFloat(fromAmount) > parseFloat(fromBalance)) {
       setToAmount("");
       reset();
       return;
     }
+    
+    // Increment quote version for race condition protection
+    const currentVersion = ++quoteVersionRef.current;
     
     const timer = setTimeout(async () => {
       if (fromAmount && parseFloat(fromAmount) > 0) {
@@ -136,7 +143,8 @@ const Swap = () => {
           setToAmount(fromAmount);
         } else {
           const newQuote = await getQuote(quoteFromToken, quoteToToken, fromAmount);
-          if (newQuote) {
+          // CRITICAL: Only apply quote if this is still the most recent request
+          if (newQuote && quoteVersionRef.current === currentVersion) {
             setToAmount(parseFloat(newQuote.amountOut).toFixed(6));
           }
         }
@@ -144,9 +152,9 @@ const Swap = () => {
         setToAmount("");
         reset();
       }
-    }, 100); // Optimized: 100ms debounce with cached quote
+    }, 300); // Increased debounce for input stability
     return () => clearTimeout(timer);
-  }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab, fromBalance, reset]);
+  }, [fromAmount, fromToken.symbol, toToken.symbol, getQuote, activeTab, fromBalance, isConnected, reset]);
 
   const handleSwitch = () => {
     const tempToken = fromToken;
