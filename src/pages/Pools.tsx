@@ -34,7 +34,7 @@ interface Pool {
 const Pools = () => {
   const navigate = useNavigate();
   const { getPoolTVL, getPoolPrice } = useLiquidity();
-  const { price: cexPrice, loading: cexPriceLoading } = useCoinGeckoPrice();
+  const { price: cexPrice, change24h, loading: cexPriceLoading } = useCoinGeckoPrice();
   const { dexPrice, isLoading: dexPriceLoading } = useDexPrice();
   const [poolTVLs, setPoolTVLs] = useState<Record<string, PoolTVLData>>({});
   const [poolPrices, setPoolPrices] = useState<Record<string, number>>({});
@@ -114,10 +114,6 @@ const Pools = () => {
   const totalTVLCex = Object.values(poolTVLs).reduce((sum, tvl) => sum + (tvl.tvlCEX || 0), 0);
   const activePoolsCount = Object.values(poolTVLs).filter(tvl => tvl.tvlUSD > 0).length;
 
-  // Calculate price difference percentage
-  const priceDiffPercent = dexPrice && cexPrice && dexPrice > 0 
-    ? ((cexPrice - dexPrice) / dexPrice * 100) 
-    : 0;
 
   const handleAddLiquidity = (token0: string, token1: string, fee: number) => {
     navigate(`/add-liquidity?token0=${token0}&token1=${token1}&fee=${fee}`);
@@ -186,20 +182,19 @@ const Pools = () => {
                     <div>
                       <p className="text-2xl md:text-3xl font-bold">${cexPrice?.toFixed(6) || '0.00'}</p>
                       <div className="flex items-center gap-1 text-xs">
-                        {priceDiffPercent > 0 ? (
+                        {change24h >= 0 ? (
                           <>
                             <TrendingUp className="w-3 h-3 text-success" />
-                            <span className="text-success">+{priceDiffPercent.toFixed(1)}%</span>
-                          </>
-                        ) : priceDiffPercent < 0 ? (
-                          <>
-                            <TrendingDown className="w-3 h-3 text-destructive" />
-                            <span className="text-destructive">{priceDiffPercent.toFixed(1)}%</span>
+                            <span className="text-success">+{change24h.toFixed(1)}% (24h)</span>
                           </>
                         ) : (
-                          <span className="text-muted-foreground">CoinGecko</span>
+                          <>
+                            <TrendingDown className="w-3 h-3 text-destructive" />
+                            <span className="text-destructive">{change24h.toFixed(1)}% (24h)</span>
+                          </>
                         )}
                       </div>
+                      <span className="text-xs text-muted-foreground">CoinGecko</span>
                     </div>
                   )}
                 </div>
@@ -211,17 +206,6 @@ const Pools = () => {
                 </div>
               </div>
               
-              {/* CEX TVL reference */}
-              {!isLoadingTVL && totalTVLCex > 0 && totalTVLCex !== totalTVLDex && (
-                <div className="mt-4 pt-4 border-t border-border/30">
-                  <p className="text-xs text-muted-foreground">
-                    CEX Reference TVL: <span className="text-foreground font-medium">{formatTVL(totalTVLCex)}</span>
-                    {priceDiffPercent > 10 && (
-                      <span className="ml-2 text-warning">⚠️ Large price deviation - Arbitrage opportunity</span>
-                    )}
-                  </p>
-                </div>
-              )}
             </GlowCard>
 
             {/* Search */}
@@ -288,13 +272,6 @@ const Pools = () => {
                           )}
                         </div>
                         
-                        {/* CEX TVL - Reference */}
-                        {tvlData.tvlCEX && tvlData.tvlCEX !== tvlData.tvlDEX && (
-                          <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-                            <span>CEX Ref:</span>
-                            <span className="text-foreground/70">{formatTVL(tvlData.tvlCEX)}</span>
-                          </div>
-                        )}
                         
                         {/* Token balances */}
                         <p className="text-xs text-muted-foreground">
