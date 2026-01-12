@@ -156,7 +156,7 @@ const Pools = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 {/* Total DEX TVL */}
                 <div className="text-center sm:text-left">
-                  <p className="text-sm text-muted-foreground mb-1">DEX TVL (Actual)</p>
+                  <p className="text-sm text-muted-foreground mb-1">DEX TVL</p>
                   {isLoadingTVL ? (
                     <Loader2 className="w-6 h-6 animate-spin text-primary" />
                   ) : (
