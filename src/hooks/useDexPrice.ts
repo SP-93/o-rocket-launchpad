@@ -146,15 +146,13 @@ export const useDexPrice = (): DexPriceResult => {
         // Inverse price: price(token1 → token0)
         const rawPriceToken1InToken0 = rawPriceToken0InToken1 > 0 ? 1 / rawPriceToken0InToken1 : 0;
 
-        // Decimal adjustment factor
-        // For Uniswap V3: the rawPrice is in smallest units
-        // To get human-readable: multiply by 10^(token1Decimals - token0Decimals)
-        const decimalAdjustmentT0toT1 = Math.pow(10, token1Decimals - token0Decimals);
-        const decimalAdjustmentT1toT0 = Math.pow(10, token0Decimals - token1Decimals);
-
-        // Human-readable prices
-        const priceToken0InToken1 = rawPriceToken0InToken1 * decimalAdjustmentT0toT1;
-        const priceToken1InToken0 = rawPriceToken1InToken0 * decimalAdjustmentT1toT0;
+        // Apply decimal adjustments
+        // For price of token0 in terms of token1: divide by 10^(token1Decimals - token0Decimals)
+        // This is the correct formula per Uniswap V3 sqrtPriceX96 conversion
+        const decimalAdjustment = Math.pow(10, token1Decimals - token0Decimals);
+        
+        const priceToken0InToken1 = rawPriceToken0InToken1 / decimalAdjustment;
+        const priceToken1InToken0 = 1 / priceToken0InToken1;
 
         // Now determine WOVER price in USDT
         let woverPriceInUsdt: number;
