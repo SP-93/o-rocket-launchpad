@@ -1030,9 +1030,9 @@ export const useLiquidity = () => {
           const scaledRatio = (ratioX192 * SCALE) / Q192;
           const rawPriceToken0InToken1 = Number(scaledRatio) / 1e18;
           
-          // Decimal adjustment
+          // Decimal adjustment - DIVIDE, not multiply (consistent with useDexPrice.ts)
           const decimalAdjustment = Math.pow(10, decimals1 - decimals0);
-          const priceToken0InToken1 = rawPriceToken0InToken1 * decimalAdjustment;
+          const priceToken0InToken1 = rawPriceToken0InToken1 / decimalAdjustment;
           
           // Determine WOVER price
           if (sortedSymbol0 === 'WOVER') {
