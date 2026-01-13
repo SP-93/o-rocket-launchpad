@@ -371,7 +371,7 @@ export const PositionCard = ({
                     </div>
                     {overPriceUSD > 0 && (
                       <span className="text-xs text-muted-foreground">
-                        ${(parseFloat(position.token0Amount) * (position.token0 === 'WOVER' ? overPriceUSD : 1)).toFixed(2)}
+                        ${(parseFloat(position.token0Amount) * (position.token0 === 'WOVER' || position.token0 === 'OVER' ? overPriceUSD : (position.token0 === 'USDT' || position.token0 === 'USDC' ? 1 : 0))).toFixed(2)}
                       </span>
                     )}
                   </div>
@@ -388,7 +388,7 @@ export const PositionCard = ({
                     </div>
                     {overPriceUSD > 0 && (
                       <span className="text-xs text-muted-foreground">
-                        ${(parseFloat(position.token1Amount) * (position.token1 === 'WOVER' ? overPriceUSD : 1)).toFixed(2)}
+                        ${(parseFloat(position.token1Amount) * (position.token1 === 'WOVER' || position.token1 === 'OVER' ? overPriceUSD : (position.token1 === 'USDT' || position.token1 === 'USDC' ? 1 : 0))).toFixed(2)}
                       </span>
                     )}
                   </div>

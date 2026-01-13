@@ -9,6 +9,7 @@ import { PositionCard } from "@/components/PositionCard";
 import { useWallet } from "@/hooks/useWallet";
 import { useLiquidity, Position } from "@/hooks/useLiquidity";
 import { useCoinGeckoPrice } from "@/hooks/useCoinGeckoPrice";
+import { useDexPrice } from "@/hooks/useDexPrice";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -26,7 +27,10 @@ const Positions = () => {
   const navigate = useNavigate();
   const { isConnected, isCorrectNetwork, address, switchNetwork } = useWallet();
   const { positions, status, error, fetchPositions, removeLiquidity, collectFees, txHash } = useLiquidity();
-  const { price: overPriceUSD } = useCoinGeckoPrice();
+  const { dexPrice } = useDexPrice();
+  const { price: cexPrice } = useCoinGeckoPrice();
+  // Use DEX price as primary, fallback to CEX price
+  const overPriceUSD = dexPrice > 0 ? dexPrice : cexPrice;
   
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
